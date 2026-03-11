@@ -7,11 +7,11 @@ import java.time.LocalDateTime;
 @Data
 @TableName("directories")
 public class Directory {
-    @TableId(type = IdType.AUTO)
-    private Long id;
+    @TableId(type = IdType.ASSIGN_UUID)
+    private String id;
     private String name;
-    private Long parentId;
-    private Long projectId;
+    private String parentId;
+    private String projectId;
     private String dirType;
     private Integer sortOrder;
     @TableField(fill = FieldFill.INSERT)

@@ -11,7 +11,7 @@ public class ValidationResult {
 
     @Data
     public static class ValidationError {
-        private Long nodeId;
+        private String nodeId;
         private String nodePath;
         private String message;
     }

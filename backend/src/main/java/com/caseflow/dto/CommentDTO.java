@@ -6,11 +6,11 @@ import java.util.List;
 
 @Data
 public class CommentDTO {
-    private Long id;
-    private Long nodeId;
-    private Long caseSetId;
-    private Long parentId;
-    private Long userId;
+    private String id;
+    private String nodeId;
+    private String caseSetId;
+    private String parentId;
+    private String userId;
     private String username;
     private String displayName;
     private String content;

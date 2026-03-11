@@ -1,48 +1,25 @@
 package com.caseflow.controller;
 
 import com.caseflow.common.Result;
-import com.caseflow.dto.DirectoryDTO;
 import com.caseflow.entity.Directory;
 import com.caseflow.service.DirectoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-import java.util.List;
 
-@RestController
-@RequestMapping("/api/directories")
-@RequiredArgsConstructor
+@RestController @RequestMapping("/api/directories") @RequiredArgsConstructor
 public class DirectoryController {
-
     private final DirectoryService directoryService;
 
-    @GetMapping("/tree")
-    public Result<List<DirectoryDTO>> tree(@RequestParam Long projectId, @RequestParam String dirType) {
-        return Result.ok(directoryService.getTree(projectId, dirType));
+    @GetMapping("/tree") public Result<?> tree(@RequestParam String projectId, @RequestParam String dirType) { return Result.ok(directoryService.getTree(projectId, dirType)); }
+    @PostMapping public Result<?> create(@RequestParam String name, @RequestParam(required = false) String parentId, @RequestParam String projectId, @RequestParam String dirType) {
+        Directory d = new Directory(); d.setName(name); d.setParentId(parentId); d.setProjectId(projectId); d.setDirType(dirType); d.setSortOrder(0);
+        directoryService.save(d); return Result.ok(d);
     }
-
-    @PostMapping
-    public Result<Directory> create(@RequestParam String name,
-                                    @RequestParam(required = false) Long parentId,
-                                    @RequestParam Long projectId,
-                                    @RequestParam String dirType) {
-        return Result.ok(directoryService.createDirectory(name, parentId, projectId, dirType));
+    @PutMapping("/{id}/rename") public Result<?> rename(@PathVariable String id, @RequestParam String name) {
+        Directory d = directoryService.getById(id); if (d != null) { d.setName(name); directoryService.updateById(d); } return Result.ok();
     }
-
-    @PutMapping("/{id}/rename")
-    public Result<Void> rename(@PathVariable Long id, @RequestParam String name) {
-        directoryService.renameDirectory(id, name);
-        return Result.ok();
+    @PutMapping("/{id}/move") public Result<?> move(@PathVariable String id, @RequestParam String newParentId) {
+        Directory d = directoryService.getById(id); if (d != null) { d.setParentId(newParentId); directoryService.updateById(d); } return Result.ok();
     }
-
-    @PutMapping("/{id}/move")
-    public Result<Void> move(@PathVariable Long id, @RequestParam Long newParentId) {
-        directoryService.moveDirectory(id, newParentId);
-        return Result.ok();
-    }
-
-    @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable Long id) {
-        directoryService.deleteDirectory(id);
-        return Result.ok();
-    }
+    @DeleteMapping("/{id}") public Result<?> delete(@PathVariable String id) { directoryService.removeById(id); return Result.ok(); }
 }

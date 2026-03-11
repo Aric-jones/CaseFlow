@@ -1,57 +1,49 @@
 package com.caseflow.controller;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
-import com.caseflow.dto.TestPlanDTO;
 import com.caseflow.entity.TestPlan;
 import com.caseflow.entity.TestPlanCase;
+import com.caseflow.entity.TestPlanExecutor;
+import com.caseflow.mapper.TestPlanCaseMapper;
+import com.caseflow.mapper.TestPlanExecutorMapper;
 import com.caseflow.service.TestPlanService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
-@RestController
-@RequestMapping("/api/test-plans")
-@RequiredArgsConstructor
+@RestController @RequestMapping("/api/test-plans") @RequiredArgsConstructor
 public class TestPlanController {
-
     private final TestPlanService testPlanService;
+    private final TestPlanExecutorMapper executorMapper;
+    private final TestPlanCaseMapper caseMapper;
 
-    @PostMapping
-    public Result<TestPlan> create(@RequestBody TestPlanDTO dto) {
-        return Result.ok(testPlanService.createTestPlan(dto));
+    @GetMapping public Result<?> list(@RequestParam String projectId, @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
+        return Result.ok(testPlanService.listPlans(projectId, keyword, page, size));
     }
+    @GetMapping("/{id}") public Result<?> get(@PathVariable String id) { return Result.ok(testPlanService.getById(id)); }
 
-    @GetMapping
-    public Result<Page<TestPlan>> list(@RequestParam Long projectId,
-                                       @RequestParam(required = false) Long directoryId,
-                                       @RequestParam(required = false) String keyword,
-                                       @RequestParam(defaultValue = "false") boolean onlyMine,
-                                       @RequestParam(defaultValue = "1") int page,
-                                       @RequestParam(defaultValue = "20") int size) {
-        return Result.ok(testPlanService.listTestPlans(projectId, directoryId, keyword, onlyMine, page, size));
+    @SuppressWarnings("unchecked")
+    @PostMapping public Result<?> create(@RequestBody Map<String, Object> body) {
+        TestPlan plan = new TestPlan();
+        plan.setName((String) body.get("name")); plan.setDirectoryId((String) body.get("directoryId"));
+        plan.setProjectId((String) body.get("projectId")); plan.setStatus("NOT_STARTED");
+        plan.setCreatedBy(CurrentUserUtil.getCurrentUserId());
+        testPlanService.save(plan);
+        List<String> executorIds = (List<String>) body.get("executorIds");
+        if (executorIds != null) for (String eid : executorIds) { TestPlanExecutor e = new TestPlanExecutor(); e.setPlanId(plan.getId()); e.setUserId(eid); executorMapper.insert(e); }
+        List<Map<String, String>> cases = (List<Map<String, String>>) body.get("cases");
+        if (cases != null) for (Map<String, String> c : cases) {
+            TestPlanCase tc = new TestPlanCase(); tc.setPlanId(plan.getId()); tc.setNodeId(c.get("nodeId"));
+            tc.setCaseSetId(c.get("caseSetId")); tc.setResult("PENDING"); caseMapper.insert(tc);
+        }
+        return Result.ok(plan);
     }
-
-    @GetMapping("/{id}")
-    public Result<TestPlan> get(@PathVariable Long id) {
-        return Result.ok(testPlanService.getById(id));
+    @GetMapping("/{id}/cases") public Result<?> getCases(@PathVariable String id) { return Result.ok(testPlanService.getCases(id)); }
+    @PutMapping("/cases/{id}/execute") public Result<?> execute(@PathVariable String id, @RequestBody Map<String, String> body) {
+        testPlanService.executeCase(id, body.get("result"), body.get("reason")); return Result.ok();
     }
-
-    @GetMapping("/{id}/cases")
-    public Result<List<TestPlanCase>> cases(@PathVariable Long id) {
-        return Result.ok(testPlanService.getPlanCases(id));
-    }
-
-    @PutMapping("/cases/{id}/execute")
-    public Result<Void> execute(@PathVariable Long id, @RequestBody Map<String, String> body) {
-        testPlanService.executeCase(id, body.get("result"), body.get("reason"));
-        return Result.ok();
-    }
-
-    @DeleteMapping("/cases/{id}")
-    public Result<Void> removeCase(@PathVariable Long id) {
-        testPlanService.removeCase(id);
-        return Result.ok();
-    }
+    @DeleteMapping("/cases/{id}") public Result<?> removeCase(@PathVariable String id) { testPlanService.removeCase(id); return Result.ok(); }
 }

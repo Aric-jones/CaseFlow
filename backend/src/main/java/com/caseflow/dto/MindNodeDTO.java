@@ -2,22 +2,18 @@ package com.caseflow.dto;
 
 import lombok.Data;
 import java.util.List;
+import java.util.Map;
 
 @Data
 public class MindNodeDTO {
-    private Long id;
-    private Long caseSetId;
-    private Long parentId;
+    private String id;
+    private String caseSetId;
+    private String parentId;
     private String text;
     private String nodeType;
     private Integer sortOrder;
-    private String priority;
-    private String mark;
-    private List<String> tags;
-    private String automation;
-    private String coverage;
-    private List<String> platform;
-    private List<String> belongsPlatform;
+    private Integer isRoot;
+    private Map<String, Object> properties;
     private List<MindNodeDTO> children;
     private Integer commentCount;
 }

@@ -7,12 +7,12 @@ import java.time.LocalDateTime;
 @Data
 @TableName("test_plan_cases")
 public class TestPlanCase {
-    @TableId(type = IdType.AUTO)
-    private Long id;
-    private Long planId;
-    private Long nodeId;
-    private Long caseSetId;
-    private Long executorId;
+    @TableId(type = IdType.ASSIGN_UUID)
+    private String id;
+    private String planId;
+    private String nodeId;
+    private String caseSetId;
+    private String executorId;
     private String result;
     private String reason;
     private LocalDateTime executedAt;

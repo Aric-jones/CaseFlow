@@ -1,6 +1,7 @@
 package com.caseflow.config;
 
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -10,46 +11,40 @@ import java.util.Date;
 
 @Component
 public class JwtUtil {
-
     @Value("${caseflow.jwt.secret}")
     private String secret;
-
     @Value("${caseflow.jwt.expiration}")
     private long expiration;
 
     private SecretKey getSigningKey() {
-        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
-        return Keys.hmacShaKeyFor(keyBytes);
+        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateToken(Long userId, String username) {
+    public String generateToken(String userId) {
         return Jwts.builder()
-                .subject(String.valueOf(userId))
-                .claim("username", username)
+                .subject(userId)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey())
                 .compact();
     }
 
-    public Claims parseToken(String token) {
+    public String getUserIdFromToken(String token) {
         return Jwts.parser()
                 .verifyWith(getSigningKey())
                 .build()
                 .parseSignedClaims(token)
-                .getPayload();
-    }
-
-    public Long getUserId(String token) {
-        return Long.parseLong(parseToken(token).getSubject());
+                .getPayload()
+                .getSubject();
     }
 
     public boolean validateToken(String token) {
         try {
-            parseToken(token);
+            Jwts.parser()
+                    .verifyWith(getSigningKey())
+                    .build()
+                    .parseSignedClaims(token);
             return true;
-        } catch (JwtException e) {
-            return false;
-        }
+        } catch (JwtException e) { return false; }
     }
 }

@@ -10,12 +10,13 @@
 - Apache POI (Excel导入)
 
 ### 前端
-- React 18 + TypeScript
+- Vue 3.4 + TypeScript
 - Vite 5
-- Ant Design 5
-- React Router 6
-- Zustand (状态管理)
+- Ant Design Vue 4
+- Vue Router 4
+- Pinia (状态管理)
 - Axios (HTTP请求)
+- simple-mind-map (思维导图)
 
 ## 项目结构
 
@@ -31,11 +32,12 @@
 │   │   └── dto/             # 数据传输对象
 │   └── src/main/resources/
 │       └── application.yml  # 应用配置
-├── frontend/                 # React 前端
+├── frontend/                 # Vue 3 前端
 │   ├── src/
 │   │   ├── api/             # API 请求层
-│   │   ├── pages/           # 页面组件
-│   │   ├── stores/          # 状态管理
+│   │   ├── views/           # 页面组件 (Vue SFC)
+│   │   ├── stores/          # Pinia 状态管理
+│   │   ├── router/          # Vue Router 路由
 │   │   └── types/           # TypeScript 类型
 │   └── vite.config.ts       # Vite 配置
 └── sql/

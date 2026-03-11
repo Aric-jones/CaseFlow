@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 public class CaseSetDTO {
     private String name;
-    private Long directoryId;
-    private Long projectId;
+    private String directoryId;
+    private String projectId;
     private String requirementLink;
 }

@@ -4,28 +4,21 @@ import com.baomidou.mybatisplus.annotation.*;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.Map;
 
 @Data
 @TableName(value = "mind_nodes", autoResultMap = true)
 public class MindNode {
-    @TableId(type = IdType.AUTO)
-    private Long id;
-    private Long caseSetId;
-    private Long parentId;
+    @TableId(type = IdType.ASSIGN_UUID)
+    private String id;
+    private String caseSetId;
+    private String parentId;
     private String text;
     private String nodeType;
     private Integer sortOrder;
-    private String priority;
-    private String mark;
+    private Integer isRoot;
     @TableField(typeHandler = JacksonTypeHandler.class)
-    private List<String> tags;
-    private String automation;
-    private String coverage;
-    @TableField(typeHandler = JacksonTypeHandler.class)
-    private List<String> platform;
-    @TableField(typeHandler = JacksonTypeHandler.class)
-    private List<String> belongsPlatform;
+    private Map<String, Object> properties;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

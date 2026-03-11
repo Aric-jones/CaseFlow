@@ -6,8 +6,8 @@ import lombok.Data;
 @Data
 @TableName("test_plan_executors")
 public class TestPlanExecutor {
-    @TableId(type = IdType.AUTO)
-    private Long id;
-    private Long planId;
-    private Long userId;
+    @TableId(type = IdType.ASSIGN_UUID)
+    private String id;
+    private String planId;
+    private String userId;
 }

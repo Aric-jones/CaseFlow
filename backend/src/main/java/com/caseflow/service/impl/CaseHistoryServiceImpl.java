@@ -1,6 +1,5 @@
 package com.caseflow.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.dto.MindNodeDTO;
@@ -13,56 +12,38 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class CaseHistoryServiceImpl extends ServiceImpl<CaseHistoryMapper, CaseHistory> implements CaseHistoryService {
-
     private final MindNodeService mindNodeService;
     private final ObjectMapper objectMapper;
+    private static final int INTERVAL_MINUTES = 15;
+    private static final int MAX_VERSIONS = 20;
 
-    @Override
-    @SneakyThrows
-    public void saveSnapshot(Long caseSetId) {
+    @Override @SneakyThrows
+    public void saveSnapshot(String caseSetId) {
+        CaseHistory latest = lambdaQuery().eq(CaseHistory::getCaseSetId, caseSetId).orderByDesc(CaseHistory::getCreatedAt).last("LIMIT 1").one();
+        if (latest != null && latest.getCreatedAt().plusMinutes(INTERVAL_MINUTES).isAfter(LocalDateTime.now())) return;
         List<MindNodeDTO> tree = mindNodeService.getTree(caseSetId);
-        CaseHistory history = new CaseHistory();
-        history.setCaseSetId(caseSetId);
-        history.setSnapshot(objectMapper.writeValueAsString(tree));
-        history.setCreatedBy(CurrentUserUtil.getCurrentUserId());
-        this.save(history);
-        trimHistory(caseSetId, 10);
+        CaseHistory h = new CaseHistory(); h.setCaseSetId(caseSetId);
+        h.setSnapshot(objectMapper.writeValueAsString(tree)); h.setCreatedBy(CurrentUserUtil.getCurrentUserId());
+        save(h); trimHistory(caseSetId);
     }
-
-    private void trimHistory(Long caseSetId, int maxCount) {
-        List<CaseHistory> all = this.lambdaQuery()
-                .eq(CaseHistory::getCaseSetId, caseSetId)
-                .orderByDesc(CaseHistory::getCreatedAt)
-                .list();
-        if (all.size() > maxCount) {
-            for (int i = maxCount; i < all.size(); i++) {
-                this.removeById(all.get(i).getId());
-            }
-        }
+    private void trimHistory(String caseSetId) {
+        List<CaseHistory> all = lambdaQuery().eq(CaseHistory::getCaseSetId, caseSetId).orderByDesc(CaseHistory::getCreatedAt).list();
+        if (all.size() > MAX_VERSIONS) for (int i = MAX_VERSIONS; i < all.size(); i++) removeById(all.get(i).getId());
     }
-
     @Override
-    public List<CaseHistory> getRecentHistory(Long caseSetId, int limit) {
-        return this.lambdaQuery()
-                .eq(CaseHistory::getCaseSetId, caseSetId)
-                .orderByDesc(CaseHistory::getCreatedAt)
-                .last("LIMIT " + limit)
-                .list();
+    public List<CaseHistory> getRecentHistory(String caseSetId, int limit) {
+        return lambdaQuery().eq(CaseHistory::getCaseSetId, caseSetId).orderByDesc(CaseHistory::getCreatedAt).last("LIMIT " + limit).list();
     }
-
-    @Override
-    @SneakyThrows
-    @Transactional
-    public void restoreVersion(Long historyId) {
-        CaseHistory history = getById(historyId);
-        if (history == null) return;
-        List<MindNodeDTO> tree = objectMapper.readValue(history.getSnapshot(),
-                objectMapper.getTypeFactory().constructCollectionType(List.class, MindNodeDTO.class));
-        mindNodeService.batchSave(history.getCaseSetId(), tree);
+    @Override @SneakyThrows @Transactional
+    public void restoreVersion(String historyId) {
+        CaseHistory h = getById(historyId); if (h == null) return;
+        List<MindNodeDTO> tree = objectMapper.readValue(h.getSnapshot(), objectMapper.getTypeFactory().constructCollectionType(List.class, MindNodeDTO.class));
+        mindNodeService.batchSave(h.getCaseSetId(), tree);
     }
 }

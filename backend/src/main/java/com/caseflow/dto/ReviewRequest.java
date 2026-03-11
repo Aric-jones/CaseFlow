@@ -5,6 +5,6 @@ import java.util.List;
 
 @Data
 public class ReviewRequest {
-    private Long caseSetId;
-    private List<Long> reviewerIds;
+    private String caseSetId;
+    private List<String> reviewerIds;
 }

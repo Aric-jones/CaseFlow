@@ -10,5 +10,5 @@ public class UserDTO {
     private String password;
     private String role;
     private String identity;
-    private List<Long> projectIds;
+    private List<String> projectIds;
 }

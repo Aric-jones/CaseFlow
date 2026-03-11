@@ -7,12 +7,12 @@ import java.time.LocalDateTime;
 @Data
 @TableName("comments")
 public class Comment {
-    @TableId(type = IdType.AUTO)
-    private Long id;
-    private Long nodeId;
-    private Long caseSetId;
-    private Long parentId;
-    private Long userId;
+    @TableId(type = IdType.ASSIGN_UUID)
+    private String id;
+    private String nodeId;
+    private String caseSetId;
+    private String parentId;
+    private String userId;
     private String content;
     private Integer resolved;
     @TableField(fill = FieldFill.INSERT)

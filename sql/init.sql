@@ -1,229 +1,232 @@
--- CaseFlow 测试用例管理平台 数据库初始化脚本
+-- CaseFlow 测试用例管理平台 - 数据库初始化脚本
+-- 默认数据(管理员/项目/目录/自定义属性)由应用启动时 DataInitializer 自动创建
 CREATE DATABASE IF NOT EXISTS caseflow DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE caseflow;
 
--- ==================== 用户与权限 ====================
-
+-- ========================================
+-- 用户表
+-- ========================================
 CREATE TABLE users (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    display_name VARCHAR(100) NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    role ENUM('SUPER_ADMIN','ADMIN','MEMBER') NOT NULL DEFAULT 'MEMBER',
-    identity ENUM('TEST','DEV','PRODUCT') NOT NULL DEFAULT 'TEST',
-    status TINYINT NOT NULL DEFAULT 1 COMMENT '1=启用 0=禁用',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    id              VARCHAR(32)   NOT NULL                            COMMENT '用户ID(UUID)',
+    username        VARCHAR(50)   NOT NULL                            COMMENT '登录用户名(唯一)',
+    display_name    VARCHAR(100)  NOT NULL                            COMMENT '显示名称',
+    password        VARCHAR(255)  NOT NULL                            COMMENT '密码(BCrypt加密)',
+    role            ENUM('SUPER_ADMIN','ADMIN','MEMBER')
+                                  NOT NULL DEFAULT 'MEMBER'           COMMENT '角色: 超管/管理员/成员',
+    identity        ENUM('TEST','DEV','PRODUCT')
+                                  NOT NULL DEFAULT 'TEST'             COMMENT '身份: 测试/研发/产品',
+    status          TINYINT       NOT NULL DEFAULT 1                  COMMENT '状态: 1=启用 0=禁用',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
 
--- 默认超管账号由应用启动时自动创建 (admin / wps123456)
-
--- ==================== 项目空间 ====================
-
+-- ========================================
+-- 项目空间表
+-- ========================================
 CREATE TABLE projects (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    description VARCHAR(500) DEFAULT '',
-    created_by BIGINT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    id              VARCHAR(32)   NOT NULL                            COMMENT '项目ID(UUID)',
+    name            VARCHAR(100)  NOT NULL                            COMMENT '项目名称',
+    description     VARCHAR(500)  DEFAULT ''                          COMMENT '项目描述',
+    created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人用户ID',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='项目空间表';
 
+-- ========================================
+-- 项目成员关联表
+-- ========================================
 CREATE TABLE project_members (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    project_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID(UUID)',
+    project_id      VARCHAR(32)   NOT NULL                            COMMENT '项目ID',
+    user_id         VARCHAR(32)   NOT NULL                            COMMENT '用户ID',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    PRIMARY KEY (id),
     UNIQUE KEY uk_project_user (project_id, user_id),
-    FOREIGN KEY (project_id) REFERENCES projects(id),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    INDEX idx_project (project_id),
+    INDEX idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='项目成员关联表';
 
--- ==================== 目录树 (用例 & 测试计划共用) ====================
-
+-- ========================================
+-- 目录树 (用例目录 & 测试计划目录 共用)
+-- ========================================
 CREATE TABLE directories (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    parent_id BIGINT DEFAULT NULL,
-    project_id BIGINT NOT NULL,
-    dir_type ENUM('CASE','TEST_PLAN') NOT NULL,
-    sort_order INT NOT NULL DEFAULT 0,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    id              VARCHAR(32)   NOT NULL                            COMMENT '目录ID(UUID)',
+    name            VARCHAR(255)  NOT NULL                            COMMENT '目录名称',
+    parent_id       VARCHAR(32)   DEFAULT NULL                        COMMENT '父目录ID, NULL表示顶级目录',
+    project_id      VARCHAR(32)   NOT NULL                            COMMENT '所属项目ID',
+    dir_type        ENUM('CASE','TEST_PLAN')
+                                  NOT NULL                            COMMENT '目录类型: 用例/测试计划',
+    sort_order      INT           NOT NULL DEFAULT 0                  COMMENT '排序序号',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
     INDEX idx_project_type (project_id, dir_type),
-    FOREIGN KEY (project_id) REFERENCES projects(id),
-    FOREIGN KEY (parent_id) REFERENCES directories(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    INDEX idx_parent (parent_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='目录树表(用例/测试计划共用)';
 
--- ==================== 用例集 ====================
-
+-- ========================================
+-- 用例集
+-- ========================================
 CREATE TABLE case_sets (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    directory_id BIGINT NOT NULL,
-    project_id BIGINT NOT NULL,
-    status ENUM('WRITING','PENDING_REVIEW','NO_REVIEW') NOT NULL DEFAULT 'WRITING',
-    requirement_link VARCHAR(500) DEFAULT '',
-    case_count INT NOT NULL DEFAULT 0,
-    created_by BIGINT NOT NULL,
-    deleted TINYINT NOT NULL DEFAULT 0,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    id              VARCHAR(32)   NOT NULL                            COMMENT '用例集ID(UUID)',
+    name            VARCHAR(255)  NOT NULL                            COMMENT '用例集名称',
+    directory_id    VARCHAR(32)   NOT NULL                            COMMENT '所属目录ID',
+    project_id      VARCHAR(32)   NOT NULL                            COMMENT '所属项目ID',
+    status          ENUM('WRITING','PENDING_REVIEW','NO_REVIEW')
+                                  NOT NULL DEFAULT 'WRITING'          COMMENT '状态: 编写中/待评审/无需评审',
+    requirement_link VARCHAR(500) DEFAULT ''                          COMMENT '关联需求链接',
+    case_count      INT           NOT NULL DEFAULT 0                  COMMENT '用例数量(统计缓存)',
+    created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人用户ID',
+    deleted         TINYINT       NOT NULL DEFAULT 0                  COMMENT '逻辑删除: 0=正常 1=已删除',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
     INDEX idx_directory (directory_id),
-    INDEX idx_project (project_id),
-    FOREIGN KEY (directory_id) REFERENCES directories(id),
-    FOREIGN KEY (project_id) REFERENCES projects(id),
-    FOREIGN KEY (created_by) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    INDEX idx_project_deleted (project_id, deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用例集表';
 
--- ==================== 思维导图节点 ====================
-
+-- ========================================
+-- 思维导图节点
+-- 属性采用 properties JSON 统一存储, 不再硬编码优先级/标签等字段
+-- 示例: {"优先级":"P0","标记":"待完成","标签":["冒烟","回归"]}
+-- ========================================
 CREATE TABLE mind_nodes (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    case_set_id BIGINT NOT NULL,
-    parent_id BIGINT DEFAULT NULL,
-    text VARCHAR(500) NOT NULL DEFAULT '',
-    node_type ENUM('ROOT','TITLE','PRECONDITION','STEP','EXPECTED') NOT NULL DEFAULT 'ROOT',
-    sort_order INT NOT NULL DEFAULT 0,
-    priority ENUM('P0','P1','P2','P3') DEFAULT NULL,
-    mark ENUM('NONE','PENDING','TO_CONFIRM','TO_MODIFY') NOT NULL DEFAULT 'NONE',
-    tags JSON DEFAULT NULL COMMENT '["SMOKE","REGRESSION","INTEGRATION"]',
-    automation ENUM('API','UI','NONE') DEFAULT NULL,
-    coverage VARCHAR(50) DEFAULT NULL,
-    platform JSON DEFAULT NULL,
-    belongs_platform JSON DEFAULT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    id              VARCHAR(32)   NOT NULL                            COMMENT '节点ID(UUID)',
+    case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '所属用例集ID',
+    parent_id       VARCHAR(32)   DEFAULT NULL                        COMMENT '父节点ID, NULL表示根节点',
+    text            VARCHAR(500)  NOT NULL DEFAULT ''                 COMMENT '节点文本内容',
+    node_type       ENUM('TITLE','PRECONDITION','STEP','EXPECTED')
+                                  DEFAULT NULL                        COMMENT '节点类型: 用例标题/前置条件/步骤/预期结果, 可为空',
+    sort_order      INT           NOT NULL DEFAULT 0                  COMMENT '同级排序序号',
+    is_root         TINYINT       NOT NULL DEFAULT 0                  COMMENT '是否根节点: 1=是 0=否, 每个用例集仅一个',
+    properties      JSON          DEFAULT NULL                        COMMENT '动态属性JSON, 键名=属性名 值=属性值或数组',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
     INDEX idx_case_set (case_set_id),
-    INDEX idx_parent (parent_id),
-    FOREIGN KEY (case_set_id) REFERENCES case_sets(id) ON DELETE CASCADE,
-    FOREIGN KEY (parent_id) REFERENCES mind_nodes(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    INDEX idx_parent (parent_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='思维导图节点表';
 
--- ==================== 评论 ====================
-
+-- ========================================
+-- 评论
+-- ========================================
 CREATE TABLE comments (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    node_id BIGINT NOT NULL,
-    case_set_id BIGINT NOT NULL,
-    parent_id BIGINT DEFAULT NULL COMMENT '回复的评论ID',
-    user_id BIGINT NOT NULL,
-    content TEXT NOT NULL,
-    resolved TINYINT NOT NULL DEFAULT 0,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    id              VARCHAR(32)   NOT NULL                            COMMENT '评论ID(UUID)',
+    node_id         VARCHAR(32)   NOT NULL                            COMMENT '关联节点ID',
+    case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '关联用例集ID',
+    parent_id       VARCHAR(32)   DEFAULT NULL                        COMMENT '父评论ID(回复)',
+    user_id         VARCHAR(32)   NOT NULL                            COMMENT '评论人用户ID',
+    content         TEXT          NOT NULL                            COMMENT '评论内容',
+    resolved        TINYINT       NOT NULL DEFAULT 0                  COMMENT '是否已解决: 0=未解决 1=已解决',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
     INDEX idx_node (node_id),
-    INDEX idx_case_set (case_set_id),
-    FOREIGN KEY (node_id) REFERENCES mind_nodes(id) ON DELETE CASCADE,
-    FOREIGN KEY (case_set_id) REFERENCES case_sets(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    INDEX idx_case_set (case_set_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评论表';
 
--- ==================== 用例集历史版本 ====================
-
+-- ========================================
+-- 用例集历史版本 (15分钟间隔快照)
+-- ========================================
 CREATE TABLE case_history (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    case_set_id BIGINT NOT NULL,
-    snapshot JSON NOT NULL COMMENT '节点树快照',
-    created_by BIGINT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_case_set (case_set_id),
-    FOREIGN KEY (case_set_id) REFERENCES case_sets(id) ON DELETE CASCADE,
-    FOREIGN KEY (created_by) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    id              VARCHAR(32)   NOT NULL                            COMMENT '历史ID(UUID)',
+    case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '用例集ID',
+    snapshot        JSON          NOT NULL                            COMMENT '节点树完整快照(JSON)',
+    created_by      VARCHAR(32)   NOT NULL                            COMMENT '操作人用户ID',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '快照时间',
+    PRIMARY KEY (id),
+    INDEX idx_case_set_time (case_set_id, created_at DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用例集历史版本表';
 
--- ==================== 评审 ====================
-
+-- ========================================
+-- 评审分配
+-- ========================================
 CREATE TABLE review_assignments (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    case_set_id BIGINT NOT NULL,
-    reviewer_id BIGINT NOT NULL,
-    status ENUM('PENDING','APPROVED','REJECTED','NEED_MODIFY') NOT NULL DEFAULT 'PENDING',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_case_set (case_set_id),
-    FOREIGN KEY (case_set_id) REFERENCES case_sets(id) ON DELETE CASCADE,
-    FOREIGN KEY (reviewer_id) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    id              VARCHAR(32)   NOT NULL                            COMMENT '评审ID(UUID)',
+    case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '用例集ID',
+    reviewer_id     VARCHAR(32)   NOT NULL                            COMMENT '评审人用户ID',
+    status          ENUM('PENDING','APPROVED','REJECTED','NEED_MODIFY')
+                                  NOT NULL DEFAULT 'PENDING'          COMMENT '评审状态: 待审/通过/拒绝/待修改',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    INDEX idx_case_set (case_set_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评审分配表';
 
--- ==================== 测试计划 ====================
-
+-- ========================================
+-- 测试计划
+-- ========================================
 CREATE TABLE test_plans (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    directory_id BIGINT DEFAULT NULL,
-    project_id BIGINT NOT NULL,
-    status ENUM('NOT_STARTED','IN_PROGRESS','COMPLETED') NOT NULL DEFAULT 'NOT_STARTED',
-    created_by BIGINT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_project (project_id),
-    FOREIGN KEY (directory_id) REFERENCES directories(id),
-    FOREIGN KEY (project_id) REFERENCES projects(id),
-    FOREIGN KEY (created_by) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    id              VARCHAR(32)   NOT NULL                            COMMENT '计划ID(UUID)',
+    name            VARCHAR(255)  NOT NULL                            COMMENT '计划名称',
+    directory_id    VARCHAR(32)   DEFAULT NULL                        COMMENT '所属目录ID',
+    project_id      VARCHAR(32)   NOT NULL                            COMMENT '所属项目ID',
+    status          ENUM('NOT_STARTED','IN_PROGRESS','COMPLETED')
+                                  NOT NULL DEFAULT 'NOT_STARTED'      COMMENT '状态: 未开始/进行中/已完成',
+    created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人用户ID',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    INDEX idx_project (project_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='测试计划表';
 
+-- ========================================
+-- 测试计划执行人
+-- ========================================
 CREATE TABLE test_plan_executors (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    plan_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
-    UNIQUE KEY uk_plan_user (plan_id, user_id),
-    FOREIGN KEY (plan_id) REFERENCES test_plans(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID(UUID)',
+    plan_id         VARCHAR(32)   NOT NULL                            COMMENT '计划ID',
+    user_id         VARCHAR(32)   NOT NULL                            COMMENT '执行人用户ID',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_plan_user (plan_id, user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='测试计划执行人表';
 
+-- ========================================
+-- 测试计划用例
+-- ========================================
 CREATE TABLE test_plan_cases (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    plan_id BIGINT NOT NULL,
-    node_id BIGINT NOT NULL COMMENT '预期结果节点ID，标识一条用例',
-    case_set_id BIGINT NOT NULL,
-    executor_id BIGINT DEFAULT NULL,
-    result ENUM('PENDING','PASS','FAIL','SKIP') NOT NULL DEFAULT 'PENDING',
-    reason TEXT DEFAULT NULL COMMENT '不通过/跳过原因',
-    executed_at DATETIME DEFAULT NULL,
-    INDEX idx_plan (plan_id),
-    FOREIGN KEY (plan_id) REFERENCES test_plans(id) ON DELETE CASCADE,
-    FOREIGN KEY (node_id) REFERENCES mind_nodes(id),
-    FOREIGN KEY (case_set_id) REFERENCES case_sets(id),
-    FOREIGN KEY (executor_id) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID(UUID)',
+    plan_id         VARCHAR(32)   NOT NULL                            COMMENT '计划ID',
+    node_id         VARCHAR(32)   NOT NULL                            COMMENT '预期结果节点ID(标识一条用例)',
+    case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '来源用例集ID',
+    executor_id     VARCHAR(32)   DEFAULT NULL                        COMMENT '分配的执行人ID',
+    result          ENUM('PENDING','PASS','FAIL','SKIP')
+                                  NOT NULL DEFAULT 'PENDING'          COMMENT '执行结果: 待执行/通过/失败/跳过',
+    reason          TEXT          DEFAULT NULL                        COMMENT '不通过/跳过原因',
+    executed_at     DATETIME      DEFAULT NULL                        COMMENT '执行时间',
+    PRIMARY KEY (id),
+    INDEX idx_plan (plan_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='测试计划用例表';
 
--- ==================== 自定义属性 ====================
-
+-- ========================================
+-- 自定义属性定义 (项目级)
+-- ========================================
 CREATE TABLE custom_attributes (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    project_id BIGINT NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    options JSON NOT NULL COMMENT '属性值列表',
-    multi_select TINYINT NOT NULL DEFAULT 0,
-    node_type_limit VARCHAR(50) DEFAULT NULL COMMENT 'null=不限制, TITLE/PRECONDITION/STEP/EXPECTED',
-    display_type ENUM('DROPDOWN','TILE') NOT NULL DEFAULT 'DROPDOWN',
-    sort_order INT NOT NULL DEFAULT 0,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_project (project_id),
-    FOREIGN KEY (project_id) REFERENCES projects(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    id              VARCHAR(32)   NOT NULL                            COMMENT '属性ID(UUID)',
+    project_id      VARCHAR(32)   NOT NULL                            COMMENT '所属项目ID',
+    name            VARCHAR(100)  NOT NULL                            COMMENT '属性名称(如 优先级/标签)',
+    options         JSON          NOT NULL                            COMMENT '可选值列表, 如 ["P0","P1","P2","P3"]',
+    multi_select    TINYINT       NOT NULL DEFAULT 0                  COMMENT '是否多选: 0=单选 1=多选',
+    node_type_limit VARCHAR(100)  DEFAULT NULL                        COMMENT '限制节点类型, NULL=不限, 逗号分隔如 TITLE,EXPECTED',
+    display_type    ENUM('DROPDOWN','TILE')
+                                  NOT NULL DEFAULT 'DROPDOWN'         COMMENT '展示形式: 下拉框/平铺',
+    sort_order      INT           NOT NULL DEFAULT 0                  COMMENT '排序序号',
+    created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    PRIMARY KEY (id),
+    INDEX idx_project (project_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自定义属性定义表';
 
--- 节点-自定义属性关联值
-CREATE TABLE node_attribute_values (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    node_id BIGINT NOT NULL,
-    attribute_id BIGINT NOT NULL,
-    attr_value JSON NOT NULL COMMENT '选中的值',
-    INDEX idx_node (node_id),
-    FOREIGN KEY (node_id) REFERENCES mind_nodes(id) ON DELETE CASCADE,
-    FOREIGN KEY (attribute_id) REFERENCES custom_attributes(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- ==================== 回收站 ====================
-
+-- ========================================
+-- 回收站
+-- ========================================
 CREATE TABLE recycle_bin (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    case_set_id BIGINT NOT NULL,
-    original_directory_id BIGINT NOT NULL,
-    deleted_by BIGINT NOT NULL,
-    deleted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (case_set_id) REFERENCES case_sets(id),
-    FOREIGN KEY (deleted_by) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID(UUID)',
+    case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '用例集ID',
+    original_directory_id VARCHAR(32) NOT NULL                        COMMENT '原目录ID',
+    deleted_by      VARCHAR(32)   NOT NULL                            COMMENT '删除人用户ID',
+    deleted_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '删除时间',
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='回收站表';

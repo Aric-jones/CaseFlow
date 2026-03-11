@@ -7,11 +7,11 @@ import java.time.LocalDateTime;
 @Data
 @TableName("case_history")
 public class CaseHistory {
-    @TableId(type = IdType.AUTO)
-    private Long id;
-    private Long caseSetId;
+    @TableId(type = IdType.ASSIGN_UUID)
+    private String id;
+    private String caseSetId;
     private String snapshot;
-    private Long createdBy;
+    private String createdBy;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

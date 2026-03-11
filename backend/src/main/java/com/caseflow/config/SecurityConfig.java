@@ -75,7 +75,7 @@ public class SecurityConfig {
                 if (header != null && header.startsWith("Bearer ")) {
                     String token = header.substring(7);
                     if (jwtUtil.validateToken(token)) {
-                        Long userId = jwtUtil.getUserId(token);
+                        String userId = jwtUtil.getUserIdFromToken(token);
                         var auth = new UsernamePasswordAuthenticationToken(
                                 userId, null,
                                 Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))

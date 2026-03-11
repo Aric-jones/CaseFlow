@@ -5,7 +5,7 @@ import java.util.List;
 
 @Data
 public class CustomAttributeDTO {
-    private Long projectId;
+    private String projectId;
     private String name;
     private List<String> options;
     private Integer multiSelect;

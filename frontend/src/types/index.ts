@@ -1,69 +1,64 @@
 export interface User {
-  id: number;
+  id: string;
   username: string;
   displayName: string;
-  role: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
-  identity: 'TEST' | 'DEV' | 'PRODUCT';
+  role: string;
+  identity: string;
   status: number;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface Project {
-  id: number;
+  id: string;
   name: string;
   description: string;
-  createdBy: number;
+  createdBy: string;
   createdAt: string;
 }
 
 export interface DirectoryNode {
-  id: number;
+  id: string;
   name: string;
-  parentId: number | null;
-  projectId: number;
-  dirType: 'CASE' | 'TEST_PLAN';
+  parentId: string | null;
+  projectId: string;
+  dirType: string;
   sortOrder: number;
   children: DirectoryNode[];
 }
 
 export interface CaseSet {
-  id: number;
+  id: string;
   name: string;
-  directoryId: number;
-  projectId: number;
-  status: 'WRITING' | 'PENDING_REVIEW' | 'NO_REVIEW';
+  directoryId: string;
+  projectId: string;
+  status: string;
   requirementLink: string;
   caseCount: number;
-  createdBy: number;
+  createdBy: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface MindNodeData {
-  id?: number;
-  caseSetId?: number;
-  parentId?: number | null;
+  id?: string;
+  caseSetId?: string;
+  parentId?: string | null;
   text: string;
-  nodeType: 'ROOT' | 'TITLE' | 'PRECONDITION' | 'STEP' | 'EXPECTED';
+  nodeType?: string | null;
   sortOrder: number;
-  priority?: string | null;
-  mark: string;
-  tags?: string[];
-  automation?: string | null;
-  coverage?: string | null;
-  platform?: string[];
-  belongsPlatform?: string[];
+  isRoot?: number;
+  properties?: Record<string, any>;
   children: MindNodeData[];
   commentCount?: number;
 }
 
 export interface CommentData {
-  id: number;
-  nodeId: number;
-  caseSetId: number;
-  parentId: number | null;
-  userId: number;
+  id: string;
+  nodeId: string;
+  caseSetId: string;
+  parentId: string | null;
+  userId: string;
   username: string;
   displayName: string;
   content: string;
@@ -73,72 +68,66 @@ export interface CommentData {
 }
 
 export interface CaseHistory {
-  id: number;
-  caseSetId: number;
+  id: string;
+  caseSetId: string;
   snapshot: string;
-  createdBy: number;
+  createdBy: string;
   createdAt: string;
 }
 
 export interface ReviewAssignment {
-  id: number;
-  caseSetId: number;
-  reviewerId: number;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEED_MODIFY';
+  id: string;
+  caseSetId: string;
+  reviewerId: string;
+  status: string;
   createdAt: string;
 }
 
 export interface TestPlan {
-  id: number;
+  id: string;
   name: string;
-  directoryId: number;
-  projectId: number;
-  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
-  createdBy: number;
+  directoryId: string;
+  projectId: string;
+  status: string;
+  createdBy: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface TestPlanCase {
-  id: number;
-  planId: number;
-  nodeId: number;
-  caseSetId: number;
-  executorId: number | null;
-  result: 'PENDING' | 'PASS' | 'FAIL' | 'SKIP';
+  id: string;
+  planId: string;
+  nodeId: string;
+  caseSetId: string;
+  executorId: string | null;
+  result: string;
   reason: string | null;
   executedAt: string | null;
 }
 
 export interface CustomAttribute {
-  id: number;
-  projectId: number;
+  id: string;
+  projectId: string;
   name: string;
   options: string[];
   multiSelect: number;
   nodeTypeLimit: string | null;
-  displayType: 'DROPDOWN' | 'TILE';
+  displayType: string;
   sortOrder: number;
 }
 
 export interface RecycleBinItem {
-  id: number;
-  caseSetId: number;
-  originalDirectoryId: number;
-  deletedBy: number;
+  id: string;
+  caseSetId: string;
+  originalDirectoryId: string;
+  deletedBy: string;
   deletedAt: string;
 }
 
 export interface ValidationResult {
   valid: boolean;
   errorCount: number;
-  errors: ValidationError[];
-}
-
-export interface ValidationError {
-  nodeId: number;
-  nodePath: string;
-  message: string;
+  errors: { nodeId: string; nodePath: string; message: string }[];
 }
 
 export interface PageResult<T> {

@@ -4,11 +4,11 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 public class CurrentUserUtil {
-    public static Long getCurrentUserId() {
+    public static String getCurrentUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getPrincipal() instanceof Long) {
-            return (Long) auth.getPrincipal();
+        if (auth != null && auth.getPrincipal() instanceof String) {
+            return (String) auth.getPrincipal();
         }
-        throw new BusinessException(401, "未登录");
+        return null;
     }
 }

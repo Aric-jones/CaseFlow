@@ -9,9 +9,9 @@ import java.util.List;
 @Data
 @TableName(value = "custom_attributes", autoResultMap = true)
 public class CustomAttribute {
-    @TableId(type = IdType.AUTO)
-    private Long id;
-    private Long projectId;
+    @TableId(type = IdType.ASSIGN_UUID)
+    private String id;
+    private String projectId;
     private String name;
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<String> options;

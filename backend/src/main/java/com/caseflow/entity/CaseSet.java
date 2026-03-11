@@ -7,16 +7,15 @@ import java.time.LocalDateTime;
 @Data
 @TableName("case_sets")
 public class CaseSet {
-    @TableId(type = IdType.AUTO)
-    private Long id;
+    @TableId(type = IdType.ASSIGN_UUID)
+    private String id;
     private String name;
-    private Long directoryId;
-    private Long projectId;
+    private String directoryId;
+    private String projectId;
     private String status;
     private String requirementLink;
     private Integer caseCount;
-    private Long createdBy;
-    @TableLogic
+    private String createdBy;
     private Integer deleted;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

@@ -7,10 +7,10 @@ import java.time.LocalDateTime;
 @Data
 @TableName("project_members")
 public class ProjectMember {
-    @TableId(type = IdType.AUTO)
-    private Long id;
-    private Long projectId;
-    private Long userId;
+    @TableId(type = IdType.ASSIGN_UUID)
+    private String id;
+    private String projectId;
+    private String userId;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

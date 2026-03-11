@@ -12,130 +12,114 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> implements MindNodeService {
-
     private final CommentMapper commentMapper;
 
     @Override
-    public List<MindNodeDTO> getTree(Long caseSetId) {
-        List<MindNode> all = this.lambdaQuery()
-                .eq(MindNode::getCaseSetId, caseSetId)
-                .orderByAsc(MindNode::getSortOrder)
-                .list();
-        return buildTree(all, null);
+    public List<MindNodeDTO> getTree(String caseSetId) {
+        List<MindNode> all = lambdaQuery().eq(MindNode::getCaseSetId, caseSetId).orderByAsc(MindNode::getSortOrder).list();
+        Map<String, List<MindNode>> childrenMap = new HashMap<>();
+        MindNode root = null;
+        for (MindNode n : all) {
+            if (n.getIsRoot() != null && n.getIsRoot() == 1) root = n;
+            String pid = n.getParentId();
+            if (pid != null) childrenMap.computeIfAbsent(pid, k -> new ArrayList<>()).add(n);
+        }
+        if (root == null && !all.isEmpty()) root = all.stream().filter(n -> n.getParentId() == null).findFirst().orElse(all.get(0));
+        if (root == null) return List.of();
+        return List.of(buildNode(root, childrenMap));
     }
 
-    private List<MindNodeDTO> buildTree(List<MindNode> all, Long parentId) {
-        return all.stream()
-                .filter(n -> Objects.equals(n.getParentId(), parentId))
-                .map(n -> {
-                    MindNodeDTO dto = toDTO(n);
-                    dto.setChildren(buildTree(all, n.getId()));
-                    dto.setCommentCount(commentMapper.countUnresolvedByNode(n.getId()));
-                    return dto;
-                })
-                .collect(Collectors.toList());
+    private MindNodeDTO buildNode(MindNode node, Map<String, List<MindNode>> childrenMap) {
+        MindNodeDTO dto = toDTO(node);
+        List<MindNode> children = childrenMap.getOrDefault(node.getId(), List.of());
+        List<MindNodeDTO> childDtos = new ArrayList<>();
+        for (MindNode child : children) childDtos.add(buildNode(child, childrenMap));
+        dto.setChildren(childDtos);
+        dto.setCommentCount(commentMapper.countUnresolvedByNode(node.getId()));
+        return dto;
     }
 
     private MindNodeDTO toDTO(MindNode n) {
         MindNodeDTO dto = new MindNodeDTO();
-        dto.setId(n.getId());
-        dto.setCaseSetId(n.getCaseSetId());
-        dto.setParentId(n.getParentId());
-        dto.setText(n.getText());
-        dto.setNodeType(n.getNodeType());
-        dto.setSortOrder(n.getSortOrder());
-        dto.setPriority(n.getPriority());
-        dto.setMark(n.getMark());
-        dto.setTags(n.getTags());
-        dto.setAutomation(n.getAutomation());
-        dto.setCoverage(n.getCoverage());
-        dto.setPlatform(n.getPlatform());
-        dto.setBelongsPlatform(n.getBelongsPlatform());
+        dto.setId(n.getId()); dto.setCaseSetId(n.getCaseSetId()); dto.setParentId(n.getParentId());
+        dto.setText(n.getText()); dto.setNodeType(n.getNodeType()); dto.setSortOrder(n.getSortOrder());
+        dto.setIsRoot(n.getIsRoot()); dto.setProperties(n.getProperties());
         return dto;
     }
 
-    @Override
-    @Transactional
-    public void batchSave(Long caseSetId, List<MindNodeDTO> nodes) {
+    @Override @Transactional
+    public void batchSave(String caseSetId, List<MindNodeDTO> nodes) {
         baseMapper.delete(new LambdaQueryWrapper<MindNode>().eq(MindNode::getCaseSetId, caseSetId));
-        if (nodes != null && !nodes.isEmpty()) {
-            saveFlatNodes(caseSetId, nodes, null);
-        }
+        if (nodes != null && !nodes.isEmpty()) saveRecursive(caseSetId, nodes, null);
     }
 
-    private void saveFlatNodes(Long caseSetId, List<MindNodeDTO> nodes, Long parentId) {
+    private void saveRecursive(String caseSetId, List<MindNodeDTO> nodes, String parentId) {
         for (int i = 0; i < nodes.size(); i++) {
             MindNodeDTO dto = nodes.get(i);
             MindNode node = new MindNode();
-            node.setCaseSetId(caseSetId);
-            node.setParentId(parentId);
-            node.setText(dto.getText());
-            node.setNodeType(dto.getNodeType() != null ? dto.getNodeType() : "ROOT");
+            node.setCaseSetId(caseSetId); node.setParentId(parentId);
+            node.setText(dto.getText()); node.setNodeType(dto.getNodeType());
             node.setSortOrder(i);
-            node.setPriority(dto.getPriority());
-            node.setMark(dto.getMark() != null ? dto.getMark() : "NONE");
-            node.setTags(dto.getTags());
-            node.setAutomation(dto.getAutomation());
-            node.setCoverage(dto.getCoverage());
-            node.setPlatform(dto.getPlatform());
-            node.setBelongsPlatform(dto.getBelongsPlatform());
+            node.setIsRoot(dto.getIsRoot() != null ? dto.getIsRoot() : (parentId == null ? 1 : 0));
+            node.setProperties(dto.getProperties());
             baseMapper.insert(node);
-            if (dto.getChildren() != null && !dto.getChildren().isEmpty()) {
-                saveFlatNodes(caseSetId, dto.getChildren(), node.getId());
-            }
+            if (dto.getChildren() != null && !dto.getChildren().isEmpty()) saveRecursive(caseSetId, dto.getChildren(), node.getId());
         }
     }
 
     @Override
     public MindNode createNode(MindNode node) {
-        node.setMark(node.getMark() != null ? node.getMark() : "NONE");
-        baseMapper.insert(node);
-        return node;
+        if (node.getIsRoot() == null) node.setIsRoot(0);
+        baseMapper.insert(node); return node;
     }
 
     @Override
-    public MindNode updateNode(Long id, MindNode updated) {
+    public MindNode updateNode(String id, MindNode updated) {
         MindNode node = getById(id);
         if (node == null) throw new BusinessException("节点不存在");
         if (updated.getText() != null) node.setText(updated.getText());
         if (updated.getNodeType() != null) node.setNodeType(updated.getNodeType());
-        if (updated.getPriority() != null) node.setPriority(updated.getPriority());
-        if (updated.getMark() != null) node.setMark(updated.getMark());
-        if (updated.getTags() != null) node.setTags(updated.getTags());
-        if (updated.getAutomation() != null) node.setAutomation(updated.getAutomation());
-        if (updated.getCoverage() != null) node.setCoverage(updated.getCoverage());
-        if (updated.getPlatform() != null) node.setPlatform(updated.getPlatform());
-        if (updated.getBelongsPlatform() != null) node.setBelongsPlatform(updated.getBelongsPlatform());
         if (updated.getSortOrder() != null) node.setSortOrder(updated.getSortOrder());
-        baseMapper.updateById(node);
-        return node;
+        if (updated.getProperties() != null) node.setProperties(updated.getProperties());
+        baseMapper.updateById(node); return node;
     }
 
-    @Override
-    @Transactional
-    public void deleteNode(Long id) {
-        List<MindNode> children = this.lambdaQuery().eq(MindNode::getParentId, id).list();
-        for (MindNode child : children) {
-            deleteNode(child.getId());
-        }
+    @Override @Transactional
+    public void deleteNode(String id) {
+        MindNode node = getById(id);
+        if (node != null && node.getIsRoot() != null && node.getIsRoot() == 1) throw new BusinessException("不能删除根节点");
+        List<MindNode> children = lambdaQuery().eq(MindNode::getParentId, id).list();
+        for (MindNode child : children) deleteNode(child.getId());
         baseMapper.deleteById(id);
     }
 
     @Override
-    public int countValidCases(Long caseSetId) {
-        List<MindNode> all = this.lambdaQuery().eq(MindNode::getCaseSetId, caseSetId).list();
-        int count = 0;
-        for (MindNode node : all) {
-            if ("EXPECTED".equals(node.getNodeType())) {
-                boolean hasChildren = all.stream().anyMatch(n -> Objects.equals(n.getParentId(), node.getId()));
-                if (!hasChildren) count++;
-            }
-        }
-        return count;
+    public int countValidCases(String caseSetId) {
+        List<MindNode> all = lambdaQuery().eq(MindNode::getCaseSetId, caseSetId).list();
+        Map<String, List<MindNode>> childrenMap = new HashMap<>();
+        for (MindNode n : all) if (n.getParentId() != null) childrenMap.computeIfAbsent(n.getParentId(), k -> new ArrayList<>()).add(n);
+        MindNode root = all.stream().filter(n -> n.getIsRoot() != null && n.getIsRoot() == 1).findFirst().orElse(null);
+        if (root == null) return 0;
+        int[] count = {0};
+        countValidRecursive(root, new ArrayList<>(), childrenMap, count);
+        return count[0];
+    }
+
+    private void countValidRecursive(MindNode node, List<MindNode> path, Map<String, List<MindNode>> childrenMap, int[] count) {
+        path.add(node);
+        List<MindNode> children = childrenMap.getOrDefault(node.getId(), List.of());
+        if (children.isEmpty()) { if (isValidCasePath(path)) count[0]++; }
+        else { for (MindNode child : children) countValidRecursive(child, new ArrayList<>(path), childrenMap, count); }
+    }
+
+    private boolean isValidCasePath(List<MindNode> path) {
+        if (path.size() < 5) return false;
+        int len = path.size();
+        return "TITLE".equals(path.get(len-4).getNodeType()) && "PRECONDITION".equals(path.get(len-3).getNodeType())
+                && "STEP".equals(path.get(len-2).getNodeType()) && "EXPECTED".equals(path.get(len-1).getNodeType());
     }
 }

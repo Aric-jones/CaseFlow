@@ -4,7 +4,7 @@ import lombok.Data;
 
 @Data
 public class TestPlanCaseDTO {
-    private Long nodeId;
-    private Long caseSetId;
-    private Long executorId;
+    private String nodeId;
+    private String caseSetId;
+    private String executorId;
 }
