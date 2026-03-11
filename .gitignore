@@ -1,0 +1,109 @@
+# ==================== 后端 (Java/Spring Boot) ====================
+# Maven
+backend/target/
+backend/pom.xml.tag
+backend/pom.xml.releaseBackup
+backend/pom.xml.versionsBackup
+backend/pom.xml.next
+backend/release.properties
+backend/dependency-reduced-pom.xml
+backend/buildNumber.properties
+backend/.mvn/timing.properties
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+build/
+
+# NetBeans
+nbproject/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# ==================== 前端 (React/Node) ====================
+# Dependencies
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.js
+
+# Testing
+frontend/coverage/
+frontend/.nyc_output
+
+# Production
+frontend/build/
+frontend/dist/
+frontend/.vite/
+
+# Misc
+frontend/.DS_Store
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/lerna-debug.log*
+
+# ==================== 数据库 ====================
+*.sql.bak
+*.sql.backup
+*.db
+*.sqlite
+*.sqlite3
+
+# ==================== 日志 ====================
+*.log
+logs/
+*.log.*
+
+# ==================== 临时文件 ====================
+*.tmp
+*.temp
+*.cache
+.cache/
+temp/
+tmp/
+
+# ==================== 系统文件 ====================
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# ==================== 编译产物 ====================
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# ==================== 配置文件（敏感信息） ====================
+# 注意：如果包含敏感信息，请添加到 .gitignore
+# application-local.yml
+# application-prod.yml
+backend/src/main/resources/.env
+img/
+CaseFlow.md/
