@@ -1,8 +1,18 @@
 <template>
   <a-layout style="height: 100%; background: #fff">
-    <a-layout-sider width="260" style="background: #fff; border-right: 1px solid #f0f0f0; overflow: auto; padding: 12px 8px" :trigger="null">
+    <a-layout-sider
+      width="260"
+      :collapsed-width="0"
+      :collapsed="siderCollapsed"
+      collapsible
+      style="background: #fff; border-right: 1px solid #f0f0f0; overflow: auto; padding: 12px 8px"
+      :trigger="null"
+    >
       <div style="display: flex; justify-content: space-between; padding: 0 8px 12px">
-        <strong>测试计划目录</strong>
+        <a-space :size="6">
+          <a-button size="small" type="text" @click="toggleSider">☰</a-button>
+          <strong>测试计划目录</strong>
+        </a-space>
       </div>
       <a-tree v-if="treeData.length" :tree-data="treeData" :selected-keys="selectedDir ? [selectedDir] : []"
               @select="(keys: any) => selectedDir = keys[0] || null" default-expand-all block-node>
@@ -26,6 +36,9 @@
       </div>
     </a-layout-sider>
     <a-layout-content style="padding: 24px">
+      <div v-if="siderCollapsed" style="margin-bottom: 12px">
+        <a-button size="small" @click="toggleSider">展开目录</a-button>
+      </div>
       <div style="display: flex; gap: 12px; margin-bottom: 16px; align-items: center">
         <a-input-search v-model:value="keyword" placeholder="搜索" style="width: 280px" @search="() => loadPlans(1)" />
         <a-checkbox v-model:checked="onlyMine">只看我的</a-checkbox>
@@ -115,6 +128,7 @@ const newDirName = ref('');
 const addParentId = ref<string | null>(null);
 const editingDirId = ref<string | null>(null);
 const editingDirName = ref('');
+const siderCollapsed = ref(false);
 
 const ctxMenu = ref({ visible: false, x: 0, y: 0, nodeId: null as string | null });
 
@@ -140,6 +154,7 @@ watch(() => store.currentProject, () => { loadDirs(); loadPlans(); });
 watch(selectedDir, () => loadPlans());
 watch(onlyMine, () => loadPlans());
 onMounted(() => { loadDirs(); loadPlans(); userApi.listAll().then(r => allUsers.value = r.data); });
+function toggleSider() { siderCollapsed.value = !siderCollapsed.value; }
 
 function startAddRoot() { addingDir.value = true; addParentId.value = null; newDirName.value = ''; }
 function startAdd(pid: string) { addingDir.value = true; addParentId.value = pid; newDirName.value = ''; ctxMenu.value.visible = false; }
@@ -211,7 +226,7 @@ const columns = ref([
   { title: '状态', key: 'status', resizable: true, width: 100 },
   { title: '创建人', dataIndex: 'createdByName', resizable: true, width: 100 },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', resizable: true, width: 120 },
-  { title: '操作', key: 'action', width: 100 },
+  { title: '操作', key: 'action', resizable: true, width: 120 },
 ]);
 
 function handleResizeColumn(w: number, col: any) { col.width = w; }

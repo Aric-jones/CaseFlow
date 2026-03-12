@@ -51,7 +51,7 @@
       <div class="mm-area">
         <div ref="mindMapContainer" style="width: 100%; height: 100%"></div>
         <div class="tips-bar">
-          左键点选 | 左键拖拽框选 | 右键拖拽平移 | 滚轮缩放 | 双击编辑
+          左键点选 · 左键拖拽框选 · Ctrl+左键拖拽平移 · 滚轮缩放 · 双击编辑
         </div>
       </div>
 
@@ -248,6 +248,7 @@ import Drag from 'simple-mind-map/src/plugins/Drag';
 import { caseSetApi, mindNodeApi, commentApi, caseHistoryApi, userApi, customAttributeApi } from '../api';
 import { useAppStore } from '../stores/app';
 import type { CaseSet, MindNodeData, CaseHistory, User, CustomAttribute } from '../types';
+import { NODE_TYPE_LABEL, addAllCustomLabels, setupMouseOverrides } from '../composables/useMindMap';
 
 MindMap.usePlugin(Select);
 MindMap.usePlugin(Drag);
@@ -306,6 +307,7 @@ const selectedReviewers = ref<string[]>([]);
 
 let autoSaveTimer: ReturnType<typeof setInterval> | null = null;
 let historyTimer: ReturnType<typeof setInterval> | null = null;
+let cleanupMouseOverrides: (() => void) | null = null;
 
 // === 状态计算 ===
 const statusLabel = computed(() => {
@@ -325,13 +327,6 @@ const nodeTypeOptions = [
   { value: 'STEP', label: '步骤' },
   { value: 'EXPECTED', label: '预期结果' },
 ];
-const nodeTypeLabel: Record<string, string> = {
-  TITLE: '用例标题', PRECONDITION: '前置条件', STEP: '步骤', EXPECTED: '预期结果',
-};
-const nodeTypeColor: Record<string, string> = {
-  TITLE: '#1677ff', PRECONDITION: '#722ed1', STEP: '#13c2c2', EXPECTED: '#52c41a',
-};
-
 const filteredEditAttrs = computed(() => {
   if (!editForm.value) return [];
   const nt = editForm.value.nodeType;
@@ -453,142 +448,12 @@ function countValid(node: MindNodeData): number {
 }
 
 // =============================================
-// 自定义节点标签 (SVG foreignObject)
-// 类型 → 节点框上方  属性 → 节点框下方
+// 自定义节点标签 (SVG foreignObject) → 见 composables/useMindMap.ts
 // =============================================
 
-function getGroupEl(node: any): SVGGElement | null {
-  if (!node?.group) return null;
-  if (node.group.node instanceof SVGElement) return node.group.node as SVGGElement;
-  if (node.group instanceof SVGElement) return node.group as SVGGElement;
-  return null;
-}
-
-const markColorMap: Record<string, string> = { PENDING: '#ff4d4f', TO_CONFIRM: '#faad14', TO_MODIFY: '#722ed1' };
-
-function getNodeShapeEl(node: any): SVGElement | null {
-  // 1) simple-mind-map 直接暴露 style.rect / shapeNode
-  const directShape = node.style?.rect?.node || node.shapeNode?.node || node._shapeNode?.node;
-  if (directShape instanceof SVGElement) return directShape;
-  // 2) 从 group 的父级 wrapper 搜索 .smm-node-shape
-  const groupEl = getGroupEl(node);
-  if (groupEl) {
-    let el: Element | null = groupEl;
-    for (let i = 0; i < 5 && el; i++) {
-      const shape = el.querySelector('.smm-node-shape') as SVGElement | null;
-      if (shape) return shape;
-      el = el.parentElement;
-    }
-  }
-  return null;
-}
-
-function applyMarkStyle(node: any) {
-  const raw = node.nodeData?.data?._raw;
-  const mark = raw?.properties?.mark;
-  const shape = getNodeShapeEl(node);
-  if (!shape) return;
-  if (mark && markColorMap[mark]) {
-    shape.style.setProperty('stroke', markColorMap[mark], 'important');
-    shape.style.setProperty('stroke-width', '2.5px', 'important');
-  } else {
-    shape.style.removeProperty('stroke');
-    shape.style.removeProperty('stroke-width');
-  }
-}
-
-function addNodeLabels(node: any) {
-  const groupEl = getGroupEl(node);
-  if (!groupEl) return;
-
-  groupEl.querySelectorAll('.mm-extra-label').forEach(el => el.remove());
-
-  const raw = node.nodeData?.data?._raw;
-  if (!raw) return;
-
-  const w = node.width || 120;
-  const h = node.height || 30;
-
-  // 类型标签 → 节点框正上方
-  if (raw.nodeType && nodeTypeLabel[raw.nodeType]) {
-    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-    fo.setAttribute('class', 'mm-extra-label');
-    fo.setAttribute('x', '0');
-    fo.setAttribute('y', String(-20));
-    fo.setAttribute('width', String(Math.max(w, 150)));
-    fo.setAttribute('height', '20');
-    fo.style.overflow = 'visible';
-    fo.style.pointerEvents = 'none';
-    const div = document.createElement('div');
-    div.style.cssText = `font-size:11px; font-weight:600; color:${nodeTypeColor[raw.nodeType] || '#1677ff'}; line-height:18px; white-space:nowrap;`;
-    div.textContent = nodeTypeLabel[raw.nodeType];
-    fo.appendChild(div);
-    groupEl.appendChild(fo);
-  }
-
-  // 评论角标 → 节点右上角 (红色小圆圈)
-  const commentCount = raw.commentCount;
-  if (commentCount && commentCount > 0) {
-    const fo3 = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-    fo3.setAttribute('class', 'mm-extra-label');
-    fo3.setAttribute('x', String(w - 4));
-    fo3.setAttribute('y', '-10');
-    fo3.setAttribute('width', '22');
-    fo3.setAttribute('height', '22');
-    fo3.style.overflow = 'visible';
-    fo3.style.pointerEvents = 'none';
-    const badge = document.createElement('div');
-    badge.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#ff4d4f;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:bold;';
-    badge.textContent = String(commentCount > 99 ? '99+' : commentCount);
-    fo3.appendChild(badge);
-    groupEl.appendChild(fo3);
-  }
-
-  // 属性标签 → 节点框正下方 (动态遍历所有 properties)
-  const parts: string[] = [];
-  if (raw.properties) {
-    for (const [key, val] of Object.entries(raw.properties)) {
-      if (key === 'mark') continue;
-      if (val === undefined || val === null || val === '') continue;
-      if (Array.isArray(val)) {
-        if (val.length > 0) parts.push(...val.map(String));
-      } else {
-        parts.push(String(val));
-      }
-    }
-  }
-
-  if (parts.length) {
-    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-    fo.setAttribute('class', 'mm-extra-label');
-    fo.setAttribute('x', '0');
-    fo.setAttribute('y', String(h + 2));
-    fo.setAttribute('width', String(Math.max(w, 400)));
-    fo.setAttribute('height', '22');
-    fo.style.overflow = 'visible';
-    fo.style.pointerEvents = 'none';
-    const div = document.createElement('div');
-    div.style.cssText = 'display:flex; gap:4px; line-height:18px; white-space:nowrap; flex-wrap:wrap;';
-    parts.forEach(p => {
-      const span = document.createElement('span');
-      span.textContent = p;
-      span.style.cssText = 'font-size:10px; background:rgba(0,0,0,0.06); color:#595959; border-radius:2px; padding:0 5px;';
-      div.appendChild(span);
-    });
-    fo.appendChild(div);
-    groupEl.appendChild(fo);
-  }
-
-  applyMarkStyle(node);
-}
-
-function addAllCustomLabels() {
-  if (!mindMapInstance?.renderer?.root) return;
-  function walk(node: any) {
-    addNodeLabels(node);
-    (node.children || []).forEach(walk);
-  }
-  walk(mindMapInstance.renderer.root);
+// 包装 addAllCustomLabels 以绑定当前 mindMapInstance
+function refreshLabels() {
+  addAllCustomLabels(mindMapInstance);
 }
 
 // =============================================
@@ -662,7 +527,7 @@ function syncToNode(checkAutoChain = false) {
   }
 
   markDirty();
-  requestAnimationFrame(() => addAllCustomLabels());
+  requestAnimationFrame(refreshLabels);
 }
 
 function autoAssignCaseChain(titleNode: any) {
@@ -707,7 +572,6 @@ function initMindMap() {
     mousewheelAction: 'zoom',
     enableFreeDrag: false,
     initRootNodePosition: ['center', 'center'],
-    nodeTextEdit: true,
     enableShortcutOnlyWhenMouseInSvg: true,
     useLeftKeySelectionRightKeyDrag: true,
     marginY: 40,
@@ -763,7 +627,7 @@ function initMindMap() {
 
   // 渲染完成 → 注入自定义标签
   mindMapInstance.on('node_tree_render_end', () => {
-    requestAnimationFrame(addAllCustomLabels);
+    requestAnimationFrame(refreshLabels);
   });
 }
 
@@ -925,8 +789,8 @@ function runValidation() {
       const issues: string[] = [];
       for (let i = 0; i < 4; i++) {
         if (actual[i] !== expected[i]) {
-          const actualLabel = actual[i] ? nodeTypeLabel[actual[i]] : '未设置';
-          issues.push(`第${len - 4 + i + 1}层应为"${nodeTypeLabel[expected[i]]}"(当前: ${actualLabel})`);
+          const actualLabel = actual[i] ? NODE_TYPE_LABEL[actual[i]] : '未设置';
+          issues.push(`第${len - 4 + i + 1}层应为"${NODE_TYPE_LABEL[expected[i]]}"(当前: ${actualLabel})`);
         }
       }
 
@@ -1050,7 +914,7 @@ async function refreshNodeCommentCount(nodeId: string) {
       }
       walkUpdate(mindMapInstance.renderer.root);
     }
-    requestAnimationFrame(() => addAllCustomLabels());
+    requestAnimationFrame(refreshLabels);
   } catch { /* ignore */ }
 }
 const editingCommentId = ref<string | null>(null);
@@ -1167,6 +1031,7 @@ onMounted(async () => {
   projectAttributes.value = (attrRes as any).data || [];
   await nextTick();
   initMindMap();
+  cleanupMouseOverrides = setupMouseOverrides(mindMapContainer.value!, () => mindMapInstance);
   await loadData();
   autoSaveTimer = setInterval(autoSave, 10000);
   historyTimer = setInterval(() => caseHistoryApi.save(caseSetId).catch(() => {}), 15 * 60 * 1000);
@@ -1177,6 +1042,7 @@ onUnmounted(() => {
   if (autoSaveTimer) clearInterval(autoSaveTimer);
   if (historyTimer) clearInterval(historyTimer);
   if (mindMapInstance) { mindMapInstance.destroy(); mindMapInstance = null; }
+  cleanupMouseOverrides?.();
   window.removeEventListener('beforeunload', onBeforeUnload);
 });
 </script>

@@ -2,7 +2,17 @@
   <div style="padding: 24px">
     <h3>用例回收站</h3>
     <a-empty v-if="!items.length && !loading" description="回收站为空" />
-    <a-table v-else :columns="columns" :data-source="items" row-key="id" :loading="loading" :pagination="false" size="middle">
+    <a-table
+      v-else
+      :columns="columns"
+      :data-source="items"
+      row-key="id"
+      :loading="loading"
+      :pagination="false"
+      size="middle"
+      :scroll="{ x: 900 }"
+      @resizeColumn="handleResizeColumn"
+    >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'deletedAt'">
           {{ formatTime(record.deletedAt) }}
@@ -52,10 +62,14 @@ async function permanentDel(id: string) {
 
 function formatTime(t: string) { return t ? t.replace('T', ' ').substring(0, 19) : ''; }
 
-const columns = [
-  { title: '用例集ID', dataIndex: 'caseSetId', ellipsis: true },
-  { title: '删除人', dataIndex: 'deletedByName', width: 120 },
-  { title: '删除时间', key: 'deletedAt', dataIndex: 'deletedAt', width: 180 },
-  { title: '操作', key: 'action', width: 200 },
-];
+const columns = ref([
+  { title: '用例集名称', dataIndex: 'caseSetName', key: 'caseSetName', ellipsis: true, resizable: true, width: 360 },
+  { title: '删除人', dataIndex: 'deletedByName', key: 'deletedByName', resizable: true, width: 140 },
+  { title: '删除时间', key: 'deletedAt', dataIndex: 'deletedAt', resizable: true, width: 220 },
+  { title: '操作', key: 'action', resizable: true, width: 200 },
+]);
+
+function handleResizeColumn(w: number, col: any) {
+  col.width = w;
+}
 </script>

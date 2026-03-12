@@ -14,4 +14,6 @@ public class RecycleBin {
     private String deletedBy;
     private String deletedByName;
     private LocalDateTime deletedAt;
+    @TableField(exist = false)
+    private String caseSetName;
 }

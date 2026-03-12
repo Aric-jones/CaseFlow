@@ -1,8 +1,18 @@
 <template>
   <a-layout style="height: 100%; background: #fff">
-    <a-layout-sider width="260" style="background: #fff; border-right: 1px solid #f0f0f0; overflow: auto" :trigger="null">
+    <a-layout-sider
+      width="260"
+      :collapsed-width="0"
+      :collapsed="siderCollapsed"
+      collapsible
+      style="background: #fff; border-right: 1px solid #f0f0f0; overflow: auto"
+      :trigger="null"
+    >
       <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center">
-        <strong>用例目录</strong>
+        <a-space :size="6">
+          <a-button size="small" type="text" @click="toggleSider">☰</a-button>
+          <strong>用例目录</strong>
+        </a-space>
         <a-space :size="4">
           <a-button size="small" type="primary" @click="openCreateCase"><PlusOutlined /> 新建用例</a-button>
           <a-button size="small" @click="showImport = true"><ImportOutlined /></a-button>
@@ -41,8 +51,11 @@
     </a-layout-sider>
 
     <a-layout-content style="padding: 24px">
+      <div v-if="siderCollapsed" style="margin-bottom: 12px">
+        <a-button size="small" @click="toggleSider">展开目录</a-button>
+      </div>
       <div style="display: flex; gap: 12px; margin-bottom: 16px">
-        <a-input-search v-model:value="keyword" placeholder="搜索用例集名称" style="width: 280px" @search="() => loadCases(1)" />
+        <a-input v-model:value="keyword" placeholder="搜索用例集名称" style="width: 280px" />
         <a-select v-model:value="statusFilter" placeholder="状态筛选" allow-clear style="width: 130px"
           :options="[{ value: 'WRITING', label: '编写中' }, { value: 'PENDING_REVIEW', label: '待评审' }, { value: 'NO_REVIEW', label: '无需评审' }, { value: 'APPROVED', label: '审核通过' }]" />
         <a-button type="primary" @click="() => loadCases(1)"><SearchOutlined /> 搜索</a-button>
@@ -145,6 +158,7 @@ const showCopy = ref(false);
 const copyingId = ref<string | null>(null);
 const copyTarget = ref<string | null>(null);
 const contextMenu = ref({ visible: false, x: 0, y: 0, nodeId: null as string | null });
+const siderCollapsed = ref(false);
 
 function dirToTree(list: DirectoryNode[]): any[] {
   return list.map(d => ({ key: d.id, title: d.name, children: d.children?.length ? dirToTree(d.children) : [] }));
@@ -169,8 +183,9 @@ async function loadCases(page = 1) {
 function onSelectDir(keys: any) { selectedDir.value = keys[0] || null; }
 watch(() => store.currentProject, () => { loadDirs(); loadCases(); });
 watch(selectedDir, () => loadCases());
-watch(statusFilter, () => loadCases());
 onMounted(() => { loadDirs(); loadCases(); });
+
+function toggleSider() { siderCollapsed.value = !siderCollapsed.value; }
 
 function startAddRoot() { addingRoot.value = true; newDirName.value = ''; }
 function startAddChild(parentId: string) { addingChild.value = true; addingParentId.value = parentId; newDirName.value = ''; contextMenu.value.visible = false; }
@@ -268,7 +283,7 @@ const columns = ref([
   { title: '创建人', dataIndex: 'createdByName', key: 'createdByName', resizable: true, width: 100 },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', resizable: true, width: 120 },
   { title: '关联需求', key: 'requirementLink', resizable: true, width: 100 },
-  { title: '操作', key: 'action', width: 200, fixed: 'right' as const },
+  { title: '操作', key: 'action', resizable: true, width: 200, fixed: 'right' as const },
 ]);
 
 function handleResizeColumn(w: number, col: any) {
@@ -276,7 +291,7 @@ function handleResizeColumn(w: number, col: any) {
 }
 function formatTime(t: string) {
   if (!t) return '';
-  return t.replace('T', ' ').substring(0, 10);
+  return t.replace('T', ' ').substring(0, 19);
 }
 </script>
 

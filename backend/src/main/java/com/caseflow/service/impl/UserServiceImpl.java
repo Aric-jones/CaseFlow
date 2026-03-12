@@ -17,8 +17,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     @Override
     public Page<User> listUsers(int page, int size, String keyword) {
         return lambdaQuery()
-                .like(StringUtils.hasText(keyword), User::getUsername, keyword)
-                .or().like(StringUtils.hasText(keyword), User::getDisplayName, keyword)
+                .and(StringUtils.hasText(keyword), q -> q
+                        .like(User::getUsername, keyword)
+                        .or()
+                        .like(User::getDisplayName, keyword))
                 .orderByDesc(User::getCreatedAt)
                 .page(new Page<>(page, size));
     }

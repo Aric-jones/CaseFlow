@@ -4,8 +4,16 @@
       <h3>成员管理</h3>
       <a-button type="primary" @click="showAdd = true"><PlusOutlined /> 添加成员</a-button>
     </div>
-    <a-table :columns="columns" :data-source="users" row-key="id" :loading="loading"
-      :pagination="{ current: page, total, pageSize: 20, onChange: (p: number) => loadUsers(p) }" size="middle">
+    <a-table
+      :columns="columns"
+      :data-source="users"
+      row-key="id"
+      :loading="loading"
+      :pagination="{ current: page, total, pageSize: 20, onChange: (p: number) => loadUsers(p) }"
+      size="middle"
+      :scroll="{ x: 980 }"
+      @resizeColumn="handleResizeColumn"
+    >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'role'">
           <a-select :value="record.role" @change="(v: any) => userApi.update(record.id, { role: v }).then(() => loadUsers(page))" size="small" style="width: 100px"
@@ -68,9 +76,14 @@ async function addUser() {
   message.success('创建成功'); showAdd.value = false; Object.assign(form, { username: '', displayName: '', identity: 'TEST', projectIds: [] }); loadUsers();
 }
 
-const columns = [
-  { title: '用户名', dataIndex: 'username' }, { title: '显示名', dataIndex: 'displayName' },
-  { title: '角色', key: 'role', width: 120 }, { title: '身份', key: 'identity', width: 100 },
-  { title: '状态', key: 'status', width: 80 }, { title: '操作', key: 'action', width: 100 },
-];
+const columns = ref([
+  { title: '用户名', dataIndex: 'username', key: 'username', resizable: true, width: 180 },
+  { title: '显示名', dataIndex: 'displayName', key: 'displayName', resizable: true, width: 180 },
+  { title: '角色', key: 'role', resizable: true, width: 130 },
+  { title: '身份', key: 'identity', resizable: true, width: 110 },
+  { title: '状态', key: 'status', resizable: true, width: 100 },
+  { title: '操作', key: 'action', resizable: true, width: 120 },
+]);
+
+function handleResizeColumn(w: number, col: any) { col.width = w; }
 </script>

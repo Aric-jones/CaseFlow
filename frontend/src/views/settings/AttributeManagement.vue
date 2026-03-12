@@ -6,7 +6,16 @@
         <PlusOutlined /> 新增属性
       </a-button>
     </div>
-    <a-table :columns="columns" :data-source="attrs" row-key="id" :loading="loading" :pagination="false" size="middle">
+    <a-table
+      :columns="columns"
+      :data-source="attrs"
+      row-key="id"
+      :loading="loading"
+      :pagination="false"
+      size="middle"
+      :scroll="{ x: 1100 }"
+      @resizeColumn="handleResizeColumn"
+    >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'options'">
           <a-tag v-for="o in record.options" :key="o">{{ o }}</a-tag>
@@ -76,12 +85,15 @@ async function save() {
   message.success('保存成功'); showModal.value = false; loadAttrs();
 }
 
-const columns = [
-  { title: '属性名', dataIndex: 'name' }, { title: '属性值', key: 'options' },
-  { title: '多选', dataIndex: 'multiSelect', width: 70, customRender: ({ text }: any) => text ? '是' : '否' },
-  { title: '必填', dataIndex: 'required', width: 70, customRender: ({ text }: any) => text ? '是' : '否' },
-  { title: '限制节点', dataIndex: 'nodeTypeLimit', width: 110, customRender: ({ text }: any) => text || '不限制' },
-  { title: '展示', dataIndex: 'displayType', width: 80 },
-  { title: '操作', key: 'action', width: 120 },
-];
+const columns = ref([
+  { title: '属性名', dataIndex: 'name', key: 'name', resizable: true, width: 180 },
+  { title: '属性值', key: 'options', resizable: true, width: 320 },
+  { title: '多选', dataIndex: 'multiSelect', key: 'multiSelect', resizable: true, width: 90, customRender: ({ text }: any) => text ? '是' : '否' },
+  { title: '必填', dataIndex: 'required', key: 'required', resizable: true, width: 90, customRender: ({ text }: any) => text ? '是' : '否' },
+  { title: '限制节点', dataIndex: 'nodeTypeLimit', key: 'nodeTypeLimit', resizable: true, width: 130, customRender: ({ text }: any) => text || '不限制' },
+  { title: '展示', dataIndex: 'displayType', key: 'displayType', resizable: true, width: 100 },
+  { title: '操作', key: 'action', resizable: true, width: 140 },
+]);
+
+function handleResizeColumn(w: number, col: any) { col.width = w; }
 </script>

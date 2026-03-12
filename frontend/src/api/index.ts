@@ -11,6 +11,8 @@ export const authApi = {
   login: (username: string, password: string): R<{ token: string; userId: string; username: string; displayName: string; role: string }> =>
     request.post('/auth/login', { username, password }),
   currentUser: (): R<User> => request.get('/auth/current-user'),
+  changePassword: (oldPassword: string, newPassword: string): R<void> =>
+    request.post('/auth/change-password', { oldPassword, newPassword }),
 };
 
 export const userApi = {

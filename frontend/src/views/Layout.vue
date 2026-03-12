@@ -36,6 +36,7 @@
           </a-space>
           <template #overlay>
             <a-menu @click="handleUserMenu">
+              <a-menu-item key="profile"><IdcardOutlined /> 个人信息</a-menu-item>
               <a-menu-item key="logout" danger><LogoutOutlined /> 退出登录</a-menu-item>
             </a-menu>
           </template>
@@ -53,7 +54,7 @@ import { computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import {
   FileTextOutlined, ScheduleOutlined, SettingOutlined,
-  UserOutlined, LogoutOutlined,
+  UserOutlined, LogoutOutlined, IdcardOutlined,
 } from '@ant-design/icons-vue';
 import { authApi, projectApi } from '../api';
 import { useAppStore } from '../stores/app';
@@ -76,6 +77,7 @@ function handleProjectChange(val: string) {
 }
 
 function handleUserMenu({ key }: { key: string }) {
+  if (key === 'profile') { router.push('/profile'); return; }
   if (key === 'logout') { store.logout(); router.push('/login'); }
 }
 

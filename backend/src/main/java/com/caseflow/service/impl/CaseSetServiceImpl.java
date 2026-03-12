@@ -31,6 +31,8 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
     private final RecycleBinMapper recycleBinMapper;
     private final ReviewAssignmentMapper reviewAssignmentMapper;
     private final CommentMapper commentMapper;
+    private final CaseHistoryMapper caseHistoryMapper;
+    private final TestPlanCaseMapper testPlanCaseMapper;
     private final DirectoryService directoryService;
     private final MindNodeService mindNodeService;
     private final CustomAttributeService customAttributeService;
@@ -121,7 +123,6 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
     public void deleteCaseSet(String id) {
         CaseSet cs = getById(id); if (cs == null) throw new BusinessException("用例集不存在");
         removeById(id);
-        reviewAssignmentMapper.delete(new LambdaQueryWrapper<ReviewAssignment>().eq(ReviewAssignment::getCaseSetId, id));
         RecycleBin rb = new RecycleBin(); rb.setCaseSetId(id); rb.setOriginalDirectoryId(cs.getDirectoryId());
         rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
         rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
@@ -142,7 +143,10 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
         commentMapper.delete(new LambdaQueryWrapper<com.caseflow.entity.Comment>().eq(com.caseflow.entity.Comment::getCaseSetId, csId));
         mindNodeMapper.delete(new LambdaQueryWrapper<MindNode>().eq(MindNode::getCaseSetId, csId));
         reviewAssignmentMapper.delete(new LambdaQueryWrapper<ReviewAssignment>().eq(ReviewAssignment::getCaseSetId, csId));
-        baseMapper.deleteById(csId); recycleBinMapper.deleteById(recycleBinId);
+        caseHistoryMapper.delete(new LambdaQueryWrapper<CaseHistory>().eq(CaseHistory::getCaseSetId, csId));
+        testPlanCaseMapper.delete(new LambdaQueryWrapper<TestPlanCase>().eq(TestPlanCase::getCaseSetId, csId));
+        baseMapper.physicalDeleteById(csId);
+        recycleBinMapper.deleteById(recycleBinId);
     }
 
     @Override

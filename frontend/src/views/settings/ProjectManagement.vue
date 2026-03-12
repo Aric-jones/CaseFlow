@@ -4,7 +4,16 @@
       <h3>项目空间管理</h3>
       <a-button type="primary" @click="editId = null; form.name = ''; form.description = ''; showModal = true"><PlusOutlined /> 创建项目</a-button>
     </div>
-    <a-table :columns="columns" :data-source="projects" row-key="id" :loading="loading" :pagination="false" size="middle">
+    <a-table
+      :columns="columns"
+      :data-source="projects"
+      row-key="id"
+      :loading="loading"
+      :pagination="false"
+      size="middle"
+      :scroll="{ x: 960 }"
+      @resizeColumn="handleResizeColumn"
+    >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'action'">
           <a-space>
@@ -45,8 +54,12 @@ async function save() {
   message.success('保存成功'); showModal.value = false; load();
 }
 
-const columns = [
-  { title: '项目名称', dataIndex: 'name' }, { title: '描述', dataIndex: 'description' },
-  { title: '创建时间', dataIndex: 'createdAt', width: 180 }, { title: '操作', key: 'action', width: 160 },
-];
+const columns = ref([
+  { title: '项目名称', dataIndex: 'name', key: 'name', resizable: true, width: 220 },
+  { title: '描述', dataIndex: 'description', key: 'description', resizable: true, width: 420 },
+  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', resizable: true, width: 220 },
+  { title: '操作', key: 'action', resizable: true, width: 180 },
+]);
+
+function handleResizeColumn(w: number, col: any) { col.width = w; }
 </script>

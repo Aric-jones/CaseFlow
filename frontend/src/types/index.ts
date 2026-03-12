@@ -127,8 +127,10 @@ export interface CustomAttribute {
 export interface RecycleBinItem {
   id: string;
   caseSetId: string;
+  caseSetName?: string;
   originalDirectoryId: string;
   deletedBy: string;
+  deletedByName?: string;
   deletedAt: string;
 }
 

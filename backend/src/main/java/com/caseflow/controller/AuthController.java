@@ -3,6 +3,7 @@ package com.caseflow.controller;
 import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
 import com.caseflow.config.JwtUtil;
+import com.caseflow.dto.ChangePasswordRequest;
 import com.caseflow.dto.LoginRequest;
 import com.caseflow.entity.User;
 import com.caseflow.service.UserService;
@@ -35,5 +36,22 @@ public class AuthController {
         if (user == null) return Result.error("用户不存在");
         user.setPassword(null);
         return Result.ok(user);
+    }
+
+    @PostMapping("/change-password")
+    public Result<?> changePassword(@RequestBody ChangePasswordRequest req) {
+        if (req == null) return Result.error("参数不能为空");
+        if (req.getOldPassword() == null || req.getOldPassword().isBlank()) return Result.error("原密码不能为空");
+        if (req.getNewPassword() == null || req.getNewPassword().isBlank()) return Result.error("新密码不能为空");
+        if (req.getNewPassword().length() < 6) return Result.error("新密码长度至少6位");
+        if (req.getNewPassword().equals(req.getOldPassword())) return Result.error("新密码不能与原密码相同");
+        String uid = CurrentUserUtil.getCurrentUserId();
+        if (uid == null) return Result.error("未登录");
+        User user = userService.getById(uid);
+        if (user == null) return Result.error("用户不存在");
+        if (!passwordEncoder.matches(req.getOldPassword(), user.getPassword())) return Result.error("原密码错误");
+        user.setPassword(passwordEncoder.encode(req.getNewPassword()));
+        userService.updateById(user);
+        return Result.ok();
     }
 }

@@ -12,6 +12,7 @@
       </a-space>
     </div>
     <div class="review-body">
+      <div class="tips-bar">左键点选 · Ctrl+左键拖拽平移 · 滚轮缩放</div>
       <div ref="mindMapContainer" class="review-mm"></div>
       <div v-if="rightPanelOpen" class="review-panel">
         <div class="rp-header">
@@ -25,7 +26,7 @@
             <template v-if="selectedNodeRaw">
               <div class="prop-field"><label>节点文本</label><div>{{ selectedNodeRaw.text }}</div></div>
               <div class="prop-field"><label>节点类型</label>
-                <a-tag v-if="selectedNodeRaw.nodeType" :color="ntColor[selectedNodeRaw.nodeType]">{{ ntLabel[selectedNodeRaw.nodeType] }}</a-tag>
+                <a-tag v-if="selectedNodeRaw.nodeType" :color="NODE_TYPE_COLOR[selectedNodeRaw.nodeType]">{{ NODE_TYPE_LABEL[selectedNodeRaw.nodeType] }}</a-tag>
                 <span v-else style="color: #ccc">未设置</span>
               </div>
               <div class="prop-field"><label>标记</label>
@@ -142,6 +143,7 @@ import MindMap from 'simple-mind-map';
 import { caseSetApi, mindNodeApi, commentApi, reviewApi, userApi, customAttributeApi } from '../api';
 import { useAppStore } from '../stores/app';
 import type { CaseSet, MindNodeData, CommentData, ReviewAssignment, User, CustomAttribute } from '../types';
+import { NODE_TYPE_LABEL, NODE_TYPE_COLOR, addAllCustomLabels, setupMouseOverrides } from '../composables/useMindMap';
 
 const route = useRoute();
 const store = useAppStore();
@@ -171,12 +173,10 @@ const panelTabs = [
   { value: 'review', label: '评审' },
 ];
 const markOptions = [{value:'NONE',label:'无'},{value:'PENDING',label:'待完成'},{value:'TO_CONFIRM',label:'待确认'},{value:'TO_MODIFY',label:'待修改'}];
+let cleanupMouseOverrides: (() => void) | null = null;
 
-const ntLabel: Record<string, string> = { TITLE: '用例标题', PRECONDITION: '前置条件', STEP: '步骤', EXPECTED: '预期结果' };
-const ntColor: Record<string, string> = { TITLE: '#1677ff', PRECONDITION: '#722ed1', STEP: '#13c2c2', EXPECTED: '#52c41a' };
 const revLabel: Record<string, string> = { PENDING: '未评审', APPROVED: '通过', REJECTED: '不通过', NEED_MODIFY: '待修改' };
 const revColor: Record<string, string> = { PENDING: 'default', APPROVED: 'success', REJECTED: 'error', NEED_MODIFY: 'warning' };
-const markColorMap: Record<string, string> = { PENDING: '#ff4d4f', TO_CONFIRM: '#faad14', TO_MODIFY: '#722ed1' };
 
 const myReview = computed(() => reviewers.value.find(r => r.reviewerId === store.user?.id));
 const allApproved = computed(() => reviewers.value.length > 0 && reviewers.value.every(r => r.status === 'APPROVED'));
@@ -217,110 +217,6 @@ function nodeToMM(node: MindNodeData): any {
   };
 }
 
-// === SVG 节点渲染 ===
-function getGroupEl(node: any): SVGGElement | null {
-  if (!node?.group) return null;
-  if (node.group.node instanceof SVGElement) return node.group.node as SVGGElement;
-  if (node.group instanceof SVGElement) return node.group as SVGGElement;
-  return null;
-}
-
-function getNodeShapeEl(node: any): SVGElement | null {
-  const directShape = node.style?.rect?.node || node.shapeNode?.node || node._shapeNode?.node;
-  if (directShape instanceof SVGElement) return directShape;
-  const groupEl = getGroupEl(node);
-  if (groupEl) {
-    let el: Element | null = groupEl;
-    for (let i = 0; i < 5 && el; i++) {
-      const shape = el.querySelector('.smm-node-shape') as SVGElement | null;
-      if (shape) return shape;
-      el = el.parentElement;
-    }
-  }
-  return null;
-}
-
-function applyMarkStyle(node: any) {
-  const raw = node.nodeData?.data?._raw;
-  const mark = raw?.properties?.mark;
-  const shape = getNodeShapeEl(node);
-  if (!shape) return;
-  if (mark && markColorMap[mark]) {
-    shape.style.setProperty('stroke', markColorMap[mark], 'important');
-    shape.style.setProperty('stroke-width', '2.5px', 'important');
-  } else {
-    shape.style.removeProperty('stroke');
-    shape.style.removeProperty('stroke-width');
-  }
-}
-
-function addNodeLabels(node: any) {
-  const groupEl = getGroupEl(node);
-  if (!groupEl) return;
-  groupEl.querySelectorAll('.mm-extra-label').forEach((el: Element) => el.remove());
-  const raw = node.nodeData?.data?._raw;
-  if (!raw) return;
-  const w = node.width || 120;
-  const h = node.height || 30;
-
-  if (raw.nodeType && ntLabel[raw.nodeType]) {
-    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-    fo.setAttribute('class', 'mm-extra-label');
-    fo.setAttribute('x', '0'); fo.setAttribute('y', String(-20));
-    fo.setAttribute('width', String(Math.max(w, 60))); fo.setAttribute('height', '18');
-    fo.style.overflow = 'visible'; fo.style.pointerEvents = 'none';
-    const d = document.createElement('div');
-    d.style.cssText = `font-size:10px;color:${ntColor[raw.nodeType]||'#666'};white-space:nowrap;font-weight:600;`;
-    d.textContent = ntLabel[raw.nodeType];
-    fo.appendChild(d); groupEl.appendChild(fo);
-  }
-
-  const commentCount = raw.commentCount || 0;
-  if (commentCount > 0) {
-    const fo3 = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-    fo3.setAttribute('class', 'mm-extra-label');
-    fo3.setAttribute('x', String(w - 4)); fo3.setAttribute('y', '-10');
-    fo3.setAttribute('width', '22'); fo3.setAttribute('height', '22');
-    fo3.style.overflow = 'visible'; fo3.style.pointerEvents = 'none';
-    const badge = document.createElement('div');
-    badge.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#ff4d4f;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:bold;';
-    badge.textContent = String(commentCount > 99 ? '99+' : commentCount);
-    fo3.appendChild(badge); groupEl.appendChild(fo3);
-  }
-
-  const parts: string[] = [];
-  if (raw.properties) {
-    for (const [key, val] of Object.entries(raw.properties)) {
-      if (key === 'mark') continue;
-      if (val === undefined || val === null || val === '') continue;
-      if (Array.isArray(val)) { if (val.length > 0) parts.push(...val.map(String)); }
-      else { parts.push(String(val)); }
-    }
-  }
-  if (parts.length) {
-    const fo2 = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-    fo2.setAttribute('class', 'mm-extra-label');
-    fo2.setAttribute('x', '0'); fo2.setAttribute('y', String(h + 2));
-    fo2.setAttribute('width', String(Math.max(w, 400))); fo2.setAttribute('height', '22');
-    fo2.style.overflow = 'visible'; fo2.style.pointerEvents = 'none';
-    const d2 = document.createElement('div');
-    d2.style.cssText = 'font-size:10px;color:#8c8c8c;white-space:nowrap;display:flex;gap:4px;flex-wrap:wrap;';
-    parts.forEach(p => {
-      const sp = document.createElement('span');
-      sp.style.cssText = 'background:#f5f5f5;padding:0 4px;border-radius:2px;';
-      sp.textContent = p; d2.appendChild(sp);
-    });
-    fo2.appendChild(d2); groupEl.appendChild(fo2);
-  }
-
-  applyMarkStyle(node);
-}
-
-function addAllCustomLabels() {
-  if (!mindMapInstance?.renderer?.root) return;
-  (function walk(n: any) { addNodeLabels(n); (n.children || []).forEach(walk); })(mindMapInstance.renderer.root);
-}
-
 // === 节点选中 ===
 function getRawFromInst(n: any) {
   return n.nodeData?.data?._raw || n.getData?.('_raw') || n.data?._raw || null;
@@ -346,7 +242,7 @@ async function refreshNodeCommentCount(nodeId: string) {
         (n.children || []).forEach(walkUpdate);
       })(mindMapInstance.renderer.root);
     }
-    requestAnimationFrame(addAllCustomLabels);
+    requestAnimationFrame(() => addAllCustomLabels(mindMapInstance));
   } catch { /* ignore */ }
 }
 
@@ -375,6 +271,7 @@ onMounted(async () => {
     el: mindMapContainer.value!,
     data: treeRes.data.length ? nodeToMM(treeRes.data[0]) : { data: { text: '空' }, children: [] },
     theme: 'classic4', layout: 'logicalStructure', readonly: true, mousewheelAction: 'zoom',
+    enableFreeDrag: false, useLeftKeySelectionRightKeyDrag: true,
     marginY: 40, marginX: 20,
   });
   mindMapInstance.on('node_active', (_: any, nodes: any[]) => {
@@ -382,9 +279,15 @@ onMounted(async () => {
     else if (nodes.length === 0) { selectedNodeRaw.value = null; selectedNodeInst.value = null; }
   });
   mindMapInstance.on('node_click', (n: any) => { handleNodeSelect(n); });
-  mindMapInstance.on('node_tree_render_end', () => { requestAnimationFrame(addAllCustomLabels); });
+  mindMapInstance.on('node_tree_render_end', () => {
+    requestAnimationFrame(() => addAllCustomLabels(mindMapInstance));
+  });
+  cleanupMouseOverrides = setupMouseOverrides(mindMapContainer.value!, () => mindMapInstance);
 });
-onUnmounted(() => { if (mindMapInstance) mindMapInstance.destroy(); });
+onUnmounted(() => {
+  if (mindMapInstance) mindMapInstance.destroy();
+  cleanupMouseOverrides?.();
+});
 
 function openReviewPanel() { rightPanelOpen.value = true; panelTab.value = 'review'; }
 function openCommentPanel() { rightPanelOpen.value = true; panelTab.value = 'comments'; commentSubTab.value = 'all'; loadAllComments(); }
@@ -420,7 +323,7 @@ async function handleMark(mark: string) {
     selectedNodeRaw.value = { ...selectedNodeRaw.value, properties: { ...cleanProps } };
 
     // 4) 重绘边框和标签
-    requestAnimationFrame(addAllCustomLabels);
+    requestAnimationFrame(() => addAllCustomLabels(mindMapInstance));
     message.success('标记已更新');
   } catch {
     message.error('标记更新失败');
@@ -482,8 +385,9 @@ async function updateReview(rid: string, status: string) {
 
 <style scoped>
 .review-header { display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid #f0f0f0; padding: 0 16px; height: 48px; }
-.review-body { flex: 1; position: relative; overflow: hidden; }
-.review-mm { width: 100%; height: 100%; }
+.review-body { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+.review-mm { flex: 1; width: 100%; }
+.tips-bar { padding: 3px 12px; font-size: 11px; color: #aaa; background: #fafafa; border-bottom: 1px solid #f0f0f0; flex-shrink: 0; }
 .review-panel {
   position: absolute; right: 0; top: 0; bottom: 0;
   width: 360px; background: #fff; border-left: 1px solid #f0f0f0;

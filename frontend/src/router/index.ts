@@ -12,6 +12,7 @@ const router = createRouter({
         { path: 'cases', component: () => import('../views/CaseHome.vue') },
         { path: 'test-plans', component: () => import('../views/TestPlan.vue') },
         { path: 'recycle-bin', component: () => import('../views/RecycleBin.vue') },
+        { path: 'profile', component: () => import('../views/Profile.vue') },
         { path: 'settings/members', component: () => import('../views/settings/MemberManagement.vue') },
         { path: 'settings/attributes', component: () => import('../views/settings/AttributeManagement.vue') },
         { path: 'settings/projects', component: () => import('../views/settings/ProjectManagement.vue') },
