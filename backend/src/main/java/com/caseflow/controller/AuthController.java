@@ -19,17 +19,21 @@ public class AuthController {
 
     @PostMapping("/login")
     public Result<?> login(@RequestBody LoginRequest req) {
+        if (req.getUsername() == null || req.getUsername().isBlank()) return Result.error("用户名不能为空");
+        if (req.getPassword() == null || req.getPassword().isBlank()) return Result.error("密码不能为空");
         User user = userService.findByUsername(req.getUsername());
         if (user == null || !passwordEncoder.matches(req.getPassword(), user.getPassword())) return Result.error("用户名或密码错误");
         if (user.getStatus() != 1) return Result.error("账号已被禁用");
-        String token = jwtUtil.generateToken(user.getId());
+        String token = jwtUtil.generateToken(user.getId(), user.getDisplayName());
         return Result.ok(Map.of("token", token, "userId", user.getId(), "username", user.getUsername(), "displayName", user.getDisplayName(), "role", user.getRole()));
     }
     @GetMapping("/current-user")
     public Result<?> currentUser() {
         String uid = CurrentUserUtil.getCurrentUserId();
+        if (uid == null) return Result.error("未登录");
         User user = userService.getById(uid);
-        if (user != null) user.setPassword(null);
+        if (user == null) return Result.error("用户不存在");
+        user.setPassword(null);
         return Result.ok(user);
     }
 }

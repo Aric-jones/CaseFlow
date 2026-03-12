@@ -4,7 +4,7 @@ CREATE DATABASE IF NOT EXISTS caseflow DEFAULT CHARACTER SET utf8mb4 COLLATE utf
 USE caseflow;
 
 -- ========================================
--- 用户表
+-- 用户表 (不加审计字段)
 -- ========================================
 CREATE TABLE users (
     id              VARCHAR(32)   NOT NULL                            COMMENT '用户ID(UUID)',
@@ -29,14 +29,17 @@ CREATE TABLE projects (
     id              VARCHAR(32)   NOT NULL                            COMMENT '项目ID(UUID)',
     name            VARCHAR(100)  NOT NULL                            COMMENT '项目名称',
     description     VARCHAR(500)  DEFAULT ''                          COMMENT '项目描述',
-    created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人用户ID',
+    created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人编号',
+    created_by_name VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '创建人',
+    updated_by      VARCHAR(32)   DEFAULT NULL                        COMMENT '修改人编号',
+    updated_by_name VARCHAR(100)  DEFAULT NULL                        COMMENT '修改人',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='项目空间表';
 
 -- ========================================
--- 项目成员关联表
+-- 项目成员关联表 (关联表不加审计字段)
 -- ========================================
 CREATE TABLE project_members (
     id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID(UUID)',
@@ -60,6 +63,10 @@ CREATE TABLE directories (
     dir_type        ENUM('CASE','TEST_PLAN')
                                   NOT NULL                            COMMENT '目录类型: 用例/测试计划',
     sort_order      INT           NOT NULL DEFAULT 0                  COMMENT '排序序号',
+    created_by      VARCHAR(32)   DEFAULT NULL                        COMMENT '创建人编号',
+    created_by_name VARCHAR(100)  DEFAULT NULL                        COMMENT '创建人',
+    updated_by      VARCHAR(32)   DEFAULT NULL                        COMMENT '修改人编号',
+    updated_by_name VARCHAR(100)  DEFAULT NULL                        COMMENT '修改人',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
@@ -79,7 +86,10 @@ CREATE TABLE case_sets (
                                   NOT NULL DEFAULT 'WRITING'          COMMENT '状态: 编写中/待评审/无需评审',
     requirement_link VARCHAR(500) DEFAULT ''                          COMMENT '关联需求链接',
     case_count      INT           NOT NULL DEFAULT 0                  COMMENT '用例数量(统计缓存)',
-    created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人用户ID',
+    created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人编号',
+    created_by_name VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '创建人',
+    updated_by      VARCHAR(32)   DEFAULT NULL                        COMMENT '修改人编号',
+    updated_by_name VARCHAR(100)  DEFAULT NULL                        COMMENT '修改人',
     deleted         TINYINT       NOT NULL DEFAULT 0                  COMMENT '逻辑删除: 0=正常 1=已删除',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -90,8 +100,6 @@ CREATE TABLE case_sets (
 
 -- ========================================
 -- 思维导图节点
--- 属性采用 properties JSON 统一存储, 不再硬编码优先级/标签等字段
--- 示例: {"优先级":"P0","标记":"待完成","标签":["冒烟","回归"]}
 -- ========================================
 CREATE TABLE mind_nodes (
     id              VARCHAR(32)   NOT NULL                            COMMENT '节点ID(UUID)',
@@ -111,22 +119,24 @@ CREATE TABLE mind_nodes (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='思维导图节点表';
 
 -- ========================================
--- 评论
+-- 评论 (支持回复, parent_id指向父评论)
 -- ========================================
 CREATE TABLE comments (
     id              VARCHAR(32)   NOT NULL                            COMMENT '评论ID(UUID)',
     node_id         VARCHAR(32)   NOT NULL                            COMMENT '关联节点ID',
     case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '关联用例集ID',
-    parent_id       VARCHAR(32)   DEFAULT NULL                        COMMENT '父评论ID(回复)',
+    parent_id       VARCHAR(32)   DEFAULT NULL                        COMMENT '父评论ID(回复时填写)',
     user_id         VARCHAR(32)   NOT NULL                            COMMENT '评论人用户ID',
+    display_name    VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '评论人显示名称(冗余)',
     content         TEXT          NOT NULL                            COMMENT '评论内容',
-    resolved        TINYINT       NOT NULL DEFAULT 0                  COMMENT '是否已解决: 0=未解决 1=已解决',
+    resolved        TINYINT       NOT NULL DEFAULT 0                  COMMENT '是否已解决: 0=未解决 1=已解决(仅根评论有效)',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
     INDEX idx_node (node_id),
-    INDEX idx_case_set (case_set_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评论表';
+    INDEX idx_case_set (case_set_id),
+    INDEX idx_parent (parent_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评论表(支持一级回复)';
 
 -- ========================================
 -- 用例集历史版本 (15分钟间隔快照)
@@ -135,7 +145,8 @@ CREATE TABLE case_history (
     id              VARCHAR(32)   NOT NULL                            COMMENT '历史ID(UUID)',
     case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '用例集ID',
     snapshot        JSON          NOT NULL                            COMMENT '节点树完整快照(JSON)',
-    created_by      VARCHAR(32)   NOT NULL                            COMMENT '操作人用户ID',
+    created_by      VARCHAR(32)   NOT NULL                            COMMENT '操作人编号',
+    created_by_name VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '操作人',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '快照时间',
     PRIMARY KEY (id),
     INDEX idx_case_set_time (case_set_id, created_at DESC)
@@ -148,8 +159,10 @@ CREATE TABLE review_assignments (
     id              VARCHAR(32)   NOT NULL                            COMMENT '评审ID(UUID)',
     case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '用例集ID',
     reviewer_id     VARCHAR(32)   NOT NULL                            COMMENT '评审人用户ID',
+    reviewer_name   VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '评审人显示名称(冗余)',
     status          ENUM('PENDING','APPROVED','REJECTED','NEED_MODIFY')
                                   NOT NULL DEFAULT 'PENDING'          COMMENT '评审状态: 待审/通过/拒绝/待修改',
+    remark          TEXT          DEFAULT NULL                        COMMENT '评审备注',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
@@ -166,7 +179,10 @@ CREATE TABLE test_plans (
     project_id      VARCHAR(32)   NOT NULL                            COMMENT '所属项目ID',
     status          ENUM('NOT_STARTED','IN_PROGRESS','COMPLETED')
                                   NOT NULL DEFAULT 'NOT_STARTED'      COMMENT '状态: 未开始/进行中/已完成',
-    created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人用户ID',
+    created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人编号',
+    created_by_name VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '创建人',
+    updated_by      VARCHAR(32)   DEFAULT NULL                        COMMENT '修改人编号',
+    updated_by_name VARCHAR(100)  DEFAULT NULL                        COMMENT '修改人',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
@@ -174,7 +190,7 @@ CREATE TABLE test_plans (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='测试计划表';
 
 -- ========================================
--- 测试计划执行人
+-- 测试计划执行人 (关联表不加审计字段)
 -- ========================================
 CREATE TABLE test_plan_executors (
     id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID(UUID)',
@@ -185,7 +201,7 @@ CREATE TABLE test_plan_executors (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='测试计划执行人表';
 
 -- ========================================
--- 测试计划用例
+-- 测试计划用例 (关联表不加审计字段)
 -- ========================================
 CREATE TABLE test_plan_cases (
     id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID(UUID)',
@@ -210,10 +226,13 @@ CREATE TABLE custom_attributes (
     name            VARCHAR(100)  NOT NULL                            COMMENT '属性名称(如 优先级/标签)',
     options         JSON          NOT NULL                            COMMENT '可选值列表, 如 ["P0","P1","P2","P3"]',
     multi_select    TINYINT       NOT NULL DEFAULT 0                  COMMENT '是否多选: 0=单选 1=多选',
+    required        TINYINT       NOT NULL DEFAULT 0                  COMMENT '是否必填: 0=非必填 1=必填',
     node_type_limit VARCHAR(100)  DEFAULT NULL                        COMMENT '限制节点类型, NULL=不限, 逗号分隔如 TITLE,EXPECTED',
     display_type    ENUM('DROPDOWN','TILE')
                                   NOT NULL DEFAULT 'DROPDOWN'         COMMENT '展示形式: 下拉框/平铺',
     sort_order      INT           NOT NULL DEFAULT 0                  COMMENT '排序序号',
+    created_by      VARCHAR(32)   DEFAULT NULL                        COMMENT '创建人编号',
+    created_by_name VARCHAR(100)  DEFAULT NULL                        COMMENT '创建人',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
     PRIMARY KEY (id),
     INDEX idx_project (project_id)
@@ -226,7 +245,8 @@ CREATE TABLE recycle_bin (
     id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID(UUID)',
     case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '用例集ID',
     original_directory_id VARCHAR(32) NOT NULL                        COMMENT '原目录ID',
-    deleted_by      VARCHAR(32)   NOT NULL                            COMMENT '删除人用户ID',
+    deleted_by      VARCHAR(32)   NOT NULL                            COMMENT '删除人编号',
+    deleted_by_name VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '删除人',
     deleted_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '删除时间',
     PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='回收站表';

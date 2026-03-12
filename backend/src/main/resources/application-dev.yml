@@ -14,6 +14,8 @@ spring:
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml

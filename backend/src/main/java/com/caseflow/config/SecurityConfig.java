@@ -26,6 +26,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Map;
 
 @Configuration
 @EnableWebSecurity
@@ -76,8 +77,10 @@ public class SecurityConfig {
                     String token = header.substring(7);
                     if (jwtUtil.validateToken(token)) {
                         String userId = jwtUtil.getUserIdFromToken(token);
+                        String displayName = jwtUtil.getDisplayNameFromToken(token);
+                        Map<String, String> principal = Map.of("userId", userId, "displayName", displayName != null ? displayName : "");
                         var auth = new UsernamePasswordAuthenticationToken(
-                                userId, null,
+                                principal, null,
                                 Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))
                         );
                         SecurityContextHolder.getContext().setAuthentication(auth);

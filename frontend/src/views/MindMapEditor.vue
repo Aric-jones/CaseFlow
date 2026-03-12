@@ -79,6 +79,11 @@
                 <a-select v-model:value="editForm.nodeType" allow-clear
                   :options="nodeTypeOptions" style="width: 100%" placeholder="可不设置" />
               </div>
+              <div class="prop-field">
+                <label>标记</label>
+                <a-select :value="editForm?.properties?.mark || 'NONE'" @change="(v: any) => { if (editForm) editForm.properties.mark = v === 'NONE' ? undefined : v }" style="width: 100%"
+                  :options="[{value:'NONE',label:'无'},{value:'PENDING',label:'待完成'},{value:'TO_CONFIRM',label:'待确认'},{value:'TO_MODIFY',label:'待修改'}]" />
+              </div>
               <a-divider style="margin: 8px 0" />
               <div style="color: #1677ff; font-weight: 600; font-size: 12px; margin-bottom: 8px">动态属性</div>
               <template v-for="attr in filteredEditAttrs" :key="attr.id">
@@ -86,7 +91,8 @@
                   <label>{{ attr.name }}</label>
                   <a-radio-group v-if="attr.displayType === 'TILE' && !attr.multiSelect"
                     :value="editForm?.properties[attr.name]"
-                    @change="(e: any) => { if (editForm) editForm.properties[attr.name] = e.target.value }">
+                    @change="(e: any) => { if (editForm) editForm.properties[attr.name] = e.target.value }"
+                    style="display: flex; flex-wrap: wrap; gap: 4px">
                     <a-radio-button v-for="o in attr.options" :key="o" :value="o"
                       :class="attr.name === '优先级' ? `priority-${o.toLowerCase()}` : ''">{{ o }}</a-radio-button>
                   </a-radio-group>
@@ -134,31 +140,61 @@
           <template v-if="panelTab === 'comments'">
             <a-space style="margin-bottom: 12px">
               <a-button :type="commentTab === 'node' ? 'primary' : 'default'" size="small"
-                @click="commentTab = 'node'; loadNodeComments()">当前节点</a-button>
+                @click="commentTab = 'node'">当前节点</a-button>
               <a-button :type="commentTab === 'all' ? 'primary' : 'default'" size="small"
-                @click="commentTab = 'all'; loadAllComments()">全部评论</a-button>
+                @click="commentTab = 'all'">全部评论</a-button>
             </a-space>
-            <a-list :data-source="commentTab === 'node' ? nodeComments : allComments"
-              :locale="{ emptyText: '暂无评论' }" size="small">
-              <template #renderItem="{ item }">
-                <a-list-item>
-                  <a-list-item-meta :description="item.content">
-                    <template #title>
-                      <strong>{{ item.displayName }}</strong>
-                      <span style="color: #999; font-size: 11px"> {{ item.createdAt }}</span>
-                    </template>
-                  </a-list-item-meta>
-                  <template #actions v-if="commentTab === 'node'">
-                    <a-button type="link" size="small" @click="resolveComment(item.id)">
-                      {{ item.resolved ? '已解决' : '标记解决' }}
-                    </a-button>
-                  </template>
-                </a-list-item>
+
+            <div class="comments-section">
+              <template v-if="!(commentTab === 'node' ? nodeComments : allComments).length">
+                <div class="empty-hint" style="height: auto; padding: 32px 0">暂无评论</div>
               </template>
-            </a-list>
-            <div style="margin-top: 12px">
-              <a-textarea v-model:value="newComment" placeholder="输入评论..." :auto-size="{ minRows: 2 }" />
-              <a-button type="primary" size="small" style="margin-top: 8px" @click="addComment">发送</a-button>
+              <div v-for="c in (commentTab === 'node' ? nodeComments : allComments)" :key="c.id" class="cmt-card">
+                <div v-if="c.nodeText && commentTab === 'all'" class="cmt-node-link" @click="navigateToCommentNode(c.nodeId)">
+                  <NodeIndexOutlined style="margin-right: 4px" />{{ c.nodeText }}
+                </div>
+                <div class="cmt-main">
+                  <div class="cmt-avatar">{{ (c.displayName || '?')[0] }}</div>
+                  <div class="cmt-content">
+                    <div class="cmt-meta"><strong>{{ c.displayName }}</strong><span class="cmt-time">{{ formatTime(c.createdAt) }}</span></div>
+                    <div v-if="editingCommentId !== c.id" class="cmt-text">{{ c.content }}</div>
+                    <div v-else style="margin-top: 4px">
+                      <a-textarea v-model:value="editingCommentContent" :auto-size="{ minRows: 1, maxRows: 4 }" />
+                      <a-space style="margin-top: 4px"><a-button size="small" type="primary" @click="saveEditComment">保存</a-button><a-button size="small" @click="editingCommentId = null">取消</a-button></a-space>
+                    </div>
+                    <div class="cmt-actions">
+                      <span @click="startReply(c)">回复</span>
+                      <span @click="startEditComment(c)">编辑</span>
+                      <a-popconfirm title="确定删除?" @confirm="deleteComment(c.id)"><span class="danger">删除</span></a-popconfirm>
+                      <span v-if="!c.parentId && !c.resolved" class="resolve-btn" @click="resolveComment(c.id)">标记解决</span>
+                      <span v-if="!c.parentId && c.resolved" class="resolved" @click="resolveComment(c.id)">已解决</span>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="c.replies?.length" class="cmt-replies">
+                  <div v-for="r in c.replies" :key="r.id" class="cmt-main cmt-reply">
+                    <div class="cmt-avatar sm">{{ (r.displayName || '?')[0] }}</div>
+                    <div class="cmt-content">
+                      <div class="cmt-meta"><strong>{{ r.displayName }}</strong><span class="cmt-time">{{ formatTime(r.createdAt) }}</span></div>
+                      <div class="cmt-text">{{ r.content }}</div>
+                      <div class="cmt-actions">
+                        <span @click="startEditComment(r)">编辑</span>
+                        <a-popconfirm title="确定删除?" @confirm="deleteComment(r.id)"><span class="danger">删除</span></a-popconfirm>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="replyingTo?.id === c.id" class="cmt-reply-box">
+                  <a-textarea v-model:value="replyContent" placeholder="回复..." :auto-size="{ minRows: 1, maxRows: 3 }" @pressEnter.exact.prevent="submitReply(c)" />
+                  <a-space style="margin-top: 4px"><a-button size="small" type="primary" @click="submitReply(c)">发送</a-button><a-button size="small" @click="replyingTo = null; replyContent = ''">取消</a-button></a-space>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="commentTab === 'node' && activeNodeInstance" class="cmt-input-area">
+              <a-textarea v-model:value="newComment" placeholder="输入评论，回车发送..."
+                :auto-size="{ minRows: 2, maxRows: 4 }" @pressEnter.exact.prevent="addComment" />
+              <a-button type="primary" size="small" style="margin-top: 4px" @click="addComment">发送</a-button>
             </div>
           </template>
         </div>
@@ -186,17 +222,27 @@
       <a-select mode="multiple" style="width: 100%" v-model:value="selectedReviewers" placeholder="选择评审人"
         :options="users.filter((u: any) => u.id !== store.user?.id).map((u: any) => ({ value: u.id, label: u.displayName }))" />
     </a-modal>
+
+    <!-- 退出确认弹窗 -->
+    <a-modal v-model:open="showExitConfirm" title="有未保存的更改" :closable="false" :footer="null" :maskClosable="false">
+      <p style="margin: 12px 0 20px; color: #666">当前页面有未保存的内容，是否保存后退出？</p>
+      <div style="display: flex; justify-content: flex-end; gap: 8px">
+        <a-button @click="handleExitCancel">取消</a-button>
+        <a-button danger @click="handleExitDiscard">不保存退出</a-button>
+        <a-button type="primary" @click="handleExitSave">保存退出</a-button>
+      </div>
+    </a-modal>
   </a-layout>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
   ArrowLeftOutlined, SaveOutlined, HistoryOutlined, SearchOutlined,
   ToolOutlined, CommentOutlined, CheckCircleOutlined,
-  PlusOutlined, PlusSquareOutlined, DeleteOutlined, CheckOutlined, CloseOutlined,
+  PlusOutlined, PlusSquareOutlined, DeleteOutlined, CheckOutlined, CloseOutlined, NodeIndexOutlined,
 } from '@ant-design/icons-vue';
 import MindMap from 'simple-mind-map';
 import Select from 'simple-mind-map/src/plugins/Select';
@@ -229,6 +275,23 @@ const panelTab = ref<'props' | 'validate' | 'comments'>('props');
 const editForm = ref<{ text: string; nodeType: string | null; properties: Record<string, any> } | null>(null);
 const activeNodeInstance = ref<any>(null);
 
+// === 标记实时预览 (editForm.properties.mark 变化即更新边框) ===
+watch(() => editForm.value?.properties?.mark, (mark) => {
+  if (!activeNodeInstance.value) return;
+  const node = activeNodeInstance.value;
+  const groupEl = getGroupEl(node);
+  if (!groupEl) return;
+  const shape = findShapeEl(groupEl);
+  if (!shape) return;
+  if (mark && markColorMap[mark]) {
+    shape.style.setProperty('stroke', markColorMap[mark], 'important');
+    shape.style.setProperty('stroke-width', '2.5px', 'important');
+  } else {
+    shape.style.removeProperty('stroke');
+    shape.style.removeProperty('stroke-width');
+  }
+});
+
 // === 搜索 ===
 const showSearch = ref(false);
 const searchText = ref('');
@@ -246,6 +309,9 @@ const commentTab = ref<'node' | 'all'>('node');
 const nodeComments = ref<any[]>([]);
 const allComments = ref<any[]>([]);
 const newComment = ref('');
+const replyingTo = ref<any>(null);
+const replyContent = ref('');
+const collapsedComments = ref<Record<string, boolean>>({});
 
 // === 历史 ===
 const showHistory = ref(false);
@@ -263,11 +329,13 @@ let historyTimer: ReturnType<typeof setInterval> | null = null;
 // === 状态计算 ===
 const statusLabel = computed(() => {
   const s = caseSet.value?.status;
-  return s === 'WRITING' ? '编写中' : s === 'PENDING_REVIEW' ? '待评审' : '无需评审';
+  const m: Record<string, string> = { WRITING: '编写中', PENDING_REVIEW: '待评审', NO_REVIEW: '无需评审', APPROVED: '审核通过' };
+  return m[s || ''] || s || '';
 });
 const statusColor = computed(() => {
   const s = caseSet.value?.status;
-  return s === 'WRITING' ? 'processing' : s === 'PENDING_REVIEW' ? 'warning' : 'default';
+  const m: Record<string, string> = { WRITING: 'processing', PENDING_REVIEW: 'warning', NO_REVIEW: 'default', APPROVED: 'success' };
+  return m[s || ''] || 'default';
 });
 
 const nodeTypeOptions = [
@@ -287,16 +355,14 @@ const filteredEditAttrs = computed(() => {
   if (!editForm.value) return [];
   const nt = editForm.value.nodeType;
   return projectAttributes.value.filter(a => {
+    if (a.name === '标记') return false;
     if (!a.nodeTypeLimit) return true;
     if (!nt) return false;
     return a.nodeTypeLimit.split(',').includes(nt);
   });
 });
 
-// 面板关闭/打开后通知思维导图重新计算尺寸
-watch(rightPanelOpen, () => {
-  nextTick(() => { if (mindMapInstance) mindMapInstance.resize(); });
-});
+// 侧边栏使用 absolute 定位覆盖，不改变导图尺寸，不需要 resize
 
 // =============================================
 // 右侧面板控制
@@ -388,6 +454,34 @@ function getGroupEl(node: any): SVGGElement | null {
   return null;
 }
 
+const markColorMap: Record<string, string> = { PENDING: '#ff4d4f', TO_CONFIRM: '#faad14', TO_MODIFY: '#722ed1' };
+
+function findShapeEl(groupEl: Element): SVGElement | null {
+  let el: Element | null = groupEl;
+  for (let i = 0; i < 4 && el; i++) {
+    const shape = el.querySelector('.smm-node-shape') as SVGElement | null;
+    if (shape) return shape;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function applyMarkStyle(node: any) {
+  const groupEl = getGroupEl(node);
+  if (!groupEl) return;
+  const raw = node.nodeData?.data?._raw;
+  const mark = raw?.properties?.mark;
+  const shape = findShapeEl(groupEl);
+  if (!shape) return;
+  if (mark && markColorMap[mark]) {
+    shape.style.setProperty('stroke', markColorMap[mark], 'important');
+    shape.style.setProperty('stroke-width', '2.5px', 'important');
+  } else {
+    shape.style.removeProperty('stroke');
+    shape.style.removeProperty('stroke-width');
+  }
+}
+
 function addNodeLabels(node: any) {
   const groupEl = getGroupEl(node);
   if (!groupEl) return;
@@ -417,23 +511,49 @@ function addNodeLabels(node: any) {
     groupEl.appendChild(fo);
   }
 
-  // 属性标签 → 节点框正下方
+  // 评论角标 → 节点右上角 (红色小圆圈)
+  const commentCount = raw.commentCount;
+  if (commentCount && commentCount > 0) {
+    const fo3 = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+    fo3.setAttribute('class', 'mm-extra-label');
+    fo3.setAttribute('x', String(w - 4));
+    fo3.setAttribute('y', '-10');
+    fo3.setAttribute('width', '22');
+    fo3.setAttribute('height', '22');
+    fo3.style.overflow = 'visible';
+    fo3.style.pointerEvents = 'none';
+    const badge = document.createElement('div');
+    badge.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#ff4d4f;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:bold;';
+    badge.textContent = String(commentCount > 99 ? '99+' : commentCount);
+    fo3.appendChild(badge);
+    groupEl.appendChild(fo3);
+  }
+
+  // 属性标签 → 节点框正下方 (动态遍历所有 properties)
   const parts: string[] = [];
-  if (raw.properties?.['优先级']) parts.push(String(raw.properties['优先级']));
-  if (raw.properties?.['标记'] && raw.properties['标记'] !== '无') parts.push(raw.properties['标记']);
-  if (raw.properties?.['标签'] && Array.isArray(raw.properties['标签'])) parts.push(...raw.properties['标签']);
+  if (raw.properties) {
+    for (const [key, val] of Object.entries(raw.properties)) {
+      if (key === 'mark') continue;
+      if (val === undefined || val === null || val === '') continue;
+      if (Array.isArray(val)) {
+        if (val.length > 0) parts.push(...val.map(String));
+      } else {
+        parts.push(String(val));
+      }
+    }
+  }
 
   if (parts.length) {
     const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
     fo.setAttribute('class', 'mm-extra-label');
     fo.setAttribute('x', '0');
     fo.setAttribute('y', String(h + 2));
-    fo.setAttribute('width', String(Math.max(w, 250)));
+    fo.setAttribute('width', String(Math.max(w, 400)));
     fo.setAttribute('height', '22');
     fo.style.overflow = 'visible';
     fo.style.pointerEvents = 'none';
     const div = document.createElement('div');
-    div.style.cssText = 'display:flex; gap:4px; line-height:18px; white-space:nowrap;';
+    div.style.cssText = 'display:flex; gap:4px; line-height:18px; white-space:nowrap; flex-wrap:wrap;';
     parts.forEach(p => {
       const span = document.createElement('span');
       span.textContent = p;
@@ -443,6 +563,8 @@ function addNodeLabels(node: any) {
     fo.appendChild(div);
     groupEl.appendChild(fo);
   }
+
+  applyMarkStyle(node);
 }
 
 function addAllCustomLabels() {
@@ -499,9 +621,41 @@ function confirmEdit() {
   rawRef.properties = { ...form.properties };
 
   mindMapInstance.execCommand('SET_NODE_TEXT', node, form.text);
-  // 标签由 addAllCustomLabels 在重渲染后自动添加
+
+  // 选择"用例标题"时自动在子链上赋值 前置条件→步骤→预期结果
+  if (form.nodeType === 'TITLE') {
+    autoAssignCaseChain(node);
+  }
+
   requestAnimationFrame(() => addAllCustomLabels());
   message.success('已更新');
+}
+
+function autoAssignCaseChain(titleNode: any) {
+  const chainTypes = ['PRECONDITION', 'STEP', 'EXPECTED'];
+  const chainLabels = ['前置条件', '步骤', '预期结果'];
+  let current = titleNode;
+  for (let i = 0; i < 3; i++) {
+    let child = current.children?.[0];
+    if (!child) {
+      mindMapInstance.execCommand('INSERT_CHILD_NODE', current, false);
+      child = current.children?.[0];
+      if (!child) break;
+    }
+    let raw = child.nodeData?.data?._raw;
+    if (!raw) {
+      raw = { text: child.nodeData?.data?.text || '', nodeType: null, properties: {} };
+      if (child.nodeData?.data) child.nodeData.data._raw = raw;
+    }
+    if (!raw.nodeType) {
+      raw.nodeType = chainTypes[i];
+      if (!raw.text || raw.text === '分支主题') {
+        raw.text = chainLabels[i];
+        mindMapInstance.execCommand('SET_NODE_TEXT', child, chainLabels[i]);
+      }
+    }
+    current = child;
+  }
 }
 
 // =============================================
@@ -522,11 +676,13 @@ function initMindMap() {
     nodeTextEdit: true,
     enableShortcutOnlyWhenMouseInSvg: true,
     useLeftKeySelectionRightKeyDrag: true,
+    marginY: 40,
+    marginX: 20,
   });
 
-  // 节点选中 → 打开右侧属性面板
+  // 节点选中 → 仅单选时打开属性面板，多选(框选)不弹
   mindMapInstance.on('node_active', (_: any, nodes: any[]) => {
-    if (nodes.length > 0) {
+    if (nodes.length === 1) {
       const node = nodes[0];
       activeNodeInstance.value = node;
       const raw = node.nodeData?.data?._raw || node.data?._raw;
@@ -540,6 +696,12 @@ function initMindMap() {
         rightPanelOpen.value = true;
         panelTab.value = 'props';
       }
+      if (panelTab.value === 'comments' && commentTab.value === 'node') {
+        loadNodeComments();
+      }
+    } else if (nodes.length > 1) {
+      activeNodeInstance.value = null;
+      editForm.value = null;
     } else {
       activeNodeInstance.value = null;
       editForm.value = null;
@@ -558,10 +720,11 @@ function initMindMap() {
     }
   });
 
-  // 数据变化 → 更新计数
+  // 数据变化 → 更新计数 + 标记脏
   mindMapInstance.on('data_change', () => {
     const tree = getFullTree();
     if (tree.length > 0) caseCount.value = countValid(tree[0]);
+    markDirty();
   });
 
   // 渲染完成 → 注入自定义标签
@@ -586,6 +749,11 @@ async function loadData() {
     : { data: { text: caseSet.value?.name || '新用例集' }, children: [] };
   if (mindMapInstance) mindMapInstance.setData(mmData);
   caseCount.value = treeRes.data.length > 0 ? countValid(treeRes.data[0]) : 0;
+  nextTick(() => {
+    savedTreeSnapshot = computeTreeHash();
+    hasUnsavedChanges.value = false;
+    initialLoadDone = true;
+  });
 }
 
 // =============================================
@@ -599,6 +767,8 @@ async function handleSave() {
     await mindNodeApi.batchSave(caseSetId, tree);
     caseCount.value = tree.length > 0 ? countValid(tree[0]) : 0;
     await caseHistoryApi.save(caseSetId);
+    savedTreeSnapshot = computeTreeHash();
+    hasUnsavedChanges.value = false;
     message.success('保存成功');
   } catch { /* handled */ } finally { saving.value = false; }
 }
@@ -643,24 +813,24 @@ function onSearchChange() {
 }
 
 function findNext() {
+  if (!mindMapInstance) return;
   if (!searchMatches.value.length) { onSearchChange(); return; }
   searchIdx.value = (searchIdx.value + 1) % searchMatches.value.length;
   const n = searchMatches.value[searchIdx.value];
-  n.active();
-  mindMapInstance.renderer.moveNodeToCenter(n);
+  if (n) { n.active(); mindMapInstance.renderer?.moveNodeToCenter(n); }
 }
 
 function findPrev() {
-  if (!searchMatches.value.length) return;
+  if (!mindMapInstance || !searchMatches.value.length) return;
   searchIdx.value = (searchIdx.value - 1 + searchMatches.value.length) % searchMatches.value.length;
   const n = searchMatches.value[searchIdx.value];
-  n.active();
-  mindMapInstance.renderer.moveNodeToCenter(n);
+  if (n) { n.active(); mindMapInstance.renderer?.moveNodeToCenter(n); }
 }
 
 function replaceOneFn() {
-  if (searchIdx.value < 0 || !searchMatches.value.length) return;
+  if (!mindMapInstance || searchIdx.value < 0 || !searchMatches.value.length) return;
   const node = searchMatches.value[searchIdx.value];
+  if (!node) return;
   const oldText = node.nodeData?.data?.text || '';
   const newText = oldText.replace(searchText.value, replaceText.value);
   mindMapInstance.execCommand('SET_NODE_TEXT', node, newText);
@@ -729,9 +899,19 @@ function runValidation() {
       if (issues.length) {
         errors.push({ uid: leafUid, message: `${pathStr}\n${issues.join('; ')}` });
       } else {
-        const props = currentPath[len-1].nodeData?.data?._raw?.properties;
-        if (!props?.['优先级']) {
-          errors.push({ uid: leafUid, message: `${pathStr}\n预期结果节点未设置优先级` });
+        // 检查必填属性
+        const caseTypes = ['TITLE', 'PRECONDITION', 'STEP', 'EXPECTED'];
+        for (let i = 0; i < 4; i++) {
+          const nd = currentPath[len - 4 + i];
+          const ndProps = nd.nodeData?.data?._raw?.properties || {};
+          for (const attr of projectAttributes.value) {
+            if (!attr.required) continue;
+            if (attr.nodeTypeLimit && !attr.nodeTypeLimit.split(',').includes(caseTypes[i])) continue;
+            const val = ndProps[attr.name];
+            if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) {
+              errors.push({ uid: leafUid, message: `${pathStr}\n${nd.nodeData?.data?.text || '?'}: 必填属性"${attr.name}"未填写` });
+            }
+          }
         }
       }
     } else {
@@ -760,7 +940,13 @@ function navigateToError(idx: number) {
 // =============================================
 
 async function handleStatusChange(status: string) {
-  if (status === 'PENDING_REVIEW') { showReviewModal.value = true; return; }
+  if (status === 'PENDING_REVIEW') {
+    if (!users.value.length) {
+      try { users.value = (await userApi.listAll()).data; } catch { /* */ }
+    }
+    showReviewModal.value = true;
+    return;
+  }
   await caseSetApi.updateStatus(caseSetId, status);
   if (caseSet.value) caseSet.value.status = status;
   message.success('状态已更新');
@@ -789,15 +975,75 @@ async function loadAllComments() {
   allComments.value = (await commentApi.allComments(caseSetId)).data;
 }
 async function addComment() {
+  if (commentTab.value === 'all') return;
   const raw = activeNodeInstance.value?.nodeData?.data?._raw;
   if (!newComment.value.trim() || !raw?.id) return;
   await commentApi.add(raw.id, caseSetId, newComment.value.trim());
   newComment.value = '';
   loadNodeComments();
+  await refreshNodeCommentCount(raw.id);
+}
+function startReply(comment: any) {
+  replyingTo.value = comment;
+  replyContent.value = '';
+}
+async function submitReply(parent: any) {
+  if (!replyContent.value.trim()) return;
+  const nodeId = parent.nodeId || activeNodeInstance.value?.nodeData?.data?._raw?.id || '';
+  await commentApi.add(nodeId, caseSetId, replyContent.value.trim(), parent.id);
+  replyingTo.value = null;
+  replyContent.value = '';
+  if (commentTab.value === 'node') loadNodeComments();
+  else loadAllComments();
 }
 async function resolveComment(id: string) {
   await commentApi.resolve(id);
-  loadNodeComments();
+  if (commentTab.value === 'node') loadNodeComments();
+  else loadAllComments();
+  const raw = activeNodeInstance.value?.nodeData?.data?._raw;
+  if (raw?.id) await refreshNodeCommentCount(raw.id);
+}
+async function refreshNodeCommentCount(nodeId: string) {
+  try {
+    const res = await commentApi.unresolvedCount(nodeId);
+    const count = res.data;
+    // 更新 _raw.commentCount 以刷新角标
+    if (mindMapInstance?.renderer?.root) {
+      function walkUpdate(n: any) {
+        const r = n.nodeData?.data?._raw;
+        if (r && r.id === nodeId) r.commentCount = count;
+        (n.children || []).forEach(walkUpdate);
+      }
+      walkUpdate(mindMapInstance.renderer.root);
+    }
+    requestAnimationFrame(() => addAllCustomLabels());
+  } catch { /* ignore */ }
+}
+const editingCommentId = ref<string | null>(null);
+const editingCommentContent = ref('');
+
+function startEditComment(c: any) {
+  editingCommentId.value = c.id;
+  editingCommentContent.value = c.content;
+}
+async function saveEditComment() {
+  if (!editingCommentId.value || !editingCommentContent.value.trim()) return;
+  await commentApi.update(editingCommentId.value, editingCommentContent.value.trim());
+  editingCommentId.value = null;
+  editingCommentContent.value = '';
+  if (commentTab.value === 'node') loadNodeComments();
+  else loadAllComments();
+}
+async function deleteComment(id: string) {
+  await commentApi.delete(id);
+  if (commentTab.value === 'node') loadNodeComments();
+  else loadAllComments();
+  const raw = activeNodeInstance.value?.nodeData?.data?._raw;
+  if (raw?.id) await refreshNodeCommentCount(raw.id);
+}
+function formatTime(t: string) {
+  if (!t) return '';
+  return t.replace('T', ' ').substring(0, 19);
 }
 
 // =============================================
@@ -809,6 +1055,69 @@ async function restoreVersion(id: string) {
   message.success('版本已恢复');
   loadData();
   showHistory.value = false;
+}
+
+// =============================================
+// 评论tab自动加载 & 退出保存提示
+// =============================================
+
+watch(panelTab, (tab) => {
+  if (tab === 'comments') {
+    if (commentTab.value === 'node' && activeNodeInstance.value) loadNodeComments();
+    else loadAllComments();
+  }
+});
+watch(commentTab, (tab) => {
+  if (tab === 'node' && activeNodeInstance.value) loadNodeComments();
+  else if (tab === 'all') loadAllComments();
+});
+
+const hasUnsavedChanges = ref(false);
+let savedTreeSnapshot = '';
+let initialLoadDone = false;
+
+function computeTreeHash(): string {
+  try {
+    const tree = getFullTree();
+    return JSON.stringify(tree);
+  } catch { return ''; }
+}
+function markDirty() {
+  if (!initialLoadDone) return;
+  const current = computeTreeHash();
+  hasUnsavedChanges.value = current !== savedTreeSnapshot;
+}
+function onBeforeUnload(e: BeforeUnloadEvent) {
+  if (hasUnsavedChanges.value) { e.preventDefault(); e.returnValue = ''; }
+}
+
+const showExitConfirm = ref(false);
+const pendingRoute = ref('');
+
+onBeforeRouteLeave((to) => {
+  if (!hasUnsavedChanges.value) return true;
+  pendingRoute.value = to.fullPath;
+  showExitConfirm.value = true;
+  return false;
+});
+function handleExitCancel() { showExitConfirm.value = false; pendingRoute.value = ''; }
+function handleExitDiscard() { hasUnsavedChanges.value = false; showExitConfirm.value = false; router.push(pendingRoute.value); }
+async function handleExitSave() { await handleSave(); hasUnsavedChanges.value = false; showExitConfirm.value = false; router.push(pendingRoute.value); }
+
+// =============================================
+// 评论导航到节点
+// =============================================
+
+function navigateToCommentNode(nodeId: string) {
+  if (!mindMapInstance?.renderer?.root || !nodeId) return;
+  function findByRawId(n: any): any {
+    const raw = n.nodeData?.data?._raw;
+    if (raw?.id === nodeId) return n;
+    for (const c of (n.children || [])) { const found = findByRawId(c); if (found) return found; }
+    return null;
+  }
+  const target = findByRawId(mindMapInstance.renderer.root);
+  if (target) { target.active(); mindMapInstance.renderer.moveNodeToCenter(target); }
 }
 
 // =============================================
@@ -827,12 +1136,14 @@ onMounted(async () => {
   await loadData();
   autoSaveTimer = setInterval(autoSave, 10000);
   historyTimer = setInterval(() => caseHistoryApi.save(caseSetId).catch(() => {}), 15 * 60 * 1000);
+  window.addEventListener('beforeunload', onBeforeUnload);
 });
 
 onUnmounted(() => {
   if (autoSaveTimer) clearInterval(autoSaveTimer);
   if (historyTimer) clearInterval(historyTimer);
   if (mindMapInstance) { mindMapInstance.destroy(); mindMapInstance = null; }
+  window.removeEventListener('beforeunload', onBeforeUnload);
 });
 </script>
 
@@ -847,16 +1158,18 @@ onUnmounted(() => {
   display: flex; gap: 8px; align-items: center; flex-shrink: 0;
 }
 
-/* 主体布局: 左侧导图 + 右侧面板 */
+/* 主体布局: 导图全屏, 面板浮动覆盖在右侧 */
 .editor-body {
-  flex: 1; display: flex; overflow: hidden;
+  flex: 1; position: relative; overflow: hidden;
 }
 .mm-area {
-  flex: 1; position: relative; overflow: hidden; background: #fafafa;
+  width: 100%; height: 100%; position: relative; overflow: hidden; background: #fafafa;
 }
 .right-panel {
-  width: 320px; flex-shrink: 0; border-left: 1px solid #f0f0f0;
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: 320px; border-left: 1px solid #f0f0f0;
   background: #fff; display: flex; flex-direction: column; overflow: hidden;
+  z-index: 100; box-shadow: -2px 0 8px rgba(0,0,0,0.06);
 }
 .rp-header {
   display: flex; justify-content: space-between; align-items: center;
@@ -893,12 +1206,46 @@ onUnmounted(() => {
   display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0;
 }
 .val-msg { color: #333; word-break: break-all; white-space: pre-line; }
+
+/* 评论样式 */
+.comments-section { overflow-y: auto; }
+.cmt-card { margin-bottom: 4px; padding: 10px 0; border-bottom: 1px solid #f5f5f5; }
+.cmt-card:last-child { border-bottom: none; }
+.cmt-node-link {
+  font-size: 12px; color: #1677ff; cursor: pointer; margin-bottom: 6px;
+  padding: 4px 8px; background: #f0f5ff; border-radius: 4px; display: flex; align-items: flex-start;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; line-height: 1.5;
+}
+.cmt-node-link:hover { background: #e6f0ff; }
+.cmt-main { display: flex; gap: 8px; }
+.cmt-avatar {
+  width: 28px; height: 28px; border-radius: 50%; background: #1677ff; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0;
+}
+.cmt-avatar.sm { width: 22px; height: 22px; font-size: 10px; background: #8c8c8c; }
+.cmt-content { flex: 1; min-width: 0; }
+.cmt-meta { display: flex; align-items: baseline; gap: 6px; }
+.cmt-meta strong { font-size: 13px; }
+.cmt-time { font-size: 11px; color: #999; }
+.cmt-text { font-size: 13px; color: #333; margin: 3px 0; white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
+.cmt-actions { display: flex; gap: 10px; margin-top: 2px; }
+.cmt-actions span { font-size: 12px; color: #8c8c8c; cursor: pointer; }
+.cmt-actions span:hover { color: #1677ff; }
+.cmt-actions .danger { color: #ff4d4f; }
+.cmt-actions .danger:hover { color: #cf1322; }
+.cmt-actions .resolve-btn { color: #1677ff; }
+.cmt-actions .resolve-btn:hover { color: #0958d9; }
+.cmt-actions .resolved { color: #52c41a; }
+.cmt-replies { padding-left: 36px; margin-top: 6px; }
+.cmt-reply { margin-top: 6px; }
+.cmt-reply-box { padding-left: 36px; margin-top: 6px; }
+.cmt-input-area { margin-top: 8px; border-top: 1px solid #f0f0f0; padding-top: 8px; flex-shrink: 0; }
 </style>
 
 <style>
-/* 全局: simple-mind-map 节点边框 */
-.smm-node .smm-node-shape { stroke: #c9ced6 !important; stroke-width: 1px !important; }
-.smm-node.active .smm-node-shape { stroke: #1677ff !important; stroke-width: 2px !important; }
-.smm-node:hover .smm-node-shape { stroke: #4096ff !important; }
-.smm-root-node .smm-node-shape { stroke: #1677ff !important; stroke-width: 2px !important; }
+/* simple-mind-map 基础边框 (不使用!important, 让标记内联样式优先) */
+.smm-node .smm-node-shape { stroke: #c9ced6; stroke-width: 1px; }
+.smm-node.active .smm-node-shape { stroke: #1677ff; stroke-width: 2px; }
+.smm-node:hover .smm-node-shape { stroke: #4096ff; }
+.smm-root-node .smm-node-shape { stroke: #1677ff; stroke-width: 2px; }
 </style>

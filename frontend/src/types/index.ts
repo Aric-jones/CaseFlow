@@ -36,6 +36,9 @@ export interface CaseSet {
   requirementLink: string;
   caseCount: number;
   createdBy: string;
+  createdByName: string;
+  updatedBy: string;
+  updatedByName: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,6 +68,7 @@ export interface CommentData {
   resolved: number;
   createdAt: string;
   replies: CommentData[];
+  nodeText?: string;
 }
 
 export interface CaseHistory {
@@ -90,6 +94,9 @@ export interface TestPlan {
   projectId: string;
   status: string;
   createdBy: string;
+  createdByName: string;
+  updatedBy: string;
+  updatedByName: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -111,6 +118,7 @@ export interface CustomAttribute {
   name: string;
   options: string[];
   multiSelect: number;
+  required: number;
   nodeTypeLimit: string | null;
   displayType: string;
   sortOrder: number;

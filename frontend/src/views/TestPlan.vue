@@ -8,8 +8,13 @@
               @select="(keys: any) => selectedDir = keys[0] || null" default-expand-all block-node>
         <template #title="{ key: nodeKey, title }">
           <div class="dir-tree-item" @contextmenu.prevent="(e: MouseEvent) => showCtx(e, String(nodeKey))">
-            {{ title }}
-            <span class="actions"><a-button size="small" type="text" @click.stop="startAdd(String(nodeKey))"><PlusOutlined /></a-button></span>
+            <span v-if="editingDirId !== String(nodeKey)">{{ title }}</span>
+            <input v-else class="inline-input" :value="editingDirName"
+              @input="editingDirName = ($event.target as HTMLInputElement).value"
+              @keyup.enter="finishEditDir" @blur="finishEditDir" @keyup.escape="cancelEditDir" autofocus />
+            <span class="actions" v-if="editingDirId !== String(nodeKey)">
+              <a-button size="small" type="text" @click.stop="startAdd(String(nodeKey))"><PlusOutlined /></a-button>
+            </span>
           </div>
         </template>
       </a-tree>
@@ -22,19 +27,21 @@
     </a-layout-sider>
     <a-layout-content style="padding: 24px">
       <div style="display: flex; gap: 12px; margin-bottom: 16px; align-items: center">
-        <a-input-search v-model:value="keyword" placeholder="搜索" style="width: 280px" @search="loadPlans" />
+        <a-input-search v-model:value="keyword" placeholder="搜索" style="width: 280px" @search="() => loadPlans(1)" />
         <a-checkbox v-model:checked="onlyMine">只看我的</a-checkbox>
         <div style="flex: 1" />
         <a-button type="primary" @click="showCreate = true"><PlusOutlined /> 新建测试计划</a-button>
       </div>
       <a-table :columns="columns" :data-source="plans.records" row-key="id" :loading="loading"
-        :pagination="{ current: plans.current, total: plans.total, pageSize: 20, onChange: loadPlans }" size="middle">
+        :pagination="{ current: plans.current, total: plans.total, pageSize: 20, onChange: loadPlans }" size="middle"
+        @resizeColumn="handleResizeColumn">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
             <a-tag :color="record.status === 'COMPLETED' ? 'success' : record.status === 'IN_PROGRESS' ? 'processing' : 'default'">
               {{ record.status === 'NOT_STARTED' ? '未开始' : record.status === 'IN_PROGRESS' ? '进行中' : '已完成' }}
             </a-tag>
           </template>
+          <template v-if="column.key === 'createdAt'">{{ fmtTime(record.createdAt) }}</template>
           <template v-if="column.key === 'action'">
             <a-button type="link" @click="$router.push(`/test-plan/${record.id}/execute`)">执行</a-button>
           </template>
@@ -69,6 +76,8 @@
 
     <div v-if="ctxMenu.visible" class="context-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
       <div class="ctx-item" @click="startAdd(ctxMenu.nodeId!)"><PlusOutlined /> 新建子目录</div>
+      <div class="ctx-item" @click="startAddSibling(ctxMenu.nodeId!)"><PlusOutlined /> 新建同级目录</div>
+      <div class="ctx-item" @click="startRenameDir(ctxMenu.nodeId!)"><EditOutlined /> 重命名</div>
       <div class="ctx-item danger" @click="delDir(ctxMenu.nodeId!)"><DeleteOutlined /> 删除</div>
     </div>
   </a-layout>
@@ -78,7 +87,7 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue';
+import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons-vue';
 import { directoryApi, testPlanApi, caseSetApi, mindNodeApi, userApi } from '../api';
 import { useAppStore } from '../stores/app';
 import type { DirectoryNode, TestPlan, CaseSet, User, MindNodeData, PageResult } from '../types';
@@ -104,6 +113,8 @@ const executorIds = ref<string[]>([]);
 const addingDir = ref(false);
 const newDirName = ref('');
 const addParentId = ref<string | null>(null);
+const editingDirId = ref<string | null>(null);
+const editingDirName = ref('');
 
 const ctxMenu = ref({ visible: false, x: 0, y: 0, nodeId: null as string | null });
 
@@ -133,11 +144,36 @@ onMounted(() => { loadDirs(); loadPlans(); userApi.listAll().then(r => allUsers.
 function startAddRoot() { addingDir.value = true; addParentId.value = null; newDirName.value = ''; }
 function startAdd(pid: string) { addingDir.value = true; addParentId.value = pid; newDirName.value = ''; ctxMenu.value.visible = false; }
 async function confirmAdd() {
-  if (!newDirName.value.trim() || !store.currentProject) { addingDir.value = false; return; }
-  await directoryApi.create(newDirName.value.trim(), addParentId.value, store.currentProject.id, 'TEST_PLAN');
-  addingDir.value = false; loadDirs();
+  const name = newDirName.value.trim();
+  if (!name || !store.currentProject || !addingDir.value) { addingDir.value = false; return; }
+  addingDir.value = false;
+  newDirName.value = '';
+  await directoryApi.create(name, addParentId.value, store.currentProject.id, 'TEST_PLAN');
+  loadDirs();
 }
-async function delDir(id: string) { ctxMenu.value.visible = false; await directoryApi.delete(id); loadDirs(); }
+function startAddSibling(nodeId: string) {
+  ctxMenu.value.visible = false;
+  const flat = flatDirs(dirs.value);
+  const dir = flat.find(d => d.id === nodeId);
+  addingDir.value = true; addParentId.value = dir?.parentId || null; newDirName.value = '';
+}
+function startRenameDir(id: string) {
+  ctxMenu.value.visible = false;
+  const flat = flatDirs(dirs.value);
+  const dir = flat.find(d => d.id === id);
+  editingDirId.value = id; editingDirName.value = dir?.name || '';
+}
+async function finishEditDir() {
+  if (editingDirId.value && editingDirName.value.trim()) { await directoryApi.rename(editingDirId.value, editingDirName.value.trim()); loadDirs(); }
+  editingDirId.value = null;
+}
+function cancelEditDir() { editingDirId.value = null; }
+function flatDirs(list: DirectoryNode[]): DirectoryNode[] {
+  const r: DirectoryNode[] = [];
+  for (const d of list) { r.push(d); if (d.children?.length) r.push(...flatDirs(d.children)); }
+  return r;
+}
+async function delDir(id: string) { ctxMenu.value.visible = false; await directoryApi.delete(id); message.success('删除成功'); loadDirs(); }
 function showCtx(e: MouseEvent, id: string) { ctxMenu.value = { visible: true, x: e.clientX, y: e.clientY, nodeId: id }; }
 function hideCtx() { ctxMenu.value.visible = false; }
 onMounted(() => document.addEventListener('click', hideCtx));
@@ -168,13 +204,17 @@ onMounted(async () => {
   if (store.currentProject) caseSets.value = (await caseSetApi.list({ projectId: store.currentProject.id, size: 1000 })).data.records;
 });
 
-const columns = [
-  { title: '计划名称', dataIndex: 'name' },
-  { title: '状态', key: 'status', width: 100 },
-  { title: '创建人', dataIndex: 'createdBy', width: 90 },
-  { title: '创建时间', dataIndex: 'createdAt', width: 170 },
+function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 10) : ''; }
+
+const columns = ref([
+  { title: '计划名称', dataIndex: 'name', resizable: true, width: 200 },
+  { title: '状态', key: 'status', resizable: true, width: 100 },
+  { title: '创建人', dataIndex: 'createdByName', resizable: true, width: 100 },
+  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', resizable: true, width: 120 },
   { title: '操作', key: 'action', width: 100 },
-];
+]);
+
+function handleResizeColumn(w: number, col: any) { col.width = w; }
 </script>
 
 <style scoped>
@@ -182,4 +222,9 @@ const columns = [
 .ctx-item { padding: 6px 16px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 8px; }
 .ctx-item:hover { background: #f5f5f5; }
 .ctx-item.danger { color: #ff4d4f; }
+.dir-tree-item { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.dir-tree-item .actions { opacity: 0; transition: opacity 0.15s; }
+.dir-tree-item:hover .actions { opacity: 1; }
+.inline-input { border: 1px solid #d9d9d9; border-radius: 4px; padding: 2px 6px; font-size: 13px; width: 100%; outline: none; }
+.inline-input:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,0.06); }
 </style>

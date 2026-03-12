@@ -1,42 +1,109 @@
 package com.caseflow.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.caseflow.dto.CommentDTO;
 import com.caseflow.entity.Comment;
+import com.caseflow.entity.MindNode;
 import com.caseflow.entity.User;
 import com.caseflow.mapper.CommentMapper;
+import com.caseflow.mapper.MindNodeMapper;
 import com.caseflow.mapper.UserMapper;
 import com.caseflow.service.CommentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> implements CommentService {
     private final UserMapper userMapper;
+    private final MindNodeMapper mindNodeMapper;
 
     @Override
-    public List<Map<String, Object>> getNodeComments(String nodeId) {
-        List<Comment> comments = lambdaQuery().eq(Comment::getNodeId, nodeId).orderByAsc(Comment::getCreatedAt).list();
-        return enrichComments(comments);
+    public List<CommentDTO> getNodeComments(String nodeId) {
+        List<Comment> all = lambdaQuery().eq(Comment::getNodeId, nodeId).orderByAsc(Comment::getCreatedAt).list();
+        return buildTree(all);
     }
+
     @Override
-    public List<Map<String, Object>> getAllComments(String caseSetId) {
-        List<Comment> comments = lambdaQuery().eq(Comment::getCaseSetId, caseSetId).orderByDesc(Comment::getCreatedAt).list();
-        return enrichComments(comments);
+    public List<CommentDTO> getAllComments(String caseSetId, int page, int size) {
+        List<Comment> all = lambdaQuery().eq(Comment::getCaseSetId, caseSetId).orderByDesc(Comment::getCreatedAt).list();
+        List<CommentDTO> tree = buildTree(all);
+        int start = (page - 1) * size;
+        if (start >= tree.size()) return List.of();
+        return tree.subList(start, Math.min(start + size, tree.size()));
     }
-    private List<Map<String, Object>> enrichComments(List<Comment> comments) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Comment c : comments) {
-            Map<String, Object> m = new HashMap<>();
-            m.put("id", c.getId()); m.put("nodeId", c.getNodeId()); m.put("caseSetId", c.getCaseSetId());
-            m.put("parentId", c.getParentId()); m.put("userId", c.getUserId()); m.put("content", c.getContent());
-            m.put("resolved", c.getResolved()); m.put("createdAt", c.getCreatedAt());
-            User u = userMapper.selectById(c.getUserId());
-            m.put("displayName", u != null ? u.getDisplayName() : "未知");
-            m.put("username", u != null ? u.getUsername() : "");
-            result.add(m);
+
+    @Override
+    public int countUnresolvedRootComments(String nodeId) {
+        return Math.toIntExact(lambdaQuery()
+                .eq(Comment::getNodeId, nodeId)
+                .isNull(Comment::getParentId)
+                .eq(Comment::getResolved, 0)
+                .count());
+    }
+
+    private List<CommentDTO> buildTree(List<Comment> comments) {
+        Map<String, User> userCache = new HashMap<>();
+        Map<String, String> nodeTextCache = new HashMap<>();
+        Map<String, List<Comment>> childMap = new HashMap<>();
+        List<Comment> roots = new ArrayList<>();
+
+        Set<String> nodeIds = comments.stream().map(Comment::getNodeId).filter(Objects::nonNull).collect(Collectors.toSet());
+        if (!nodeIds.isEmpty()) {
+            List<MindNode> nodes = mindNodeMapper.selectBatchIds(nodeIds);
+            for (MindNode n : nodes) nodeTextCache.put(n.getId(), n.getText());
         }
-        return result;
+
+        for (Comment c : comments) {
+            if (c.getParentId() == null || c.getParentId().isEmpty()) {
+                roots.add(c);
+            } else {
+                childMap.computeIfAbsent(c.getParentId(), k -> new ArrayList<>()).add(c);
+            }
+        }
+
+        return roots.stream().map(root -> {
+            CommentDTO dto = toDTO(root, userCache);
+            dto.setNodeText(nodeTextCache.getOrDefault(root.getNodeId(), ""));
+            List<Comment> replies = childMap.getOrDefault(root.getId(), List.of());
+            dto.setReplies(replies.stream().map(r -> {
+                CommentDTO rd = toDTO(r, userCache);
+                rd.setNodeText(nodeTextCache.getOrDefault(r.getNodeId(), ""));
+                return rd;
+            }).collect(Collectors.toList()));
+            dto.setReplyCount(replies.size());
+            return dto;
+        }).collect(Collectors.toList());
+    }
+
+    private CommentDTO toDTO(Comment c, Map<String, User> userCache) {
+        CommentDTO dto = new CommentDTO();
+        dto.setId(c.getId());
+        dto.setNodeId(c.getNodeId());
+        dto.setCaseSetId(c.getCaseSetId());
+        dto.setParentId(c.getParentId());
+        dto.setUserId(c.getUserId());
+        dto.setContent(c.getContent());
+        dto.setResolved(c.getResolved());
+        dto.setCreatedAt(c.getCreatedAt());
+
+        if (c.getDisplayName() != null && !c.getDisplayName().isEmpty()) {
+            dto.setDisplayName(c.getDisplayName());
+        } else {
+            User u = userCache.computeIfAbsent(c.getUserId(), id -> userMapper.selectById(id));
+            dto.setDisplayName(u != null ? u.getDisplayName() : "未知");
+            dto.setUsername(u != null ? u.getUsername() : "");
+        }
+
+        User u = userCache.computeIfAbsent(c.getUserId(), id -> userMapper.selectById(id));
+        dto.setUsername(u != null ? u.getUsername() : "");
+        if (dto.getDisplayName() == null || dto.getDisplayName().isEmpty()) {
+            dto.setDisplayName(u != null ? u.getDisplayName() : "未知");
+        }
+
+        dto.setReplies(List.of());
+        return dto;
     }
 }

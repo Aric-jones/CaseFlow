@@ -11,6 +11,7 @@ import com.caseflow.dto.ValidationResult;
 import com.caseflow.entity.*;
 import com.caseflow.mapper.*;
 import com.caseflow.service.CaseSetService;
+import com.caseflow.service.CustomAttributeService;
 import com.caseflow.service.DirectoryService;
 import com.caseflow.service.MindNodeService;
 import lombok.RequiredArgsConstructor;
@@ -29,8 +30,10 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
     private final MindNodeMapper mindNodeMapper;
     private final RecycleBinMapper recycleBinMapper;
     private final ReviewAssignmentMapper reviewAssignmentMapper;
+    private final CommentMapper commentMapper;
     private final DirectoryService directoryService;
     private final MindNodeService mindNodeService;
+    private final CustomAttributeService customAttributeService;
 
     @Override @Transactional
     public CaseSet createCaseSet(CaseSetDTO dto) {
@@ -74,6 +77,9 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
                 reviewAssignmentMapper.insert(ra);
             }
         }
+        if ("NO_REVIEW".equals(status) || "WRITING".equals(status)) {
+            reviewAssignmentMapper.delete(new LambdaQueryWrapper<ReviewAssignment>().eq(ReviewAssignment::getCaseSetId, id));
+        }
         cs.setStatus(status); updateById(cs);
     }
 
@@ -86,75 +92,114 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
     @Override @Transactional
     public CaseSet copyCaseSet(String id, String targetDirectoryId) {
         CaseSet orig = getById(id); if (orig == null) throw new BusinessException("用例集不存在");
-        String uid = CurrentUserUtil.getCurrentUserId();
         CaseSet copy = new CaseSet();
         copy.setName(orig.getName() + "-副本"); copy.setDirectoryId(targetDirectoryId);
         copy.setProjectId(orig.getProjectId()); copy.setStatus("WRITING");
         copy.setRequirementLink(orig.getRequirementLink()); copy.setCaseCount(orig.getCaseCount());
-        copy.setCreatedBy(uid); copy.setDeleted(0); save(copy);
-        List<MindNode> nodes = mindNodeMapper.selectList(new LambdaQueryWrapper<MindNode>().eq(MindNode::getCaseSetId, id).orderByAsc(MindNode::getSortOrder));
-        Map<String, String> idMap = new HashMap<>();
-        for (MindNode n : nodes) {
-            String oldId = n.getId(); n.setId(null); n.setCaseSetId(copy.getId());
-            n.setParentId(n.getParentId() != null ? idMap.get(n.getParentId()) : null);
-            mindNodeMapper.insert(n); idMap.put(oldId, n.getId());
-        }
+        copy.setDeleted(0); save(copy);
+        List<MindNodeDTO> tree = mindNodeService.getTree(id);
+        if (!tree.isEmpty()) copyNodeRecursive(copy.getId(), tree, null);
         return copy;
+    }
+
+    private void copyNodeRecursive(String newCaseSetId, List<MindNodeDTO> nodes, String parentId) {
+        for (int i = 0; i < nodes.size(); i++) {
+            MindNodeDTO dto = nodes.get(i);
+            MindNode node = new MindNode();
+            node.setCaseSetId(newCaseSetId); node.setParentId(parentId);
+            node.setText(dto.getText()); node.setNodeType(dto.getNodeType());
+            node.setSortOrder(i); node.setIsRoot(parentId == null ? 1 : 0);
+            node.setProperties(dto.getProperties());
+            mindNodeMapper.insert(node);
+            if (dto.getChildren() != null && !dto.getChildren().isEmpty()) {
+                copyNodeRecursive(newCaseSetId, dto.getChildren(), node.getId());
+            }
+        }
     }
 
     @Override @Transactional
     public void deleteCaseSet(String id) {
         CaseSet cs = getById(id); if (cs == null) throw new BusinessException("用例集不存在");
-        cs.setDeleted(1); updateById(cs);
+        removeById(id);
+        reviewAssignmentMapper.delete(new LambdaQueryWrapper<ReviewAssignment>().eq(ReviewAssignment::getCaseSetId, id));
         RecycleBin rb = new RecycleBin(); rb.setCaseSetId(id); rb.setOriginalDirectoryId(cs.getDirectoryId());
-        rb.setDeletedBy(CurrentUserUtil.getCurrentUserId()); recycleBinMapper.insert(rb);
+        rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
+        rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
+        recycleBinMapper.insert(rb);
     }
 
     @Override @Transactional
     public void restoreCaseSet(String recycleBinId) {
         RecycleBin rb = recycleBinMapper.selectById(recycleBinId); if (rb == null) throw new BusinessException("记录不存在");
-        CaseSet cs = getById(rb.getCaseSetId()); if (cs == null) throw new BusinessException("用例集不存在");
-        cs.setDeleted(0); cs.setDirectoryId(rb.getOriginalDirectoryId()); updateById(cs);
+        baseMapper.restoreCaseSet(rb.getCaseSetId(), rb.getOriginalDirectoryId());
         recycleBinMapper.deleteById(recycleBinId);
     }
 
     @Override @Transactional
     public void permanentDelete(String recycleBinId) {
         RecycleBin rb = recycleBinMapper.selectById(recycleBinId); if (rb == null) throw new BusinessException("记录不存在");
-        mindNodeMapper.delete(new LambdaQueryWrapper<MindNode>().eq(MindNode::getCaseSetId, rb.getCaseSetId()));
-        baseMapper.deleteById(rb.getCaseSetId()); recycleBinMapper.deleteById(recycleBinId);
+        String csId = rb.getCaseSetId();
+        commentMapper.delete(new LambdaQueryWrapper<com.caseflow.entity.Comment>().eq(com.caseflow.entity.Comment::getCaseSetId, csId));
+        mindNodeMapper.delete(new LambdaQueryWrapper<MindNode>().eq(MindNode::getCaseSetId, csId));
+        reviewAssignmentMapper.delete(new LambdaQueryWrapper<ReviewAssignment>().eq(ReviewAssignment::getCaseSetId, csId));
+        baseMapper.deleteById(csId); recycleBinMapper.deleteById(recycleBinId);
     }
 
     @Override
     public ValidationResult validateCaseSet(String caseSetId) {
+        CaseSet cs = getById(caseSetId);
         List<MindNodeDTO> tree = mindNodeService.getTree(caseSetId);
+        List<com.caseflow.entity.CustomAttribute> attrs = cs != null
+                ? customAttributeService.listByProject(cs.getProjectId()) : List.of();
         ValidationResult result = new ValidationResult();
         List<ValidationResult.ValidationError> errors = new ArrayList<>();
-        if (!tree.isEmpty()) collectLeafPaths(tree.get(0), new ArrayList<>(), errors);
+        if (!tree.isEmpty()) collectLeafPaths(tree.get(0), new ArrayList<>(), errors, attrs);
         result.setErrors(errors); result.setErrorCount(errors.size()); result.setValid(errors.isEmpty());
         return result;
     }
 
-    private void collectLeafPaths(MindNodeDTO node, List<MindNodeDTO> path, List<ValidationResult.ValidationError> errors) {
+    private void collectLeafPaths(MindNodeDTO node, List<MindNodeDTO> path,
+                                  List<ValidationResult.ValidationError> errors,
+                                  List<com.caseflow.entity.CustomAttribute> attrs) {
         path.add(node);
-        if (node.getChildren() == null || node.getChildren().isEmpty()) validateLeafPath(new ArrayList<>(path), errors);
-        else { for (MindNodeDTO c : node.getChildren()) collectLeafPaths(c, new ArrayList<>(path), errors); }
+        if (node.getChildren() == null || node.getChildren().isEmpty()) validateLeafPath(new ArrayList<>(path), errors, attrs);
+        else { for (MindNodeDTO c : node.getChildren()) collectLeafPaths(c, new ArrayList<>(path), errors, attrs); }
     }
 
     @SuppressWarnings("unchecked")
-    private void validateLeafPath(List<MindNodeDTO> path, List<ValidationResult.ValidationError> errors) {
+    private void validateLeafPath(List<MindNodeDTO> path, List<ValidationResult.ValidationError> errors,
+                                  List<com.caseflow.entity.CustomAttribute> attrs) {
+        MindNodeDTO leaf = path.get(path.size()-1);
         if (path.size() < 5) {
-            addErr(errors, path.get(path.size()-1), path, "路径长度不足，至少需要根节点+4个用例节点");
+            addErr(errors, leaf, path, "路径长度不足，至少需要根节点+4个用例节点");
             return;
         }
         int len = path.size();
         MindNodeDTO n4=path.get(len-4), n3=path.get(len-3), n2=path.get(len-2), n1=path.get(len-1);
-        if (!"TITLE".equals(n4.getNodeType())) addErr(errors, n4, path, "倒数第4节点类型应为'用例标题'");
-        if (!"PRECONDITION".equals(n3.getNodeType())) addErr(errors, n3, path, "倒数第3节点类型应为'前置条件'");
-        if (!"STEP".equals(n2.getNodeType())) addErr(errors, n2, path, "倒数第2节点类型应为'步骤'");
-        if (!"EXPECTED".equals(n1.getNodeType())) { addErr(errors, n1, path, "末尾节点类型应为'预期结果'"); return; }
-        Map<String, Object> props = n1.getProperties();
-        if (props == null || !props.containsKey("优先级")) addErr(errors, n1, path, "预期结果节点必须设置优先级");
+        boolean typeOk = true;
+        if (!"TITLE".equals(n4.getNodeType())) { addErr(errors, leaf, path, "倒数第4节点类型应为'用例标题'"); typeOk = false; }
+        if (!"PRECONDITION".equals(n3.getNodeType())) { addErr(errors, leaf, path, "倒数第3节点类型应为'前置条件'"); typeOk = false; }
+        if (!"STEP".equals(n2.getNodeType())) { addErr(errors, leaf, path, "倒数第2节点类型应为'步骤'"); typeOk = false; }
+        if (!"EXPECTED".equals(n1.getNodeType())) { addErr(errors, leaf, path, "末尾节点类型应为'预期结果'"); typeOk = false; }
+        if (!typeOk) return;
+
+        // 检查必填属性
+        MindNodeDTO[] caseNodes = {n4, n3, n2, n1};
+        String[] caseTypes = {"TITLE", "PRECONDITION", "STEP", "EXPECTED"};
+        for (int i = 0; i < 4; i++) {
+            MindNodeDTO nd = caseNodes[i];
+            Map<String, Object> props = nd.getProperties() != null ? nd.getProperties() : Map.of();
+            for (com.caseflow.entity.CustomAttribute attr : attrs) {
+                if (attr.getRequired() == null || attr.getRequired() != 1) continue;
+                if (attr.getNodeTypeLimit() != null && !attr.getNodeTypeLimit().isEmpty()) {
+                    if (!attr.getNodeTypeLimit().contains(caseTypes[i])) continue;
+                }
+                Object val = props.get(attr.getName());
+                if (val == null || val.toString().isEmpty() || (val instanceof List && ((List<?>) val).isEmpty())) {
+                    addErr(errors, leaf, path, nd.getText() + ": 必填属性\"" + attr.getName() + "\"未填写");
+                }
+            }
+        }
     }
 
     private void addErr(List<ValidationResult.ValidationError> errors, MindNodeDTO node, List<MindNodeDTO> path, String msg) {

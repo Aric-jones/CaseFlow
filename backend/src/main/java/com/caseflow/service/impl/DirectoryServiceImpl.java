@@ -22,7 +22,9 @@ public class DirectoryServiceImpl extends ServiceImpl<DirectoryMapper, Directory
         return roots;
     }
     private void buildChildren(Directory dir, Map<String, List<Directory>> childMap) {
-        // children populated via DTO layer in controller
+        List<Directory> children = childMap.getOrDefault(dir.getId(), new ArrayList<>());
+        dir.setChildren(children);
+        children.forEach(c -> buildChildren(c, childMap));
     }
     @Override
     public List<String> getAllDescendantIds(String dirId) {

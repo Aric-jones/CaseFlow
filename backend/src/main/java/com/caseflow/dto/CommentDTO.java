@@ -17,4 +17,6 @@ public class CommentDTO {
     private Integer resolved;
     private LocalDateTime createdAt;
     private List<CommentDTO> replies;
+    private int replyCount;
+    private String nodeText;
 }

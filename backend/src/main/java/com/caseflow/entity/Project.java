@@ -11,7 +11,14 @@ public class Project {
     private String id;
     private String name;
     private String description;
+    @TableField(fill = FieldFill.INSERT)
     private String createdBy;
+    @TableField(fill = FieldFill.INSERT)
+    private String createdByName;
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private String updatedBy;
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private String updatedByName;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

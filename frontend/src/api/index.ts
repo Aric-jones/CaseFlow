@@ -82,7 +82,9 @@ export const mindNodeApi = {
 
 export const commentApi = {
   nodeComments: (nodeId: string): R<CommentData[]> => request.get('/comments/node', { params: { nodeId } }),
-  allComments: (caseSetId: string): R<CommentData[]> => request.get('/comments/all', { params: { caseSetId } }),
+  allComments: (caseSetId: string, page = 1, size = 20): R<CommentData[]> =>
+    request.get('/comments/all', { params: { caseSetId, page, size } }),
+  unresolvedCount: (nodeId: string): R<number> => request.get('/comments/node/count', { params: { nodeId } }),
   add: (nodeId: string, caseSetId: string, content: string, parentId?: string): R<CommentData> =>
     request.post('/comments', { nodeId, caseSetId, content, parentId }),
   update: (id: string, content: string): R<void> => request.put(`/comments/${id}`, { content }),

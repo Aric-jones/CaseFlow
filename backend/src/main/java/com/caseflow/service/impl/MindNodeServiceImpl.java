@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.caseflow.common.BusinessException;
 import com.caseflow.dto.MindNodeDTO;
 import com.caseflow.entity.MindNode;
+import com.caseflow.entity.CaseSet;
+import com.caseflow.mapper.CaseSetMapper;
 import com.caseflow.mapper.CommentMapper;
 import com.caseflow.mapper.MindNodeMapper;
 import com.caseflow.service.MindNodeService;
@@ -17,6 +19,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> implements MindNodeService {
     private final CommentMapper commentMapper;
+    private final CaseSetMapper caseSetMapper;
 
     @Override
     public List<MindNodeDTO> getTree(String caseSetId) {
@@ -55,12 +58,39 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
     public void batchSave(String caseSetId, List<MindNodeDTO> nodes) {
         baseMapper.delete(new LambdaQueryWrapper<MindNode>().eq(MindNode::getCaseSetId, caseSetId));
         if (nodes != null && !nodes.isEmpty()) saveRecursive(caseSetId, nodes, null);
+        int validCount = nodes != null && !nodes.isEmpty() ? countValidFromDTO(nodes.get(0)) : 0;
+        CaseSet cs = caseSetMapper.selectById(caseSetId);
+        if (cs != null) {
+            cs.setCaseCount(validCount);
+            caseSetMapper.updateById(cs);
+        }
+    }
+
+    private int countValidFromDTO(MindNodeDTO node) {
+        int[] count = {0};
+        countValidDTORecursive(node, new ArrayList<>(), count);
+        return count[0];
+    }
+    private void countValidDTORecursive(MindNodeDTO node, List<MindNodeDTO> path, int[] count) {
+        path.add(node);
+        if (node.getChildren() == null || node.getChildren().isEmpty()) {
+            if (path.size() >= 5) {
+                int len = path.size();
+                if ("TITLE".equals(path.get(len-4).getNodeType()) && "PRECONDITION".equals(path.get(len-3).getNodeType())
+                    && "STEP".equals(path.get(len-2).getNodeType()) && "EXPECTED".equals(path.get(len-1).getNodeType())) count[0]++;
+            }
+        } else {
+            for (MindNodeDTO c : node.getChildren()) countValidDTORecursive(c, new ArrayList<>(path), count);
+        }
     }
 
     private void saveRecursive(String caseSetId, List<MindNodeDTO> nodes, String parentId) {
         for (int i = 0; i < nodes.size(); i++) {
             MindNodeDTO dto = nodes.get(i);
             MindNode node = new MindNode();
+            if (dto.getId() != null && !dto.getId().isEmpty() && dto.getId().length() == 32) {
+                node.setId(dto.getId());
+            }
             node.setCaseSetId(caseSetId); node.setParentId(parentId);
             node.setText(dto.getText()); node.setNodeType(dto.getNodeType());
             node.setSortOrder(i);

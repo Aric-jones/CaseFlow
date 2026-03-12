@@ -17,8 +17,15 @@ public class CaseSetController {
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
         return Result.ok(caseSetService.listCaseSets(directoryId, projectId, keyword, status, page, size));
     }
-    @GetMapping("/{id}") public Result<?> get(@PathVariable String id) { return Result.ok(caseSetService.getById(id)); }
-    @PostMapping public Result<?> create(@RequestBody CaseSetDTO dto) { return Result.ok(caseSetService.createCaseSet(dto)); }
+    @GetMapping("/{id}") public Result<?> get(@PathVariable String id) {
+        var cs = caseSetService.getById(id);
+        if (cs == null) return Result.error("用例集不存在");
+        return Result.ok(cs);
+    }
+    @PostMapping public Result<?> create(@RequestBody CaseSetDTO dto) {
+        if (dto.getName() == null || dto.getName().isBlank()) return Result.error("用例集名称不能为空");
+        return Result.ok(caseSetService.createCaseSet(dto));
+    }
     @PutMapping("/{id}/status") public Result<?> updateStatus(@PathVariable String id, @RequestParam String status, @RequestBody(required = false) List<String> reviewerIds) {
         caseSetService.updateStatus(id, status, reviewerIds); return Result.ok();
     }
@@ -27,7 +34,9 @@ public class CaseSetController {
     @DeleteMapping("/{id}") public Result<?> delete(@PathVariable String id) { caseSetService.deleteCaseSet(id); return Result.ok(); }
     @GetMapping("/{id}/validate") public Result<?> validate(@PathVariable String id) { return Result.ok(caseSetService.validateCaseSet(id)); }
     @PutMapping("/{id}/requirement") public Result<?> updateReq(@PathVariable String id, @RequestParam String link) {
-        var cs = caseSetService.getById(id); if (cs != null) { cs.setRequirementLink(link); caseSetService.updateById(cs); } return Result.ok();
+        var cs = caseSetService.getById(id);
+        if (cs == null) return Result.error("用例集不存在");
+        cs.setRequirementLink(link); caseSetService.updateById(cs); return Result.ok();
     }
     @PostMapping("/import") public Result<?> importExcel(@RequestParam("file") MultipartFile file, @RequestParam String directoryId, @RequestParam String projectId) {
         caseSetService.importFromExcel(file, directoryId, projectId); return Result.ok();

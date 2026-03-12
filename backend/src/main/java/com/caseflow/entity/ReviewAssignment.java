@@ -11,6 +11,8 @@ public class ReviewAssignment {
     private String id;
     private String caseSetId;
     private String reviewerId;
+    private String reviewerName;
+    private String remark;
     private String status;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

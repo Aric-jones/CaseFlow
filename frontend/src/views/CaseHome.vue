@@ -4,7 +4,7 @@
       <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center">
         <strong>用例目录</strong>
         <a-space :size="4">
-          <a-button size="small" type="primary" @click="showCreateCase = true"><PlusOutlined /> 新建用例</a-button>
+          <a-button size="small" type="primary" @click="openCreateCase"><PlusOutlined /> 新建用例</a-button>
           <a-button size="small" @click="showImport = true"><ImportOutlined /></a-button>
         </a-space>
       </div>
@@ -42,20 +42,22 @@
 
     <a-layout-content style="padding: 24px">
       <div style="display: flex; gap: 12px; margin-bottom: 16px">
-        <a-input-search v-model:value="keyword" placeholder="搜索用例集名称" style="width: 280px" @search="loadCases" />
+        <a-input-search v-model:value="keyword" placeholder="搜索用例集名称" style="width: 280px" @search="() => loadCases(1)" />
         <a-select v-model:value="statusFilter" placeholder="状态筛选" allow-clear style="width: 130px"
-          :options="[{ value: 'WRITING', label: '编写中' }, { value: 'PENDING_REVIEW', label: '待评审' }, { value: 'NO_REVIEW', label: '无需评审' }]" />
-        <a-button type="primary" @click="loadCases"><SearchOutlined /> 搜索</a-button>
+          :options="[{ value: 'WRITING', label: '编写中' }, { value: 'PENDING_REVIEW', label: '待评审' }, { value: 'NO_REVIEW', label: '无需评审' }, { value: 'APPROVED', label: '审核通过' }]" />
+        <a-button type="primary" @click="() => loadCases(1)"><SearchOutlined /> 搜索</a-button>
       </div>
       <a-table :columns="columns" :data-source="caseData.records" row-key="id" :loading="loading"
-        :pagination="{ current: caseData.current, total: caseData.total, pageSize: 20, onChange: loadCases }" size="middle" :scroll="{ x: 1200 }">
+        :pagination="{ current: caseData.current, total: caseData.total, pageSize: 20, onChange: (p: number) => loadCases(p) }"
+        size="middle" :scroll="{ x: 1200 }" @resizeColumn="handleResizeColumn">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'"><a @click="$router.push(`/mind-map/${record.id}`)">{{ record.name }}</a></template>
           <template v-if="column.key === 'status'"><a-tag :color="statusColor(record.status)">{{ statusLabel(record.status) }}</a-tag></template>
+          <template v-if="column.key === 'createdAt'">{{ formatTime(record.createdAt) }}</template>
           <template v-if="column.key === 'requirementLink'"><a v-if="record.requirementLink" :href="record.requirementLink" target="_blank">查看需求</a><span v-else>-</span></template>
           <template v-if="column.key === 'action'">
             <a-space :size="0">
-              <a-button v-if="record.status === 'PENDING_REVIEW'" type="link" size="small" @click="$router.push(`/review/${record.id}`)">评审</a-button>
+              <a-button type="link" size="small" @click="$router.push(`/review/${record.id}`)">评审</a-button>
               <a-button type="link" size="small" @click="$router.push(`/mind-map/${record.id}`)">编辑</a-button>
               <a-dropdown>
                 <a-button type="link" size="small"><MoreOutlined /></a-button>
@@ -75,13 +77,19 @@
 
     <div v-if="contextMenu.visible" class="context-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }">
       <div class="ctx-item" @click="startAddChild(contextMenu.nodeId!)"><PlusOutlined /> 新建子目录</div>
+      <div class="ctx-item" @click="startAddSibling(contextMenu.nodeId!)"><PlusOutlined /> 新建同级目录</div>
       <div class="ctx-item" @click="startRenameDir(contextMenu.nodeId!)"><EditOutlined /> 重命名</div>
       <div class="ctx-item danger" @click="deleteDir(contextMenu.nodeId!)"><DeleteOutlined /> 删除</div>
     </div>
 
     <a-modal v-model:open="showCreateCase" title="新建用例" @ok="createCase">
       <a-form layout="vertical">
-        <a-form-item label="用例集名称"><a-input v-model:value="newCaseName" placeholder="输入用例集名称" /></a-form-item>
+        <a-form-item label="用例集名称" required><a-input v-model:value="newCaseName" placeholder="输入用例集名称" /></a-form-item>
+        <a-form-item label="所属目录" required>
+          <a-tree-select v-model:value="newCaseDirId" style="width: 100%" placeholder="选择目录"
+            :tree-data="treeData" :field-names="{ children: 'children', label: 'title', value: 'key' }"
+            tree-default-expand-all allow-clear />
+        </a-form-item>
         <a-form-item label="关联需求（可选）"><a-input v-model:value="newCaseLink" placeholder="输入需求链接" /></a-form-item>
       </a-form>
     </a-modal>
@@ -94,6 +102,10 @@
     <a-modal v-model:open="showMove" title="移动用例集" @ok="confirmMove">
       <a-tree :tree-data="treeData" :selected-keys="moveTarget ? [moveTarget] : []"
         @select="(keys: any) => moveTarget = keys[0] || null" default-expand-all block-node />
+    </a-modal>
+    <a-modal v-model:open="showCopy" title="复制用例集 - 选择目标目录" @ok="confirmCopy">
+      <a-tree :tree-data="treeData" :selected-keys="copyTarget ? [copyTarget] : []"
+        @select="(keys: any) => copyTarget = keys[0] || null" default-expand-all block-node />
     </a-modal>
   </a-layout>
 </template>
@@ -126,8 +138,12 @@ const showImport = ref(false);
 const showMove = ref(false);
 const newCaseName = ref('');
 const newCaseLink = ref('');
+const newCaseDirId = ref<string | null>(null);
 const movingId = ref<string | null>(null);
 const moveTarget = ref<string | null>(null);
+const showCopy = ref(false);
+const copyingId = ref<string | null>(null);
+const copyTarget = ref<string | null>(null);
 const contextMenu = ref({ visible: false, x: 0, y: 0, nodeId: null as string | null });
 
 function dirToTree(list: DirectoryNode[]): any[] {
@@ -153,19 +169,30 @@ async function loadCases(page = 1) {
 function onSelectDir(keys: any) { selectedDir.value = keys[0] || null; }
 watch(() => store.currentProject, () => { loadDirs(); loadCases(); });
 watch(selectedDir, () => loadCases());
+watch(statusFilter, () => loadCases());
 onMounted(() => { loadDirs(); loadCases(); });
 
 function startAddRoot() { addingRoot.value = true; newDirName.value = ''; }
 function startAddChild(parentId: string) { addingChild.value = true; addingParentId.value = parentId; newDirName.value = ''; contextMenu.value.visible = false; }
 async function confirmAddRoot() {
-  if (!newDirName.value.trim() || !store.currentProject) { addingRoot.value = false; return; }
-  await directoryApi.create(newDirName.value.trim(), null, store.currentProject.id, 'CASE');
-  addingRoot.value = false; newDirName.value = ''; loadDirs();
+  const name = newDirName.value.trim();
+  if (!name || !store.currentProject || !addingRoot.value) { addingRoot.value = false; return; }
+  addingRoot.value = false; newDirName.value = '';
+  await directoryApi.create(name, null, store.currentProject.id, 'CASE');
+  loadDirs();
 }
 async function confirmAddChild() {
-  if (!newDirName.value.trim() || !store.currentProject) { addingChild.value = false; return; }
-  await directoryApi.create(newDirName.value.trim(), addingParentId.value, store.currentProject.id, 'CASE');
-  addingChild.value = false; newDirName.value = ''; loadDirs();
+  const name = newDirName.value.trim();
+  if (!name || !store.currentProject || !addingChild.value) { addingChild.value = false; return; }
+  addingChild.value = false; newDirName.value = '';
+  await directoryApi.create(name, addingParentId.value, store.currentProject.id, 'CASE');
+  loadDirs();
+}
+function startAddSibling(nodeId: string) {
+  contextMenu.value.visible = false;
+  const flat = flatDirs(dirs.value);
+  const dir = flat.find(d => d.id === nodeId);
+  addingChild.value = true; addingParentId.value = dir?.parentId || null; newDirName.value = '';
 }
 function startRenameDir(id: string) {
   contextMenu.value.visible = false;
@@ -192,18 +219,28 @@ function flatDirs(list: DirectoryNode[]): DirectoryNode[] {
   return r;
 }
 
+function openCreateCase() {
+  newCaseDirId.value = selectedDir.value || null;
+  showCreateCase.value = true;
+}
 async function createCase() {
   if (!newCaseName.value.trim() || !store.currentProject) return;
-  const targetDir = selectedDir.value || dirs.value[0]?.id;
-  if (!targetDir) { message.error('请先创建目录'); return; }
+  const targetDir = newCaseDirId.value || selectedDir.value || dirs.value[0]?.id;
+  if (!targetDir) { message.error('请先选择一个目录'); return; }
   const res = await caseSetApi.create({ name: newCaseName.value, directoryId: targetDir, projectId: store.currentProject.id, requirementLink: newCaseLink.value });
-  showCreateCase.value = false; newCaseName.value = ''; newCaseLink.value = '';
+  showCreateCase.value = false; newCaseName.value = ''; newCaseLink.value = ''; newCaseDirId.value = null;
   router.push(`/mind-map/${res.data.id}`);
 }
 function handleCaseAction(key: string, record: CaseSet) {
-  if (key === 'copy') caseSetApi.copy(record.id, record.directoryId).then(() => { message.success('复制成功'); loadCases(); });
+  if (key === 'copy') { copyingId.value = record.id; copyTarget.value = record.directoryId; showCopy.value = true; }
   if (key === 'move') { movingId.value = record.id; showMove.value = true; }
   if (key === 'delete') Modal.confirm({ title: '确认删除?', content: '将移入回收站', onOk: () => caseSetApi.delete(record.id).then(() => { message.success('已移入回收站'); loadCases(); }) });
+}
+async function confirmCopy() {
+  if (copyingId.value && copyTarget.value) {
+    await caseSetApi.copy(copyingId.value, copyTarget.value);
+    message.success('复制成功'); showCopy.value = false; loadCases();
+  }
 }
 async function confirmMove() {
   if (movingId.value && moveTarget.value) { await caseSetApi.move(movingId.value, moveTarget.value); message.success('移动成功'); showMove.value = false; loadCases(); }
@@ -215,19 +252,32 @@ async function handleImport(file: File) {
   await caseSetApi.importExcel(file, targetDir, store.currentProject.id);
   message.success('导入成功'); showImport.value = false; loadCases(); return false;
 }
-function statusLabel(s: string) { return s === 'WRITING' ? '编写中' : s === 'PENDING_REVIEW' ? '待评审' : '无需评审'; }
-function statusColor(s: string) { return s === 'WRITING' ? 'processing' : s === 'PENDING_REVIEW' ? 'warning' : 'default'; }
+function statusLabel(s: string) {
+  const m: Record<string, string> = { WRITING: '编写中', PENDING_REVIEW: '待评审', NO_REVIEW: '无需评审', APPROVED: '审核通过' };
+  return m[s] || s;
+}
+function statusColor(s: string) {
+  const m: Record<string, string> = { WRITING: 'processing', PENDING_REVIEW: 'warning', NO_REVIEW: 'default', APPROVED: 'success' };
+  return m[s] || 'default';
+}
 
-const columns = [
-  { title: '用例集名称', dataIndex: 'name', key: 'name' },
-  { title: '用例数量', dataIndex: 'caseCount', key: 'caseCount', width: 90 },
-  { title: '状态', key: 'status', width: 110 },
-  { title: '创建人', dataIndex: 'createdBy', width: 90 },
-  { title: '更新时间', dataIndex: 'updatedAt', width: 170 },
-  { title: '创建时间', dataIndex: 'createdAt', width: 170 },
-  { title: '关联需求', key: 'requirementLink', width: 100 },
-  { title: '操作', key: 'action', width: 180, fixed: 'right' as const },
-];
+const columns = ref([
+  { title: '用例集名称', dataIndex: 'name', key: 'name', resizable: true, width: 200 },
+  { title: '用例数量', dataIndex: 'caseCount', key: 'caseCount', resizable: true, width: 90 },
+  { title: '状态', key: 'status', resizable: true, width: 110 },
+  { title: '创建人', dataIndex: 'createdByName', key: 'createdByName', resizable: true, width: 100 },
+  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', resizable: true, width: 120 },
+  { title: '关联需求', key: 'requirementLink', resizable: true, width: 100 },
+  { title: '操作', key: 'action', width: 200, fixed: 'right' as const },
+]);
+
+function handleResizeColumn(w: number, col: any) {
+  col.width = w;
+}
+function formatTime(t: string) {
+  if (!t) return '';
+  return t.replace('T', ' ').substring(0, 10);
+}
 </script>
 
 <style scoped>
@@ -235,4 +285,9 @@ const columns = [
 .ctx-item { padding: 6px 16px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 8px; }
 .ctx-item:hover { background: #f5f5f5; }
 .ctx-item.danger { color: #ff4d4f; }
+.dir-tree-item { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.dir-tree-item .actions { opacity: 0; transition: opacity 0.15s; }
+.dir-tree-item:hover .actions { opacity: 1; }
+.inline-input { border: 1px solid #d9d9d9; border-radius: 4px; padding: 2px 6px; font-size: 13px; width: 100%; outline: none; }
+.inline-input:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,0.06); }
 </style>

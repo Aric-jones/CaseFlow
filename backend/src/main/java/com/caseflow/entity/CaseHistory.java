@@ -13,5 +13,7 @@ public class CaseHistory {
     private String snapshot;
     private String createdBy;
     @TableField(fill = FieldFill.INSERT)
+    private String createdByName;
+    @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

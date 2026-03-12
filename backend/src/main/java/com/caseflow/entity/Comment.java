@@ -13,6 +13,7 @@ public class Comment {
     private String caseSetId;
     private String parentId;
     private String userId;
+    private String displayName;
     private String content;
     private Integer resolved;
     @TableField(fill = FieldFill.INSERT)

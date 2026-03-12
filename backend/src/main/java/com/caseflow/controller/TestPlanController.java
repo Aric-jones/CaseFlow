@@ -9,6 +9,7 @@ import com.caseflow.mapper.TestPlanCaseMapper;
 import com.caseflow.mapper.TestPlanExecutorMapper;
 import com.caseflow.service.TestPlanService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
@@ -23,12 +24,19 @@ public class TestPlanController {
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
         return Result.ok(testPlanService.listPlans(projectId, keyword, page, size));
     }
-    @GetMapping("/{id}") public Result<?> get(@PathVariable String id) { return Result.ok(testPlanService.getById(id)); }
+    @GetMapping("/{id}") public Result<?> get(@PathVariable String id) {
+        TestPlan plan = testPlanService.getById(id);
+        if (plan == null) return Result.error("测试计划不存在");
+        return Result.ok(plan);
+    }
 
     @SuppressWarnings("unchecked")
+    @Transactional
     @PostMapping public Result<?> create(@RequestBody Map<String, Object> body) {
+        String name = (String) body.get("name");
+        if (name == null || name.isBlank()) return Result.error("计划名称不能为空");
         TestPlan plan = new TestPlan();
-        plan.setName((String) body.get("name")); plan.setDirectoryId((String) body.get("directoryId"));
+        plan.setName(name); plan.setDirectoryId((String) body.get("directoryId"));
         plan.setProjectId((String) body.get("projectId")); plan.setStatus("NOT_STARTED");
         plan.setCreatedBy(CurrentUserUtil.getCurrentUserId());
         testPlanService.save(plan);

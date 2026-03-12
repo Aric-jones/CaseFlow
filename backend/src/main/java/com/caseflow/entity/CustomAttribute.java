@@ -19,6 +19,11 @@ public class CustomAttribute {
     private String nodeTypeLimit;
     private String displayType;
     private Integer sortOrder;
+    private Integer required;
+    @TableField(fill = FieldFill.INSERT)
+    private String createdBy;
+    @TableField(fill = FieldFill.INSERT)
+    private String createdByName;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

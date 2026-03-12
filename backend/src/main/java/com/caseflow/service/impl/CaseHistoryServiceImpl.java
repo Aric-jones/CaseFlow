@@ -21,7 +21,7 @@ public class CaseHistoryServiceImpl extends ServiceImpl<CaseHistoryMapper, CaseH
     private final MindNodeService mindNodeService;
     private final ObjectMapper objectMapper;
     private static final int INTERVAL_MINUTES = 15;
-    private static final int MAX_VERSIONS = 20;
+    private static final int MAX_VERSIONS = 3;
 
     @Override @SneakyThrows
     public void saveSnapshot(String caseSetId) {

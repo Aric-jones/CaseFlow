@@ -9,6 +9,7 @@ public class CustomAttributeDTO {
     private String name;
     private List<String> options;
     private Integer multiSelect;
+    private Integer required;
     private String nodeTypeLimit;
     private String displayType;
 }

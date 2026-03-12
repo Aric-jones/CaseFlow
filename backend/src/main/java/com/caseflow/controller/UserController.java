@@ -17,12 +17,20 @@ public class UserController {
     }
     @GetMapping("/all") public Result<?> listAll() { return Result.ok(userService.list()); }
     @PostMapping public Result<?> create(@RequestBody User user) {
+        if (user.getUsername() == null || user.getUsername().isBlank()) return Result.error("用户名不能为空");
         user.setPassword(passwordEncoder.encode(user.getPassword() != null ? user.getPassword() : "wps123456"));
         userService.save(user); user.setPassword(null); return Result.ok(user);
     }
     @PutMapping("/{id}") public Result<?> update(@PathVariable String id, @RequestBody User user) {
-        user.setId(id); if (user.getPassword() != null) user.setPassword(passwordEncoder.encode(user.getPassword()));
-        userService.updateById(user); return Result.ok(user);
+        User existing = userService.getById(id);
+        if (existing == null) return Result.error("用户不存在");
+        if (user.getDisplayName() != null) existing.setDisplayName(user.getDisplayName());
+        if (user.getRole() != null) existing.setRole(user.getRole());
+        if (user.getStatus() != null) existing.setStatus(user.getStatus());
+        if (user.getPassword() != null && !user.getPassword().isBlank()) existing.setPassword(passwordEncoder.encode(user.getPassword()));
+        userService.updateById(existing);
+        existing.setPassword(null);
+        return Result.ok(existing);
     }
     @PutMapping("/{id}/status") public Result<?> toggleStatus(@PathVariable String id) { userService.toggleStatus(id); return Result.ok(); }
 }

@@ -15,7 +15,14 @@ public class CaseSet {
     private String status;
     private String requirementLink;
     private Integer caseCount;
+    @TableField(fill = FieldFill.INSERT)
     private String createdBy;
+    @TableField(fill = FieldFill.INSERT)
+    private String createdByName;
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private String updatedBy;
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private String updatedByName;
     private Integer deleted;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

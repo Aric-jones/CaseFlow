@@ -12,5 +12,6 @@ public class RecycleBin {
     private String caseSetId;
     private String originalDirectoryId;
     private String deletedBy;
+    private String deletedByName;
     private LocalDateTime deletedAt;
 }
