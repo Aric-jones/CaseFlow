@@ -14,8 +14,7 @@
           <strong>用例目录</strong>
         </a-space>
         <a-space :size="4">
-          <a-button size="small" type="primary" @click="openCreateCase"><PlusOutlined /> 新建用例</a-button>
-          <a-button size="small" @click="showImport = true"><ImportOutlined /></a-button>
+          <a-button size="small" @click="showImport = true"><ImportOutlined /> 导入</a-button>
         </a-space>
       </div>
 
@@ -54,11 +53,13 @@
       <div v-if="siderCollapsed" style="margin-bottom: 12px">
         <a-button size="small" @click="toggleSider">展开目录</a-button>
       </div>
-      <div style="display: flex; gap: 12px; margin-bottom: 16px">
+      <div style="display: flex; gap: 12px; margin-bottom: 16px; align-items: center">
         <a-input v-model:value="keyword" placeholder="搜索用例集名称" style="width: 280px" />
         <a-select v-model:value="statusFilter" placeholder="状态筛选" allow-clear style="width: 130px"
           :options="[{ value: 'WRITING', label: '编写中' }, { value: 'PENDING_REVIEW', label: '待评审' }, { value: 'NO_REVIEW', label: '无需评审' }, { value: 'APPROVED', label: '审核通过' }]" />
         <a-button type="primary" @click="() => loadCases(1)"><SearchOutlined /> 搜索</a-button>
+        <div style="flex: 1" />
+        <a-button type="primary" @click="openCreateCase"><PlusOutlined /> 新建用例集</a-button>
       </div>
       <a-table :columns="columns" :data-source="caseData.records" row-key="id" :loading="loading"
         :pagination="{ current: caseData.current, total: caseData.total, pageSize: 20, onChange: (p: number) => loadCases(p) }"

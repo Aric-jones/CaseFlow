@@ -22,6 +22,9 @@
         <a-tooltip title="添加同级(Enter)"><a-button type="text" @click="execCmd('INSERT_NODE')"><PlusSquareOutlined /></a-button></a-tooltip>
         <a-tooltip title="删除(Delete)"><a-button type="text" danger @click="execCmd('REMOVE_NODE')"><DeleteOutlined /></a-button></a-tooltip>
         <a-divider type="vertical" />
+        <a-tooltip title="复制选中节点(Ctrl+C)"><a-button type="text" @click="copySelectedNodes"><CopyOutlined /></a-button></a-tooltip>
+        <a-tooltip title="粘贴到当前节点(Ctrl+V)"><a-button type="text" @click="pasteNodes"><SnippetsOutlined /></a-button></a-tooltip>
+        <a-divider type="vertical" />
         <a-tooltip title="查找替换"><a-button type="text" @click="toggleSearch"><SearchOutlined /></a-button></a-tooltip>
         <a-tooltip title="规范检查"><a-button type="text" @click="openValidation"><ToolOutlined /></a-button></a-tooltip>
         <a-tooltip title="评论"><a-button type="text" @click="openComments"><CommentOutlined /></a-button></a-tooltip>
@@ -136,64 +139,14 @@
 
           <!-- ===== 评论 Tab ===== -->
           <template v-if="panelTab === 'comments'">
-            <a-space style="margin-bottom: 12px">
-              <a-button :type="commentTab === 'node' ? 'primary' : 'default'" size="small"
-                @click="commentTab = 'node'">当前节点</a-button>
-              <a-button :type="commentTab === 'all' ? 'primary' : 'default'" size="small"
-                @click="commentTab = 'all'">全部评论</a-button>
-            </a-space>
-
-            <div class="comments-section">
-              <template v-if="!(commentTab === 'node' ? nodeComments : allComments).length">
-                <div class="empty-hint" style="height: auto; padding: 32px 0">暂无评论</div>
-              </template>
-              <div v-for="c in (commentTab === 'node' ? nodeComments : allComments)" :key="c.id" class="cmt-card">
-                <div v-if="c.nodeText && commentTab === 'all'" class="cmt-node-link" @click="navigateToCommentNode(c.nodeId)">
-                  <NodeIndexOutlined style="margin-right: 4px" />{{ c.nodeText }}
-                </div>
-                <div class="cmt-main">
-                  <div class="cmt-avatar">{{ (c.displayName || '?')[0] }}</div>
-                  <div class="cmt-content">
-                    <div class="cmt-meta"><strong>{{ c.displayName }}</strong><span class="cmt-time">{{ formatTime(c.createdAt) }}</span></div>
-                    <div v-if="editingCommentId !== c.id" class="cmt-text">{{ c.content }}</div>
-                    <div v-else style="margin-top: 4px">
-                      <a-textarea v-model:value="editingCommentContent" :auto-size="{ minRows: 1, maxRows: 4 }" />
-                      <a-space style="margin-top: 4px"><a-button size="small" type="primary" @click="saveEditComment">保存</a-button><a-button size="small" @click="editingCommentId = null">取消</a-button></a-space>
-                    </div>
-                    <div class="cmt-actions">
-                      <span @click="startReply(c)">回复</span>
-                      <span @click="startEditComment(c)">编辑</span>
-                      <a-popconfirm title="确定删除?" @confirm="deleteComment(c.id)"><span class="danger">删除</span></a-popconfirm>
-                      <span v-if="!c.parentId && !c.resolved" class="resolve-btn" @click="resolveComment(c.id)">标记解决</span>
-                      <span v-if="!c.parentId && c.resolved" class="resolved" @click="resolveComment(c.id)">已解决</span>
-                    </div>
-                  </div>
-                </div>
-                <div v-if="c.replies?.length" class="cmt-replies">
-                  <div v-for="r in c.replies" :key="r.id" class="cmt-main cmt-reply">
-                    <div class="cmt-avatar sm">{{ (r.displayName || '?')[0] }}</div>
-                    <div class="cmt-content">
-                      <div class="cmt-meta"><strong>{{ r.displayName }}</strong><span class="cmt-time">{{ formatTime(r.createdAt) }}</span></div>
-                      <div class="cmt-text">{{ r.content }}</div>
-                      <div class="cmt-actions">
-                        <span @click="startEditComment(r)">编辑</span>
-                        <a-popconfirm title="确定删除?" @confirm="deleteComment(r.id)"><span class="danger">删除</span></a-popconfirm>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div v-if="replyingTo?.id === c.id" class="cmt-reply-box">
-                  <a-textarea v-model:value="replyContent" placeholder="回复..." :auto-size="{ minRows: 1, maxRows: 3 }" @pressEnter.exact.prevent="submitReply(c)" />
-                  <a-space style="margin-top: 4px"><a-button size="small" type="primary" @click="submitReply(c)">发送</a-button><a-button size="small" @click="replyingTo = null; replyContent = ''">取消</a-button></a-space>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="commentTab === 'node' && activeNodeInstance" class="cmt-input-area">
-              <a-textarea v-model:value="newComment" placeholder="输入评论，回车发送..."
-                :auto-size="{ minRows: 2, maxRows: 4 }" @pressEnter.exact.prevent="addComment" />
-              <a-button type="primary" size="small" style="margin-top: 4px" @click="addComment">发送</a-button>
-            </div>
+            <CommentPanel
+              ref="commentPanelRef"
+              :node-id="activeNodeInstance?.nodeData?.data?._raw?.id ?? null"
+              :case-set-id="caseSetId"
+              :show-all-tab="true"
+              @navigate="navigateToCommentNode"
+              @count-changed="onCommentCountChanged"
+            />
           </template>
         </div>
       </div>
@@ -240,7 +193,8 @@ import { message } from 'ant-design-vue';
 import {
   ArrowLeftOutlined, SaveOutlined, HistoryOutlined, SearchOutlined,
   ToolOutlined, CommentOutlined, CheckCircleOutlined,
-  PlusOutlined, PlusSquareOutlined, DeleteOutlined, CloseOutlined, NodeIndexOutlined,
+  PlusOutlined, PlusSquareOutlined, DeleteOutlined, CloseOutlined,
+  CopyOutlined, SnippetsOutlined,
 } from '@ant-design/icons-vue';
 import MindMap from 'simple-mind-map';
 import Select from 'simple-mind-map/src/plugins/Select';
@@ -249,6 +203,7 @@ import { caseSetApi, mindNodeApi, commentApi, caseHistoryApi, userApi, customAtt
 import { useAppStore } from '../stores/app';
 import type { CaseSet, MindNodeData, CaseHistory, User, CustomAttribute } from '../types';
 import { NODE_TYPE_LABEL, addAllCustomLabels, setupMouseOverrides } from '../composables/useMindMap';
+import CommentPanel from '../components/CommentPanel.vue';
 
 MindMap.usePlugin(Select);
 MindMap.usePlugin(Drag);
@@ -260,6 +215,7 @@ const caseSetId = String(route.params.caseSetId);
 
 const mindMapContainer = ref<HTMLDivElement | null>(null);
 let mindMapInstance: any = null;
+let initialViewSet = false; // 根节点初始位置只设置一次
 
 // === 基础状态 ===
 const caseSet = ref<CaseSet | null>(null);
@@ -286,14 +242,8 @@ const valErrors = ref<{ uid: string; message: string }[]>([]);
 const valIdx = ref(-1);
 const valChecked = ref(false);
 
-// === 评论 ===
-const commentTab = ref<'node' | 'all'>('node');
-const nodeComments = ref<any[]>([]);
-const allComments = ref<any[]>([]);
-const newComment = ref('');
-const replyingTo = ref<any>(null);
-const replyContent = ref('');
-const collapsedComments = ref<Record<string, boolean>>({});
+// === 评论面板 ===
+const commentPanelRef = ref<InstanceType<typeof CommentPanel> | null>(null);
 
 // === 历史 ===
 const showHistory = ref(false);
@@ -308,6 +258,12 @@ const selectedReviewers = ref<string[]>([]);
 let autoSaveTimer: ReturnType<typeof setInterval> | null = null;
 let historyTimer: ReturnType<typeof setInterval> | null = null;
 let cleanupMouseOverrides: (() => void) | null = null;
+
+function onKeyboardCopyPaste(e: KeyboardEvent) {
+  if (!e.ctrlKey || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  if (e.key === 'c') { e.preventDefault(); copySelectedNodes(); }
+  if (e.key === 'v') { e.preventDefault(); pasteNodes(); }
+}
 
 // === 状态计算 ===
 const statusLabel = computed(() => {
@@ -353,8 +309,7 @@ function openValidation() {
 function openComments() {
   rightPanelOpen.value = true;
   panelTab.value = 'comments';
-  if (activeNodeInstance.value) loadNodeComments();
-  else loadAllComments();
+  nextTick(() => commentPanelRef.value?.refresh());
 }
 
 function openHistory() {
@@ -530,30 +485,28 @@ function syncToNode(checkAutoChain = false) {
   requestAnimationFrame(refreshLabels);
 }
 
+/**
+ * 选中 TITLE 类型后，检查直接子节点：
+ * - 至少有 3 个直接子节点
+ * - 且前 3 个都没有 nodeType
+ * 满足以上条件才自动赋予 PRECONDITION / STEP / EXPECTED
+ */
 function autoAssignCaseChain(titleNode: any) {
-  const chainTypes = ['PRECONDITION', 'STEP', 'EXPECTED'];
-  const chainLabels = ['前置条件', '步骤', '预期结果'];
-  let current = titleNode;
+  const children: any[] = titleNode.children || [];
+  if (children.length < 3) return;
+  const first3 = children.slice(0, 3);
+  // 任意一个已有 nodeType，则不干预
+  if (first3.some((c: any) => c.nodeData?.data?._raw?.nodeType)) return;
+
+  const types = ['PRECONDITION', 'STEP', 'EXPECTED'];
   for (let i = 0; i < 3; i++) {
-    let child = current.children?.[0];
-    if (!child) {
-      mindMapInstance.execCommand('INSERT_CHILD_NODE', current, false);
-      child = current.children?.[0];
-      if (!child) break;
-    }
+    const child = first3[i];
     let raw = child.nodeData?.data?._raw;
     if (!raw) {
       raw = { text: child.nodeData?.data?.text || '', nodeType: null, properties: {} };
       if (child.nodeData?.data) child.nodeData.data._raw = raw;
     }
-    if (!raw.nodeType) {
-      raw.nodeType = chainTypes[i];
-      if (!raw.text || raw.text === '分支主题') {
-        raw.text = chainLabels[i];
-        mindMapInstance.execCommand('SET_NODE_TEXT', child, chainLabels[i]);
-      }
-    }
-    current = child;
+    raw.nodeType = types[i];
   }
 }
 
@@ -568,14 +521,16 @@ function initMindMap() {
     el: mindMapContainer.value,
     data: { data: { text: '加载中...' }, children: [] },
     theme: 'classic4',
-    layout: 'logicalStructure',
+    // catalogOrganization 布局：同层节点自动对齐到同一纵列
+    layout: 'catalogOrganization',
     mousewheelAction: 'zoom',
     enableFreeDrag: false,
     initRootNodePosition: ['center', 'center'],
     enableShortcutOnlyWhenMouseInSvg: true,
     useLeftKeySelectionRightKeyDrag: true,
-    marginY: 40,
-    marginX: 20,
+    // 增大间距：为类型标签(上20px)和属性标签(下24px)留出空间，无标签节点也保持舒适间距
+    marginY: 30,
+    marginX: 60,
   });
 
   // 节点选中 → 仅单选时打开属性面板，多选(框选)不弹
@@ -594,8 +549,8 @@ function initMindMap() {
         rightPanelOpen.value = true;
         panelTab.value = 'props';
       }
-      if (panelTab.value === 'comments' && commentTab.value === 'node') {
-        loadNodeComments();
+      if (panelTab.value === 'comments') {
+        nextTick(() => commentPanelRef.value?.refresh());
       }
     } else if (nodes.length > 1) {
       activeNodeInstance.value = null;
@@ -625,14 +580,72 @@ function initMindMap() {
     markDirty();
   });
 
-  // 渲染完成 → 注入自定义标签
+  // 渲染完成 → 注入自定义标签 + 首次定位根节点
   mindMapInstance.on('node_tree_render_end', () => {
     requestAnimationFrame(refreshLabels);
+    if (!initialViewSet && mindMapContainer.value) {
+      initialViewSet = true;
+      const W = mindMapContainer.value.clientWidth;
+      const rootW = mindMapInstance.renderer?.root?.width || 0;
+      // 根节点右边缘距容器右侧 100px
+      // 初始时根节点中心在 W/2，向右平移 dx 使右边缘到 W-100
+      // 获取屏幕宽度
+      const screenWidth = window.innerWidth;
+      const dx = 0 - screenWidth/2 + rootW/2;
+      mindMapInstance.view.translateXY(dx, 0);
+    }
   });
 }
 
 function execCmd(cmd: string) {
   if (mindMapInstance) mindMapInstance.execCommand(cmd);
+}
+
+// =============================================
+// 节点复制/粘贴（含子树）
+// =============================================
+
+interface ClipNode {
+  data: { text: string; uid?: string; _raw?: any };
+  children: ClipNode[];
+}
+let nodeClipboard: ClipNode[] = [];
+
+function extractClipNode(renderNode: any): ClipNode {
+  const d = renderNode.nodeData?.data || {};
+  return {
+    data: {
+      text: d.text || '节点',
+      // 不保留 uid，由库重新生成；清除 id，保存时重新分配
+      _raw: d._raw ? { ...d._raw, id: undefined } : { text: d.text || '节点' },
+    },
+    children: (renderNode.children || []).map(extractClipNode),
+  };
+}
+
+function copySelectedNodes() {
+  const selected: any[] = mindMapInstance?.renderer?.activeNodeList || [];
+  if (!selected.length) { message.warning('请先选中节点'); return; }
+  // 只保留"根"节点：过滤掉父节点也在选中列表中的节点
+  // 否则 A→B→C 链式选中会产生3份重复子树
+  const selectedSet = new Set(selected);
+  const roots = selected.filter((n: any) => !selectedSet.has(n.parent));
+  nodeClipboard = roots.map(extractClipNode);
+  message.success(`已复制 ${nodeClipboard.length} 个节点`);
+}
+
+function pasteNodes() {
+  if (!nodeClipboard.length) { message.warning('剪贴板为空'); return; }
+  const target = activeNodeInstance.value;
+  if (!target) { message.warning('请先选中目标节点'); return; }
+  // 每次粘贴前深拷贝，防止库修改 appointData/appointChildren 对象导致多次粘贴时出现连线
+  const copies: ClipNode[] = JSON.parse(JSON.stringify(nodeClipboard));
+  for (const clip of copies) {
+    mindMapInstance.execCommand('INSERT_CHILD_NODE', false, [target], clip.data, clip.children);
+  }
+  markDirty();
+  requestAnimationFrame(refreshLabels);
+  message.success(`已粘贴 ${copies.length} 个节点`);
 }
 
 // =============================================
@@ -861,87 +874,17 @@ async function submitReview() {
 }
 
 // =============================================
-// 评论
+// 评论角标刷新（由 CommentPanel 触发）
 // =============================================
 
-async function loadNodeComments() {
-  const raw = activeNodeInstance.value?.nodeData?.data?._raw;
-  if (!raw?.id) return;
-  nodeComments.value = (await commentApi.nodeComments(raw.id)).data;
-}
-async function loadAllComments() {
-  allComments.value = (await commentApi.allComments(caseSetId)).data;
-}
-async function addComment() {
-  if (commentTab.value === 'all') return;
-  const raw = activeNodeInstance.value?.nodeData?.data?._raw;
-  if (!newComment.value.trim() || !raw?.id) return;
-  await commentApi.add(raw.id, caseSetId, newComment.value.trim());
-  newComment.value = '';
-  loadNodeComments();
-  await refreshNodeCommentCount(raw.id);
-}
-function startReply(comment: any) {
-  replyingTo.value = comment;
-  replyContent.value = '';
-}
-async function submitReply(parent: any) {
-  if (!replyContent.value.trim()) return;
-  const nodeId = parent.nodeId || activeNodeInstance.value?.nodeData?.data?._raw?.id || '';
-  await commentApi.add(nodeId, caseSetId, replyContent.value.trim(), parent.id);
-  replyingTo.value = null;
-  replyContent.value = '';
-  if (commentTab.value === 'node') loadNodeComments();
-  else loadAllComments();
-}
-async function resolveComment(id: string) {
-  await commentApi.resolve(id);
-  if (commentTab.value === 'node') loadNodeComments();
-  else loadAllComments();
-  const raw = activeNodeInstance.value?.nodeData?.data?._raw;
-  if (raw?.id) await refreshNodeCommentCount(raw.id);
-}
-async function refreshNodeCommentCount(nodeId: string) {
-  try {
-    const res = await commentApi.unresolvedCount(nodeId);
-    const count = res.data;
-    // 更新 _raw.commentCount 以刷新角标
-    if (mindMapInstance?.renderer?.root) {
-      function walkUpdate(n: any) {
-        const r = n.nodeData?.data?._raw;
-        if (r && r.id === nodeId) r.commentCount = count;
-        (n.children || []).forEach(walkUpdate);
-      }
-      walkUpdate(mindMapInstance.renderer.root);
-    }
-    requestAnimationFrame(refreshLabels);
-  } catch { /* ignore */ }
-}
-const editingCommentId = ref<string | null>(null);
-const editingCommentContent = ref('');
-
-function startEditComment(c: any) {
-  editingCommentId.value = c.id;
-  editingCommentContent.value = c.content;
-}
-async function saveEditComment() {
-  if (!editingCommentId.value || !editingCommentContent.value.trim()) return;
-  await commentApi.update(editingCommentId.value, editingCommentContent.value.trim());
-  editingCommentId.value = null;
-  editingCommentContent.value = '';
-  if (commentTab.value === 'node') loadNodeComments();
-  else loadAllComments();
-}
-async function deleteComment(id: string) {
-  await commentApi.delete(id);
-  if (commentTab.value === 'node') loadNodeComments();
-  else loadAllComments();
-  const raw = activeNodeInstance.value?.nodeData?.data?._raw;
-  if (raw?.id) await refreshNodeCommentCount(raw.id);
-}
-function formatTime(t: string) {
-  if (!t) return '';
-  return t.replace('T', ' ').substring(0, 19);
+function onCommentCountChanged(nodeId: string, count: number) {
+  if (!mindMapInstance?.renderer?.root) return;
+  (function walkUpdate(n: any) {
+    const r = n.nodeData?.data?._raw;
+    if (r && r.id === nodeId) r.commentCount = count;
+    (n.children || []).forEach(walkUpdate);
+  })(mindMapInstance.renderer.root);
+  requestAnimationFrame(refreshLabels);
 }
 
 // =============================================
@@ -960,14 +903,7 @@ async function restoreVersion(id: string) {
 // =============================================
 
 watch(panelTab, (tab) => {
-  if (tab === 'comments') {
-    if (commentTab.value === 'node' && activeNodeInstance.value) loadNodeComments();
-    else loadAllComments();
-  }
-});
-watch(commentTab, (tab) => {
-  if (tab === 'node' && activeNodeInstance.value) loadNodeComments();
-  else if (tab === 'all') loadAllComments();
+  if (tab === 'comments') nextTick(() => commentPanelRef.value?.refresh());
 });
 
 const hasUnsavedChanges = ref(false);
@@ -1036,6 +972,7 @@ onMounted(async () => {
   autoSaveTimer = setInterval(autoSave, 10000);
   historyTimer = setInterval(() => caseHistoryApi.save(caseSetId).catch(() => {}), 15 * 60 * 1000);
   window.addEventListener('beforeunload', onBeforeUnload);
+  window.addEventListener('keydown', onKeyboardCopyPaste);
 });
 
 onUnmounted(() => {
@@ -1044,6 +981,7 @@ onUnmounted(() => {
   if (mindMapInstance) { mindMapInstance.destroy(); mindMapInstance = null; }
   cleanupMouseOverrides?.();
   window.removeEventListener('beforeunload', onBeforeUnload);
+  window.removeEventListener('keydown', onKeyboardCopyPaste);
 });
 </script>
 

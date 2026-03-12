@@ -62,6 +62,8 @@ export const caseSetApi = {
   copy: (id: string, targetDirectoryId: string): R<CaseSet> =>
     request.post(`/case-sets/${id}/copy`, null, { params: { targetDirectoryId } }),
   delete: (id: string): R<void> => request.delete(`/case-sets/${id}`),
+  rename: (id: string, name: string): R<void> =>
+    request.put(`/case-sets/${id}/rename`, null, { params: { name } }),
   validate: (id: string): R<ValidationResult> => request.get(`/case-sets/${id}/validate`),
   updateRequirement: (id: string, link: string): R<void> =>
     request.put(`/case-sets/${id}/requirement`, null, { params: { link } }),
@@ -109,8 +111,15 @@ export const reviewApi = {
 
 export const testPlanApi = {
   list: (params: any): R<PageResult<TestPlan>> => request.get('/test-plans', { params }),
+  listDeleted: (projectId: string, page = 1, size = 20): R<PageResult<TestPlan>> =>
+    request.get('/test-plans/deleted', { params: { projectId, page, size } }),
   get: (id: string): R<TestPlan> => request.get(`/test-plans/${id}`),
+  getExecutors: (id: string): R<any[]> => request.get(`/test-plans/${id}/executors`),
   create: (data: any): R<TestPlan> => request.post('/test-plans', data),
+  update: (id: string, data: any): R<void> => request.put(`/test-plans/${id}`, data),
+  delete: (id: string): R<void> => request.delete(`/test-plans/${id}`),
+  restore: (id: string): R<void> => request.post(`/test-plans/${id}/restore`),
+  permanentDelete: (id: string): R<void> => request.delete(`/test-plans/${id}/permanent`),
   getCases: (id: string): R<TestPlanCase[]> => request.get(`/test-plans/${id}/cases`),
   executeCase: (id: string, result: string, reason?: string): R<void> =>
     request.put(`/test-plans/cases/${id}/execute`, { result, reason }),
