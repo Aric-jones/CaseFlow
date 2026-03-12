@@ -33,6 +33,12 @@ public class CaseSetController {
     @PostMapping("/{id}/copy") public Result<?> copy(@PathVariable String id, @RequestParam String targetDirectoryId) { return Result.ok(caseSetService.copyCaseSet(id, targetDirectoryId)); }
     @DeleteMapping("/{id}") public Result<?> delete(@PathVariable String id) { caseSetService.deleteCaseSet(id); return Result.ok(); }
     @GetMapping("/{id}/validate") public Result<?> validate(@PathVariable String id) { return Result.ok(caseSetService.validateCaseSet(id)); }
+    @PutMapping("/{id}/rename") public Result<?> rename(@PathVariable String id, @RequestParam String name) {
+        if (name == null || name.isBlank()) return Result.error("名称不能为空");
+        var cs = caseSetService.getById(id);
+        if (cs == null) return Result.error("用例集不存在");
+        cs.setName(name); caseSetService.updateById(cs); return Result.ok();
+    }
     @PutMapping("/{id}/requirement") public Result<?> updateReq(@PathVariable String id, @RequestParam String link) {
         var cs = caseSetService.getById(id);
         if (cs == null) return Result.error("用例集不存在");

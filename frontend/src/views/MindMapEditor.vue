@@ -14,7 +14,11 @@
             </a-menu>
           </template>
         </a-dropdown>
-        <strong>{{ caseSet?.name }}</strong>
+        <!-- 用例集名称：双击进入编辑，回车/失焦保存 -->
+        <span v-if="!editingCaseSetName" style="font-weight:600;cursor:pointer;" @dblclick="startEditCaseSetName"
+          title="双击编辑名称">{{ caseSet?.name }}</span>
+        <a-input v-else v-model:value="caseSetNameInput" size="small" style="width:200px;font-weight:600"
+          @pressEnter="saveCaseSetName" @blur="saveCaseSetName" @keyup.escape="editingCaseSetName = false" autofocus />
         <span style="color: #999; font-size: 12px">({{ caseCount }}条用例)</span>
       </a-space>
       <a-space>
@@ -248,6 +252,25 @@ const commentPanelRef = ref<InstanceType<typeof CommentPanel> | null>(null);
 // === 历史 ===
 const showHistory = ref(false);
 const versions = ref<CaseHistory[]>([]);
+
+// === 用例集名称内联编辑 ===
+const editingCaseSetName = ref(false);
+const caseSetNameInput = ref('');
+
+function startEditCaseSetName() {
+  caseSetNameInput.value = caseSet.value?.name || '';
+  editingCaseSetName.value = true;
+}
+async function saveCaseSetName() {
+  editingCaseSetName.value = false;
+  const newName = caseSetNameInput.value.trim();
+  if (!newName || newName === caseSet.value?.name) return;
+  try {
+    await caseSetApi.rename(caseSetId, newName);
+    if (caseSet.value) caseSet.value.name = newName;
+    message.success('名称已更新');
+  } catch { message.error('更新失败'); }
+}
 
 // === 用户/属性/评审 ===
 const users = ref<User[]>([]);
@@ -522,15 +545,15 @@ function initMindMap() {
     data: { data: { text: '加载中...' }, children: [] },
     theme: 'classic4',
     // catalogOrganization 布局：同层节点自动对齐到同一纵列
-    layout: 'catalogOrganization',
+    layout: 'logicalStructure',
     mousewheelAction: 'zoom',
     enableFreeDrag: false,
     initRootNodePosition: ['center', 'center'],
     enableShortcutOnlyWhenMouseInSvg: true,
     useLeftKeySelectionRightKeyDrag: true,
     // 增大间距：为类型标签(上20px)和属性标签(下24px)留出空间，无标签节点也保持舒适间距
-    marginY: 30,
-    marginX: 60,
+    marginY: 100,
+    marginX: 100,
   });
 
   // 节点选中 → 仅单选时打开属性面板，多选(框选)不弹
@@ -852,9 +875,8 @@ function navigateToError(idx: number) {
 
 async function handleStatusChange(status: string) {
   if (status === 'PENDING_REVIEW') {
-    if (!users.value.length) {
-      try { users.value = (await userApi.listAll()).data; } catch { /* */ }
-    }
+    // 每次打开都重新拉取，避免数据过期/为空
+    try { users.value = (await userApi.listAll()).data; } catch { /* */ }
     showReviewModal.value = true;
     return;
   }

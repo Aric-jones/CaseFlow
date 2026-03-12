@@ -34,7 +34,13 @@
       <div v-if="addingDir" style="padding: 4px 16px">
         <input class="inline-input" v-model="newDirName" @keyup.enter="confirmAdd" @blur="confirmAdd" @keyup.escape="addingDir = false" placeholder="回车保存" autofocus />
       </div>
+      <!-- 回收站入口 -->
+      <div style="padding: 12px 16px; border-top: 1px solid #f0f0f0; margin-top: 8px; cursor: pointer; color: #8c8c8c"
+        @click="showRecycleBin = true">
+        <DeleteOutlined /> 测试计划回收站
+      </div>
     </a-layout-sider>
+
     <a-layout-content style="padding: 24px">
       <div v-if="siderCollapsed" style="margin-bottom: 12px">
         <a-button size="small" @click="toggleSider">展开目录</a-button>
@@ -43,7 +49,7 @@
         <a-input-search v-model:value="keyword" placeholder="搜索" style="width: 280px" @search="() => loadPlans(1)" />
         <a-checkbox v-model:checked="onlyMine">只看我的</a-checkbox>
         <div style="flex: 1" />
-        <a-button type="primary" @click="showCreate = true"><PlusOutlined /> 新建测试计划</a-button>
+        <a-button type="primary" @click="openCreate"><PlusOutlined /> 新建测试计划</a-button>
       </div>
       <a-table :columns="columns" :data-source="plans.records" row-key="id" :loading="loading"
         :pagination="{ current: plans.current, total: plans.total, pageSize: 20, onChange: loadPlans }" size="middle"
@@ -56,20 +62,27 @@
           </template>
           <template v-if="column.key === 'createdAt'">{{ fmtTime(record.createdAt) }}</template>
           <template v-if="column.key === 'action'">
-            <a-button type="link" @click="$router.push(`/test-plan/${record.id}/execute`)">执行</a-button>
+            <a-space :size="0">
+              <a-button type="link" size="small" @click="$router.push(`/test-plan/${record.id}/execute`)">执行</a-button>
+              <a-button type="link" size="small" @click="openEdit(record)">编辑</a-button>
+              <a-popconfirm title="确认删除？将移入回收站" @confirm="deletePlan(record.id)">
+                <a-button type="link" size="small" danger>删除</a-button>
+              </a-popconfirm>
+            </a-space>
           </template>
         </template>
       </a-table>
     </a-layout-content>
 
-    <a-modal v-model:open="showCreate" title="新建测试计划" @ok="createPlan" width="680px">
+    <!-- 新建/编辑弹窗 -->
+    <a-modal v-model:open="showForm" :title="editingPlan ? '编辑测试计划' : '新建测试计划'" @ok="submitForm" width="680px">
       <a-form layout="vertical">
         <a-form-item label="计划名称"><a-input v-model:value="planName" placeholder="输入名称" /></a-form-item>
         <a-form-item label="执行人">
           <a-select mode="multiple" v-model:value="executorIds" placeholder="选择执行人"
             :options="allUsers.map(u => ({ value: u.id, label: u.displayName }))" />
         </a-form-item>
-        <a-form-item label="选择用例集">
+        <a-form-item v-if="!editingPlan" label="选择用例集">
           <a-button @click="showCaseSelect = true">选择</a-button>
           <span style="margin-left: 8px; color: #999">已选 {{ selectedCases.length }} 条用例</span>
         </a-form-item>
@@ -85,6 +98,25 @@
           </a-list-item>
         </template>
       </a-list>
+    </a-modal>
+
+    <!-- 回收站弹窗 -->
+    <a-modal v-model:open="showRecycleBin" title="测试计划回收站" :footer="null" width="800px">
+      <a-table :columns="recycleCols" :data-source="deletedPlans.records" row-key="id" :loading="recycleLoading"
+        :pagination="{ current: deletedPlans.current, total: deletedPlans.total, pageSize: 20, onChange: loadDeleted }"
+        size="middle">
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'deletedAt'">{{ fmtTime(record.deletedAt) }}</template>
+          <template v-if="column.key === 'action'">
+            <a-space>
+              <a-button type="link" size="small" @click="restorePlan(record.id)">恢复</a-button>
+              <a-popconfirm title="彻底删除？将同时删除所有关联数据，不可恢复" @confirm="permanentDel(record.id)">
+                <a-button type="link" size="small" danger>彻底删除</a-button>
+              </a-popconfirm>
+            </a-space>
+          </template>
+        </template>
+      </a-table>
     </a-modal>
 
     <div v-if="ctxMenu.visible" class="context-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
@@ -111,17 +143,21 @@ const store = useAppStore();
 const dirs = ref<DirectoryNode[]>([]);
 const selectedDir = ref<string | null>(null);
 const plans = ref<PageResult<TestPlan>>({ records: [], total: 0, size: 20, current: 1, pages: 0 });
+const deletedPlans = ref<PageResult<TestPlan>>({ records: [], total: 0, size: 20, current: 1, pages: 0 });
 const keyword = ref('');
 const onlyMine = ref(false);
 const loading = ref(false);
+const recycleLoading = ref(false);
 const allUsers = ref<User[]>([]);
 const caseSets = ref<CaseSet[]>([]);
 const selectedCases = ref<{ nodeId: string; caseSetId: string }[]>([]);
 
-const showCreate = ref(false);
+const showForm = ref(false);
 const showCaseSelect = ref(false);
+const showRecycleBin = ref(false);
 const planName = ref('');
 const executorIds = ref<string[]>([]);
+const editingPlan = ref<TestPlan | null>(null);
 
 const addingDir = ref(false);
 const newDirName = ref('');
@@ -149,10 +185,18 @@ async function loadPlans(page = 1) {
     plans.value = (await testPlanApi.list({ projectId: store.currentProject.id, directoryId: selectedDir.value ?? undefined, keyword: keyword.value || undefined, onlyMine: onlyMine.value, page, size: 20 })).data;
   } finally { loading.value = false; }
 }
+async function loadDeleted(page = 1) {
+  if (!store.currentProject) return;
+  recycleLoading.value = true;
+  try {
+    deletedPlans.value = (await testPlanApi.listDeleted(store.currentProject.id, page, 20)).data;
+  } finally { recycleLoading.value = false; }
+}
 
 watch(() => store.currentProject, () => { loadDirs(); loadPlans(); });
 watch(selectedDir, () => loadPlans());
 watch(onlyMine, () => loadPlans());
+watch(showRecycleBin, (v) => { if (v) loadDeleted(); });
 onMounted(() => { loadDirs(); loadPlans(); userApi.listAll().then(r => allUsers.value = r.data); });
 function toggleSider() { siderCollapsed.value = !siderCollapsed.value; }
 
@@ -161,8 +205,7 @@ function startAdd(pid: string) { addingDir.value = true; addParentId.value = pid
 async function confirmAdd() {
   const name = newDirName.value.trim();
   if (!name || !store.currentProject || !addingDir.value) { addingDir.value = false; return; }
-  addingDir.value = false;
-  newDirName.value = '';
+  addingDir.value = false; newDirName.value = '';
   await directoryApi.create(name, addParentId.value, store.currentProject.id, 'TEST_PLAN');
   loadDirs();
 }
@@ -194,6 +237,43 @@ function hideCtx() { ctxMenu.value.visible = false; }
 onMounted(() => document.addEventListener('click', hideCtx));
 onUnmounted(() => document.removeEventListener('click', hideCtx));
 
+function openCreate() {
+  editingPlan.value = null;
+  planName.value = ''; executorIds.value = []; selectedCases.value = [];
+  showForm.value = true;
+}
+async function openEdit(plan: TestPlan) {
+  editingPlan.value = plan;
+  planName.value = plan.name;
+  // 加载现有执行人
+  try {
+    const res = await testPlanApi.getExecutors(plan.id);
+    executorIds.value = res.data.map((e: any) => e.userId);
+  } catch { executorIds.value = []; }
+  showForm.value = true;
+}
+async function submitForm() {
+  if (!planName.value.trim()) { message.error('请输入计划名称'); return; }
+  if (editingPlan.value) {
+    await testPlanApi.update(editingPlan.value.id, { name: planName.value, executorIds: executorIds.value });
+    message.success('更新成功');
+  } else {
+    if (!store.currentProject) return;
+    await testPlanApi.create({ name: planName.value, directoryId: selectedDir.value ?? undefined, projectId: store.currentProject.id, executorIds: executorIds.value, cases: selectedCases.value });
+    message.success('创建成功');
+  }
+  showForm.value = false; loadPlans();
+}
+async function deletePlan(id: string) {
+  await testPlanApi.delete(id); message.success('已移入回收站'); loadPlans();
+}
+async function restorePlan(id: string) {
+  await testPlanApi.restore(id); message.success('已恢复'); loadDeleted(); loadPlans();
+}
+async function permanentDel(id: string) {
+  await testPlanApi.permanentDelete(id); message.success('已彻底删除'); loadDeleted();
+}
+
 async function selectCaseSet(csId: string) {
   const res = await mindNodeApi.tree(csId);
   if (!res.data.length) return;
@@ -206,27 +286,27 @@ async function selectCaseSet(csId: string) {
     } else { for (const c of n.children) collect(c, p); }
   }
   collect(res.data[0], []);
-  message.success(`已添加用例`);
-}
-
-async function createPlan() {
-  if (!planName.value.trim() || !store.currentProject) return;
-  await testPlanApi.create({ name: planName.value, directoryId: selectedDir.value ?? undefined, projectId: store.currentProject.id, executorIds: executorIds.value, cases: selectedCases.value });
-  message.success('创建成功'); showCreate.value = false; planName.value = ''; selectedCases.value = []; loadPlans();
+  message.success('已添加用例');
 }
 
 onMounted(async () => {
   if (store.currentProject) caseSets.value = (await caseSetApi.list({ projectId: store.currentProject.id, size: 1000 })).data.records;
 });
 
-function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 10) : ''; }
+function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 16) : ''; }
 
 const columns = ref([
   { title: '计划名称', dataIndex: 'name', resizable: true, width: 200 },
   { title: '状态', key: 'status', resizable: true, width: 100 },
   { title: '创建人', dataIndex: 'createdByName', resizable: true, width: 100 },
-  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', resizable: true, width: 120 },
-  { title: '操作', key: 'action', resizable: true, width: 120 },
+  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', resizable: true, width: 140 },
+  { title: '操作', key: 'action', resizable: true, width: 180, fixed: 'right' as const },
+]);
+const recycleCols = ref([
+  { title: '计划名称', dataIndex: 'name', resizable: true, width: 200 },
+  { title: '删除人', dataIndex: 'deletedByName', resizable: true, width: 100 },
+  { title: '删除时间', dataIndex: 'deletedAt', key: 'deletedAt', resizable: true, width: 160 },
+  { title: '操作', key: 'action', width: 160 },
 ]);
 
 function handleResizeColumn(w: number, col: any) { col.width = w; }
