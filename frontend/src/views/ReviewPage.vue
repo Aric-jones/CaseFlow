@@ -225,22 +225,25 @@ function getGroupEl(node: any): SVGGElement | null {
   return null;
 }
 
-function findShapeEl(groupEl: Element): SVGElement | null {
-  let el: Element | null = groupEl;
-  for (let i = 0; i < 5 && el; i++) {
-    const shape = el.querySelector('.smm-node-shape') as SVGElement | null;
-    if (shape) return shape;
-    el = el.parentElement;
+function getNodeShapeEl(node: any): SVGElement | null {
+  const directShape = node.style?.rect?.node || node.shapeNode?.node || node._shapeNode?.node;
+  if (directShape instanceof SVGElement) return directShape;
+  const groupEl = getGroupEl(node);
+  if (groupEl) {
+    let el: Element | null = groupEl;
+    for (let i = 0; i < 5 && el; i++) {
+      const shape = el.querySelector('.smm-node-shape') as SVGElement | null;
+      if (shape) return shape;
+      el = el.parentElement;
+    }
   }
   return null;
 }
 
 function applyMarkStyle(node: any) {
-  const groupEl = getGroupEl(node);
-  if (!groupEl) return;
   const raw = node.nodeData?.data?._raw;
   const mark = raw?.properties?.mark;
-  const shape = findShapeEl(groupEl);
+  const shape = getNodeShapeEl(node);
   if (!shape) return;
   if (mark && markColorMap[mark]) {
     shape.style.setProperty('stroke', markColorMap[mark], 'important');
@@ -389,25 +392,39 @@ function openCommentPanel() { rightPanelOpen.value = true; panelTab.value = 'com
 // === 标记 ===
 async function handleMark(mark: string) {
   if (!selectedNodeRaw.value?.id) return;
-  const actualMark = mark === 'NONE' ? undefined : mark;
-  const newProps = { ...(selectedNodeRaw.value.properties || {}), mark: actualMark };
-  if (!actualMark) delete newProps.mark;
-  await mindNodeApi.update(selectedNodeRaw.value.id, { properties: newProps });
-  // 在树中按 nodeId 查找并更新 _raw
   const nodeId = selectedNodeRaw.value.id;
-  if (mindMapInstance?.renderer?.root) {
-    (function walkMark(n: any) {
-      const r = n.nodeData?.data?._raw;
-      if (r && r.id === nodeId) {
-        r.properties = { ...(r.properties || {}), ...newProps };
-        if (!actualMark && r.properties) delete r.properties.mark;
-      }
-      (n.children || []).forEach(walkMark);
-    })(mindMapInstance.renderer.root);
+
+  // 构建干净的 properties (不含 undefined)
+  const cleanProps: Record<string, any> = {};
+  for (const [k, v] of Object.entries(selectedNodeRaw.value.properties || {})) {
+    if (k !== 'mark' && v !== undefined && v !== null) cleanProps[k] = v;
   }
-  selectedNodeRaw.value = { ...selectedNodeRaw.value, properties: newProps };
-  requestAnimationFrame(addAllCustomLabels);
-  message.success('标记已更新');
+  if (mark && mark !== 'NONE') cleanProps.mark = mark;
+
+  try {
+    // 1) 发请求保存到数据库
+    await mindNodeApi.update(nodeId, { properties: cleanProps });
+
+    // 2) 更新渲染树中对应节点的 _raw
+    if (mindMapInstance?.renderer?.root) {
+      (function walkMark(n: any) {
+        const r = n.nodeData?.data?._raw;
+        if (r && r.id === nodeId) {
+          r.properties = { ...cleanProps };
+        }
+        (n.children || []).forEach(walkMark);
+      })(mindMapInstance.renderer.root);
+    }
+
+    // 3) 更新面板显示
+    selectedNodeRaw.value = { ...selectedNodeRaw.value, properties: { ...cleanProps } };
+
+    // 4) 重绘边框和标签
+    requestAnimationFrame(addAllCustomLabels);
+    message.success('标记已更新');
+  } catch {
+    message.error('标记更新失败');
+  }
 }
 
 // === 评论 CRUD ===

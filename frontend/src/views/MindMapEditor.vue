@@ -72,16 +72,17 @@
             <template v-if="editForm">
               <div class="prop-field">
                 <label>内容</label>
-                <a-textarea v-model:value="editForm.text" :auto-size="{ minRows: 2 }" placeholder="节点文本" />
+                <a-textarea v-model:value="editForm.text" :auto-size="{ minRows: 2 }" placeholder="节点文本"
+                  @blur="syncToNode()" @pressEnter.exact.prevent="syncToNode()" />
               </div>
               <div class="prop-field">
                 <label>节点类型</label>
-                <a-select v-model:value="editForm.nodeType" allow-clear
+                <a-select v-model:value="editForm.nodeType" allow-clear @change="syncToNode(true)"
                   :options="nodeTypeOptions" style="width: 100%" placeholder="可不设置" />
               </div>
               <div class="prop-field">
                 <label>标记</label>
-                <a-select :value="editForm?.properties?.mark || 'NONE'" @change="(v: any) => { if (editForm) editForm.properties.mark = v === 'NONE' ? undefined : v }" style="width: 100%"
+                <a-select :value="editForm?.properties?.mark || 'NONE'" @change="(v: any) => { if (editForm) { editForm.properties.mark = v === 'NONE' ? undefined : v; syncToNode(); } }" style="width: 100%"
                   :options="[{value:'NONE',label:'无'},{value:'PENDING',label:'待完成'},{value:'TO_CONFIRM',label:'待确认'},{value:'TO_MODIFY',label:'待修改'}]" />
               </div>
               <a-divider style="margin: 8px 0" />
@@ -91,24 +92,21 @@
                   <label>{{ attr.name }}</label>
                   <a-radio-group v-if="attr.displayType === 'TILE' && !attr.multiSelect"
                     :value="editForm?.properties[attr.name]"
-                    @change="(e: any) => { if (editForm) editForm.properties[attr.name] = e.target.value }"
+                    @change="(e: any) => { if (editForm) { editForm.properties[attr.name] = e.target.value; syncToNode(); } }"
                     style="display: flex; flex-wrap: wrap; gap: 4px">
                     <a-radio-button v-for="o in attr.options" :key="o" :value="o"
                       :class="attr.name === '优先级' ? `priority-${o.toLowerCase()}` : ''">{{ o }}</a-radio-button>
                   </a-radio-group>
                   <a-select v-else-if="attr.multiSelect" mode="multiple"
                     :value="Array.isArray(editForm?.properties[attr.name]) ? editForm?.properties[attr.name] : []"
-                    @change="(v: any) => { if (editForm) editForm.properties[attr.name] = v }"
+                    @change="(v: any) => { if (editForm) { editForm.properties[attr.name] = v; syncToNode(); } }"
                     :options="attr.options.map((o: string) => ({ value: o, label: o }))" style="width: 100%" />
                   <a-select v-else
                     :value="editForm?.properties[attr.name] || undefined"
-                    @change="(v: any) => { if (editForm) editForm.properties[attr.name] = v }"
+                    @change="(v: any) => { if (editForm) { editForm.properties[attr.name] = v; syncToNode(); } }"
                     allow-clear :options="attr.options.map((o: string) => ({ value: o, label: o }))" style="width: 100%" />
                 </div>
               </template>
-              <a-button type="primary" block style="margin-top: 12px" @click="confirmEdit">
-                <CheckOutlined /> 确定
-              </a-button>
             </template>
             <div v-else class="empty-hint">选择节点查看属性</div>
           </template>
@@ -242,7 +240,7 @@ import { message } from 'ant-design-vue';
 import {
   ArrowLeftOutlined, SaveOutlined, HistoryOutlined, SearchOutlined,
   ToolOutlined, CommentOutlined, CheckCircleOutlined,
-  PlusOutlined, PlusSquareOutlined, DeleteOutlined, CheckOutlined, CloseOutlined, NodeIndexOutlined,
+  PlusOutlined, PlusSquareOutlined, DeleteOutlined, CloseOutlined, NodeIndexOutlined,
 } from '@ant-design/icons-vue';
 import MindMap from 'simple-mind-map';
 import Select from 'simple-mind-map/src/plugins/Select';
@@ -274,23 +272,6 @@ const panelTab = ref<'props' | 'validate' | 'comments'>('props');
 // === 编辑表单 (缓冲, 点确定才生效) ===
 const editForm = ref<{ text: string; nodeType: string | null; properties: Record<string, any> } | null>(null);
 const activeNodeInstance = ref<any>(null);
-
-// === 标记实时预览 (editForm.properties.mark 变化即更新边框) ===
-watch(() => editForm.value?.properties?.mark, (mark) => {
-  if (!activeNodeInstance.value) return;
-  const node = activeNodeInstance.value;
-  const groupEl = getGroupEl(node);
-  if (!groupEl) return;
-  const shape = findShapeEl(groupEl);
-  if (!shape) return;
-  if (mark && markColorMap[mark]) {
-    shape.style.setProperty('stroke', markColorMap[mark], 'important');
-    shape.style.setProperty('stroke-width', '2.5px', 'important');
-  } else {
-    shape.style.removeProperty('stroke');
-    shape.style.removeProperty('stroke-width');
-  }
-});
 
 // === 搜索 ===
 const showSearch = ref(false);
@@ -419,11 +400,40 @@ function mmToTree(mmNode: any): MindNodeData {
 }
 
 function getFullTree(): MindNodeData[] {
-  if (!mindMapInstance) return [];
-  const data = mindMapInstance.getData();
-  const root = mmToTree(data);
+  if (!mindMapInstance?.renderer?.root) return [];
+  const root = renderNodeToTree(mindMapInstance.renderer.root);
   root.isRoot = 1;
   return [root];
+}
+
+function renderNodeToTree(rNode: any): MindNodeData {
+  const raw = rNode.nodeData?.data?._raw || {};
+  const text = rNode.nodeData?.data?.text || raw.text || '';
+  const renderChildren: any[] = rNode.children || [];
+  const dataChildren: any[] = rNode.nodeData?.children || [];
+  let children: MindNodeData[];
+  if (renderChildren.length > 0) {
+    children = renderChildren.map((c: any, i: number) => {
+      const child = renderNodeToTree(c);
+      child.sortOrder = i;
+      return child;
+    });
+  } else {
+    children = dataChildren.map((c: any, i: number) => {
+      const child = mmToTree(c);
+      child.sortOrder = i;
+      return child;
+    });
+  }
+  return {
+    id: raw.id,
+    text,
+    nodeType: raw.nodeType || null,
+    sortOrder: raw.sortOrder || 0,
+    isRoot: raw.isRoot,
+    properties: raw.properties ? JSON.parse(JSON.stringify(raw.properties)) : undefined,
+    children,
+  };
 }
 
 function countValid(node: MindNodeData): number {
@@ -456,22 +466,27 @@ function getGroupEl(node: any): SVGGElement | null {
 
 const markColorMap: Record<string, string> = { PENDING: '#ff4d4f', TO_CONFIRM: '#faad14', TO_MODIFY: '#722ed1' };
 
-function findShapeEl(groupEl: Element): SVGElement | null {
-  let el: Element | null = groupEl;
-  for (let i = 0; i < 4 && el; i++) {
-    const shape = el.querySelector('.smm-node-shape') as SVGElement | null;
-    if (shape) return shape;
-    el = el.parentElement;
+function getNodeShapeEl(node: any): SVGElement | null {
+  // 1) simple-mind-map 直接暴露 style.rect / shapeNode
+  const directShape = node.style?.rect?.node || node.shapeNode?.node || node._shapeNode?.node;
+  if (directShape instanceof SVGElement) return directShape;
+  // 2) 从 group 的父级 wrapper 搜索 .smm-node-shape
+  const groupEl = getGroupEl(node);
+  if (groupEl) {
+    let el: Element | null = groupEl;
+    for (let i = 0; i < 5 && el; i++) {
+      const shape = el.querySelector('.smm-node-shape') as SVGElement | null;
+      if (shape) return shape;
+      el = el.parentElement;
+    }
   }
   return null;
 }
 
 function applyMarkStyle(node: any) {
-  const groupEl = getGroupEl(node);
-  if (!groupEl) return;
   const raw = node.nodeData?.data?._raw;
   const mark = raw?.properties?.mark;
-  const shape = findShapeEl(groupEl);
+  const shape = getNodeShapeEl(node);
   if (!shape) return;
   if (mark && markColorMap[mark]) {
     shape.style.setProperty('stroke', markColorMap[mark], 'important');
@@ -603,32 +618,51 @@ function navigateToNode(uid: string) {
 }
 
 // =============================================
-// 确定按钮 - 应用编辑到节点
+// 实时同步: 属性面板 → 节点
 // =============================================
 
-function confirmEdit() {
+function syncToNode(checkAutoChain = false) {
   if (!editForm.value || !activeNodeInstance.value || !mindMapInstance) return;
   const form = editForm.value;
   const node = activeNodeInstance.value;
+  if (!node.nodeData?.data) return;
 
-  let rawRef = node.nodeData?.data?._raw;
-  if (!rawRef) {
-    rawRef = { text: '', nodeType: null, properties: {} };
-    if (node.nodeData?.data) node.nodeData.data._raw = rawRef;
+  // 先把完整的 _raw 快照下来，防止 SET_NODE_TEXT 破坏
+  const prevRaw = node.nodeData.data._raw
+    ? JSON.parse(JSON.stringify(node.nodeData.data._raw))
+    : { text: '', nodeType: null, properties: {} };
+
+  // 同步文本
+  if (prevRaw.text !== form.text) {
+    mindMapInstance.execCommand('SET_NODE_TEXT', node, form.text);
   }
-  rawRef.text = form.text;
-  rawRef.nodeType = form.nodeType;
-  rawRef.properties = { ...form.properties };
 
-  mindMapInstance.execCommand('SET_NODE_TEXT', node, form.text);
+  // SET_NODE_TEXT 之后, 确保 _raw 仍然存在（可能被重建的 data 对象覆盖）
+  if (!node.nodeData.data._raw) {
+    node.nodeData.data._raw = prevRaw;
+  }
 
-  // 选择"用例标题"时自动在子链上赋值 前置条件→步骤→预期结果
-  if (form.nodeType === 'TITLE') {
+  // 构建干净的 properties
+  const cleanProps: Record<string, any> = {};
+  for (const [k, v] of Object.entries(form.properties)) {
+    if (v !== undefined && v !== null) cleanProps[k] = v;
+  }
+
+  // 写入 _raw 全部字段
+  const raw = node.nodeData.data._raw;
+  raw.id = prevRaw.id;
+  raw.text = form.text;
+  raw.nodeType = form.nodeType;
+  raw.sortOrder = prevRaw.sortOrder;
+  raw.isRoot = prevRaw.isRoot;
+  raw.properties = cleanProps;
+
+  if (checkAutoChain && form.nodeType === 'TITLE') {
     autoAssignCaseChain(node);
   }
 
+  markDirty();
   requestAnimationFrame(() => addAllCustomLabels());
-  message.success('已更新');
 }
 
 function autoAssignCaseChain(titleNode: any) {
