@@ -36,10 +36,8 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
 
     @Override
     public Page<TestPlan> listDeleted(String projectId, int page, int size) {
-        return lambdaQuery()
-                .eq(StringUtils.hasText(projectId), TestPlan::getProjectId, projectId)
-                .eq(TestPlan::getDeleted, 1)
-                .orderByDesc(TestPlan::getDeletedAt).page(new Page<>(page, size));
+        // lambdaQuery 受全局逻辑删除拦截（自动加 deleted=0），无法查 deleted=1 的记录
+        return baseMapper.selectDeletedPage(new Page<>(page, size), projectId);
     }
 
     @Override
@@ -87,17 +85,18 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
 
     @Override
     public void restorePlan(String id) {
-        TestPlan plan = baseMapper.selectById(id);
+        // 已逻辑删除的记录被全局拦截过滤，需用自定义 SQL 查询/恢复
+        TestPlan plan = baseMapper.selectDeletedById(id);
         if (plan == null) throw new BusinessException("计划不存在");
-        plan.setDeleted(0); plan.setDeletedAt(null); plan.setDeletedBy(null); plan.setDeletedByName(null);
-        updateById(plan);
+        baseMapper.restoreById(id);
     }
 
     @Override @Transactional
     public void permanentDelete(String id) {
-        // 级联删除执行人和用例
+        // 级联删除关联数据
         executorMapper.delete(new LambdaQueryWrapper<TestPlanExecutor>().eq(TestPlanExecutor::getPlanId, id));
         caseMapper.delete(new LambdaQueryWrapper<TestPlanCase>().eq(TestPlanCase::getPlanId, id));
-        removeById(id);
+        // 物理删除（removeById 受全局逻辑删除影响，只做 UPDATE 不是 DELETE）
+        baseMapper.physicalDeleteById(id);
     }
 }

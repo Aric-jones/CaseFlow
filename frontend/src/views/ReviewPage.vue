@@ -193,7 +193,10 @@ onMounted(async () => {
     data: treeRes.data.length ? nodeToMM(treeRes.data[0]) : { data: { text: '空' }, children: [] },
     theme: 'classic4', layout: 'logicalStructure', readonly: true, mousewheelAction: 'zoom',
     enableFreeDrag: false, useLeftKeySelectionRightKeyDrag: true,
-    marginY: 10, marginX: 10,
+    themeConfig: {
+      second: { marginX: 80, marginY: 60 },
+      node: { marginX: 50, marginY: 50 },
+    },
   });
   mindMapInstance.on('node_active', (_: any, nodes: any[]) => {
     if (nodes.length === 1) handleNodeSelect(nodes[0]);

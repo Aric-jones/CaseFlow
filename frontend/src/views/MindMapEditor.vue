@@ -348,6 +348,7 @@ function closePanel() {
 // 数据格式转换 (不使用 tag, 自定义SVG渲染)
 // =============================================
 
+/** 将后端 MindNodeData 转为 simple-mind-map 数据结构 */
 function nodeToMM(node: MindNodeData): any {
   return {
     data: {
@@ -359,6 +360,7 @@ function nodeToMM(node: MindNodeData): any {
   };
 }
 
+/** 将 simple-mind-map 数据转回后端 MindNodeData */
 function mmToTree(mmNode: any): MindNodeData {
   const raw = mmNode.data?._raw || {};
   return {
@@ -372,6 +374,7 @@ function mmToTree(mmNode: any): MindNodeData {
   };
 }
 
+/** 从渲染树提取完整 MindNodeData 树（用于保存） */
 function getFullTree(): MindNodeData[] {
   if (!mindMapInstance?.renderer?.root) return [];
   const root = renderNodeToTree(mindMapInstance.renderer.root);
@@ -379,6 +382,7 @@ function getFullTree(): MindNodeData[] {
   return [root];
 }
 
+/** 将渲染节点递归转为 MindNodeData（保留 _raw 自定义数据） */
 function renderNodeToTree(rNode: any): MindNodeData {
   const raw = rNode.nodeData?.data?._raw || {};
   const text = rNode.nodeData?.data?.text || raw.text || '';
@@ -409,6 +413,7 @@ function renderNodeToTree(rNode: any): MindNodeData {
   };
 }
 
+/** 统计有效用例数量（末端为 EXPECTED 类型的分支） */
 function countValid(node: MindNodeData): number {
   let count = 0;
   function walk(n: MindNodeData, path: MindNodeData[]) {
@@ -429,7 +434,7 @@ function countValid(node: MindNodeData): number {
 // 自定义节点标签 (SVG foreignObject) → 见 composables/useMindMap.ts
 // =============================================
 
-// 包装 addAllCustomLabels 以绑定当前 mindMapInstance
+/** 刷新全部节点的类型/属性/评论标签 */
 function refreshLabels() {
   addAllCustomLabels(mindMapInstance);
 }
@@ -438,6 +443,7 @@ function refreshLabels() {
 // 节点导航
 // =============================================
 
+/** 递归按 uid 查找渲染节点 */
 function findNodeByUid(node: any, uid: string): any {
   if (!node) return null;
   const nodeUid = node.nodeData?.data?.uid || node.data?.uid;
@@ -450,6 +456,7 @@ function findNodeByUid(node: any, uid: string): any {
   return null;
 }
 
+/** 定位并激活指定 uid 的节点 */
 function navigateToNode(uid: string) {
   if (!mindMapInstance) return;
   const root = mindMapInstance.renderer.root;
@@ -464,6 +471,7 @@ function navigateToNode(uid: string) {
 // 实时同步: 属性面板 → 节点
 // =============================================
 
+/** 将属性面板表单数据同步到当前激活节点 */
 function syncToNode(checkAutoChain = false) {
   if (!editForm.value || !activeNodeInstance.value || !mindMapInstance) return;
   const form = editForm.value;
@@ -510,33 +518,48 @@ function syncToNode(checkAutoChain = false) {
 
 /**
  * 选中 TITLE 类型后，检查直接子节点：
- * - 至少有 3 个直接子节点
- * - 且前 3 个都没有 nodeType
+ * - 至少有3个直接子节点
+ * - 且前3个都没有 nodeType（或 nodeType 为空/null/undefined）
  * 满足以上条件才自动赋予 PRECONDITION / STEP / EXPECTED
  */
 function autoAssignCaseChain(titleNode: any) {
   const children: any[] = titleNode.children || [];
   if (children.length < 3) return;
   const first3 = children.slice(0, 3);
-  // 任意一个已有 nodeType，则不干预
-  if (first3.some((c: any) => c.nodeData?.data?._raw?.nodeType)) return;
+  // 检查前3个子节点是否都没有 nodeType（包括 null/undefined/空字符串）
+  if (first3.some((c: any) => {
+    const nodeType = c.nodeData?.data?._raw?.nodeType;
+    return nodeType !== null && nodeType !== undefined && nodeType !== '';
+  })) return;
 
   const types = ['PRECONDITION', 'STEP', 'EXPECTED'];
   for (let i = 0; i < 3; i++) {
     const child = first3[i];
-    let raw = child.nodeData?.data?._raw;
+    // 确保 nodeData.data 存在
+    if (!child.nodeData) child.nodeData = {};
+    if (!child.nodeData.data) child.nodeData.data = {};
+    // 确保 _raw 存在
+    let raw = child.nodeData.data._raw;
     if (!raw) {
-      raw = { text: child.nodeData?.data?.text || '', nodeType: null, properties: {} };
-      if (child.nodeData?.data) child.nodeData.data._raw = raw;
+      raw = { 
+        text: child.nodeData.data.text || child.data?.text || '', 
+        nodeType: null, 
+        properties: {} 
+      };
+      child.nodeData.data._raw = raw;
     }
     raw.nodeType = types[i];
   }
+  // 赋值后刷新标签显示
+  markDirty();
+  requestAnimationFrame(refreshLabels);
 }
 
 // =============================================
 // 初始化思维导图
 // =============================================
 
+/** 初始化 simple-mind-map 实例并绑定事件 */
 function initMindMap() {
   if (!mindMapContainer.value) return;
 
@@ -544,16 +567,17 @@ function initMindMap() {
     el: mindMapContainer.value,
     data: { data: { text: '加载中...' }, children: [] },
     theme: 'classic4',
-    // catalogOrganization 布局：同层节点自动对齐到同一纵列
     layout: 'logicalStructure',
     mousewheelAction: 'zoom',
     enableFreeDrag: false,
     initRootNodePosition: ['center', 'center'],
     enableShortcutOnlyWhenMouseInSvg: true,
     useLeftKeySelectionRightKeyDrag: true,
-    // 增大间距：为类型标签(上20px)和属性标签(下24px)留出空间，无标签节点也保持舒适间距
-    marginY: 100,
-    marginX: 100,
+    // 通过 themeConfig 覆盖各级节点间距，为类型标签(上20px)和属性标签(下24px)留空间
+    themeConfig: {
+      second: { marginX: 80, marginY: 60 },
+      node: { marginX: 50, marginY: 50 },
+    },
   });
 
   // 节点选中 → 仅单选时打开属性面板，多选(框选)不弹
@@ -634,6 +658,7 @@ interface ClipNode {
 }
 let nodeClipboard: ClipNode[] = [];
 
+/** 递归提取节点数据用于复制（清除 id，保存时重新分配） */
 function extractClipNode(renderNode: any): ClipNode {
   const d = renderNode.nodeData?.data || {};
   return {
@@ -646,6 +671,7 @@ function extractClipNode(renderNode: any): ClipNode {
   };
 }
 
+/** 复制选中节点到剪贴板（只取根节点，过滤子节点避免重复） */
 function copySelectedNodes() {
   const selected: any[] = mindMapInstance?.renderer?.activeNodeList || [];
   if (!selected.length) { message.warning('请先选中节点'); return; }
@@ -657,6 +683,7 @@ function copySelectedNodes() {
   message.success(`已复制 ${nodeClipboard.length} 个节点`);
 }
 
+/** 将剪贴板节点粘贴为当前节点的子节点（每次深拷贝保证独立） */
 function pasteNodes() {
   if (!nodeClipboard.length) { message.warning('剪贴板为空'); return; }
   const target = activeNodeInstance.value;
@@ -794,6 +821,7 @@ function replaceAllFn() {
 // 规范检查 (客户端验证, 定位到分支末尾节点)
 // =============================================
 
+/** 校验思维导图的结构和必填属性 */
 function runValidation() {
   valErrors.value = [];
   valIdx.value = -1;
@@ -932,6 +960,7 @@ const hasUnsavedChanges = ref(false);
 let savedTreeSnapshot = '';
 let initialLoadDone = false;
 
+/** 计算当前树的 JSON 哈希，用于检测未保存更改 */
 function computeTreeHash(): string {
   try {
     const tree = getFullTree();
@@ -964,6 +993,7 @@ async function handleExitSave() { await handleSave(); hasUnsavedChanges.value = 
 // 评论导航到节点
 // =============================================
 
+/** 根据评论中的 nodeId 定位到对应节点 */
 function navigateToCommentNode(nodeId: string) {
   if (!mindMapInstance?.renderer?.root || !nodeId) return;
   function findByRawId(n: any): any {
