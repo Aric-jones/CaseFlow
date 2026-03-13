@@ -26,7 +26,4 @@ public class TestPlan {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
     private Integer deleted;
-    private LocalDateTime deletedAt;
-    private String deletedBy;
-    private String deletedByName;
 }

@@ -111,15 +111,12 @@ export const reviewApi = {
 
 export const testPlanApi = {
   list: (params: any): R<PageResult<TestPlan>> => request.get('/test-plans', { params }),
-  listDeleted: (projectId: string, page = 1, size = 20): R<PageResult<TestPlan>> =>
-    request.get('/test-plans/deleted', { params: { projectId, page, size } }),
   get: (id: string): R<TestPlan> => request.get(`/test-plans/${id}`),
   getExecutors: (id: string): R<any[]> => request.get(`/test-plans/${id}/executors`),
   create: (data: any): R<TestPlan> => request.post('/test-plans', data),
   update: (id: string, data: any): R<void> => request.put(`/test-plans/${id}`, data),
+  /** 软删除，同时写入 recycle_bin */
   delete: (id: string): R<void> => request.delete(`/test-plans/${id}`),
-  restore: (id: string): R<void> => request.post(`/test-plans/${id}/restore`),
-  permanentDelete: (id: string): R<void> => request.delete(`/test-plans/${id}/permanent`),
   getCases: (id: string): R<TestPlanCase[]> => request.get(`/test-plans/${id}/cases`),
   executeCase: (id: string, result: string, reason?: string): R<void> =>
     request.put(`/test-plans/cases/${id}/execute`, { result, reason }),
@@ -134,7 +131,9 @@ export const customAttributeApi = {
 };
 
 export const recycleBinApi = {
-  list: (projectId: string): R<RecycleBinItem[]> => request.get('/recycle-bin', { params: { projectId } }),
+  /** type: 'CASE_SET'（默认）或 'TEST_PLAN' */
+  list: (projectId: string, type = 'CASE_SET'): R<RecycleBinItem[]> =>
+    request.get('/recycle-bin', { params: { projectId, type } }),
   restore: (id: string): R<void> => request.post(`/recycle-bin/${id}/restore`),
   permanentDelete: (id: string): R<void> => request.delete(`/recycle-bin/${id}`),
 };

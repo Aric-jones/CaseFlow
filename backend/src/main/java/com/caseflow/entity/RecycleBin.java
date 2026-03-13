@@ -9,11 +9,17 @@ import java.time.LocalDateTime;
 public class RecycleBin {
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
-    private String caseSetId;
+    /** 类型：CASE_SET 或 TEST_PLAN */
+    private String itemType;
+    /** 业务ID（用例集ID或测试计划ID） */
+    private String itemId;
+    /** 删除时的名称，用于列表展示 */
+    private String itemName;
+    /** 所属项目ID */
+    private String projectId;
+    /** 原目录ID，用于恢复 */
     private String originalDirectoryId;
     private String deletedBy;
     private String deletedByName;
     private LocalDateTime deletedAt;
-    @TableField(exist = false)
-    private String caseSetName;
 }

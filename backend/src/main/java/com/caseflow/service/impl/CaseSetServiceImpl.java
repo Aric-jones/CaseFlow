@@ -123,7 +123,12 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
     public void deleteCaseSet(String id) {
         CaseSet cs = getById(id); if (cs == null) throw new BusinessException("用例集不存在");
         removeById(id);
-        RecycleBin rb = new RecycleBin(); rb.setCaseSetId(id); rb.setOriginalDirectoryId(cs.getDirectoryId());
+        RecycleBin rb = new RecycleBin();
+        rb.setItemType("CASE_SET");
+        rb.setItemId(id);
+        rb.setItemName(cs.getName());
+        rb.setProjectId(cs.getProjectId());
+        rb.setOriginalDirectoryId(cs.getDirectoryId());
         rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
         rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
         recycleBinMapper.insert(rb);
@@ -132,14 +137,14 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
     @Override @Transactional
     public void restoreCaseSet(String recycleBinId) {
         RecycleBin rb = recycleBinMapper.selectById(recycleBinId); if (rb == null) throw new BusinessException("记录不存在");
-        baseMapper.restoreCaseSet(rb.getCaseSetId(), rb.getOriginalDirectoryId());
+        baseMapper.restoreCaseSet(rb.getItemId(), rb.getOriginalDirectoryId());
         recycleBinMapper.deleteById(recycleBinId);
     }
 
     @Override @Transactional
     public void permanentDelete(String recycleBinId) {
         RecycleBin rb = recycleBinMapper.selectById(recycleBinId); if (rb == null) throw new BusinessException("记录不存在");
-        String csId = rb.getCaseSetId();
+        String csId = rb.getItemId();
         commentMapper.delete(new LambdaQueryWrapper<com.caseflow.entity.Comment>().eq(com.caseflow.entity.Comment::getCaseSetId, csId));
         mindNodeMapper.delete(new LambdaQueryWrapper<MindNode>().eq(MindNode::getCaseSetId, csId));
         reviewAssignmentMapper.delete(new LambdaQueryWrapper<ReviewAssignment>().eq(ReviewAssignment::getCaseSetId, csId));

@@ -5,12 +5,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.caseflow.common.BusinessException;
 import com.caseflow.common.CurrentUserUtil;
-import com.caseflow.entity.TestPlan;
-import com.caseflow.entity.TestPlanCase;
-import com.caseflow.entity.TestPlanExecutor;
-import com.caseflow.mapper.TestPlanCaseMapper;
-import com.caseflow.mapper.TestPlanExecutorMapper;
-import com.caseflow.mapper.TestPlanMapper;
+import com.caseflow.entity.*;
+import com.caseflow.mapper.*;
 import com.caseflow.service.TestPlanService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,20 +20,15 @@ import java.util.List;
 public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> implements TestPlanService {
     private final TestPlanCaseMapper caseMapper;
     private final TestPlanExecutorMapper executorMapper;
+    private final RecycleBinMapper recycleBinMapper;
 
+    /** 列表查询（全局 logic-delete-field 自动过滤 deleted=1） */
     @Override
     public Page<TestPlan> listPlans(String projectId, String keyword, int page, int size) {
         return lambdaQuery()
                 .eq(StringUtils.hasText(projectId), TestPlan::getProjectId, projectId)
                 .like(StringUtils.hasText(keyword), TestPlan::getName, keyword)
-                .eq(TestPlan::getDeleted, 0)
                 .orderByDesc(TestPlan::getCreatedAt).page(new Page<>(page, size));
-    }
-
-    @Override
-    public Page<TestPlan> listDeleted(String projectId, int page, int size) {
-        // lambdaQuery 受全局逻辑删除拦截（自动加 deleted=0），无法查 deleted=1 的记录
-        return baseMapper.selectDeletedPage(new Page<>(page, size), projectId);
     }
 
     @Override
@@ -62,7 +53,6 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
         if (plan == null) throw new BusinessException("测试计划不存在");
         if (StringUtils.hasText(name)) plan.setName(name);
         updateById(plan);
-        // 更新执行人：先删后插
         if (executorIds != null) {
             executorMapper.delete(new LambdaQueryWrapper<TestPlanExecutor>().eq(TestPlanExecutor::getPlanId, id));
             for (String uid : executorIds) {
@@ -72,31 +62,45 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
         }
     }
 
+    /**
+     * 逻辑删除：removeById 由全局 logic-delete 自动将 deleted 设为 1，
+     * 同时向 recycle_bin 写一条记录（与 CaseSetServiceImpl.deleteCaseSet 对齐）
+     */
     @Override @Transactional
-    public void softDelete(String id) {
-        TestPlan plan = getById(id);
+    public void softDelete(String planId) {
+        TestPlan plan = getById(planId);
         if (plan == null) throw new BusinessException("测试计划不存在");
-        String userId = CurrentUserUtil.getCurrentUserId();
-        String userName = CurrentUserUtil.getCurrentUserDisplayName();
-        plan.setDeleted(1); plan.setDeletedAt(LocalDateTime.now());
-        plan.setDeletedBy(userId); plan.setDeletedByName(userName);
-        updateById(plan);
+        removeById(planId);
+
+        RecycleBin rb = new RecycleBin();
+        rb.setItemType("TEST_PLAN");
+        rb.setItemId(planId);
+        rb.setItemName(plan.getName());
+        rb.setProjectId(plan.getProjectId());
+        rb.setOriginalDirectoryId(plan.getDirectoryId());
+        rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
+        rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
+        recycleBinMapper.insert(rb);
     }
 
-    @Override
-    public void restorePlan(String id) {
-        // 已逻辑删除的记录被全局拦截过滤，需用自定义 SQL 查询/恢复
-        TestPlan plan = baseMapper.selectDeletedById(id);
-        if (plan == null) throw new BusinessException("计划不存在");
-        baseMapper.restoreById(id);
-    }
-
+    /** 恢复：重置 deleted=0 并删除回收站记录 */
     @Override @Transactional
-    public void permanentDelete(String id) {
-        // 级联删除关联数据
-        executorMapper.delete(new LambdaQueryWrapper<TestPlanExecutor>().eq(TestPlanExecutor::getPlanId, id));
-        caseMapper.delete(new LambdaQueryWrapper<TestPlanCase>().eq(TestPlanCase::getPlanId, id));
-        // 物理删除（removeById 受全局逻辑删除影响，只做 UPDATE 不是 DELETE）
-        baseMapper.physicalDeleteById(id);
+    public void restorePlan(String recycleBinId) {
+        RecycleBin rb = recycleBinMapper.selectById(recycleBinId);
+        if (rb == null) throw new BusinessException("回收站记录不存在");
+        baseMapper.restoreById(rb.getItemId());
+        recycleBinMapper.deleteById(recycleBinId);
+    }
+
+    /** 彻底删除：级联清理执行人/用例 → 物理删除计划 → 删除回收站记录 */
+    @Override @Transactional
+    public void permanentDelete(String recycleBinId) {
+        RecycleBin rb = recycleBinMapper.selectById(recycleBinId);
+        if (rb == null) throw new BusinessException("回收站记录不存在");
+        String planId = rb.getItemId();
+        executorMapper.delete(new LambdaQueryWrapper<TestPlanExecutor>().eq(TestPlanExecutor::getPlanId, planId));
+        caseMapper.delete(new LambdaQueryWrapper<TestPlanCase>().eq(TestPlanCase::getPlanId, planId));
+        baseMapper.physicalDeleteById(planId);
+        recycleBinMapper.deleteById(recycleBinId);
     }
 }

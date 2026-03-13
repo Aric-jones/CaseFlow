@@ -28,11 +28,6 @@ public class TestPlanController {
         return Result.ok(testPlanService.listPlans(projectId, keyword, page, size));
     }
 
-    @GetMapping("/deleted") public Result<?> listDeleted(@RequestParam String projectId,
-            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
-        return Result.ok(testPlanService.listDeleted(projectId, page, size));
-    }
-
     @GetMapping("/{id}") public Result<?> get(@PathVariable String id) {
         TestPlan plan = testPlanService.getById(id);
         if (plan == null) return Result.error("测试计划不存在");
@@ -53,7 +48,7 @@ public class TestPlanController {
         TestPlan plan = new TestPlan();
         plan.setName(name); plan.setDirectoryId((String) body.get("directoryId"));
         plan.setProjectId((String) body.get("projectId")); plan.setStatus("NOT_STARTED");
-        plan.setDeleted(0); plan.setCreatedBy(CurrentUserUtil.getCurrentUserId());
+        plan.setCreatedBy(CurrentUserUtil.getCurrentUserId());
         testPlanService.save(plan);
         List<String> executorIds = (List<String>) body.get("executorIds");
         if (executorIds != null) for (String eid : executorIds) {
@@ -79,14 +74,6 @@ public class TestPlanController {
 
     @DeleteMapping("/{id}") public Result<?> delete(@PathVariable String id) {
         testPlanService.softDelete(id); return Result.ok();
-    }
-
-    @PostMapping("/{id}/restore") public Result<?> restore(@PathVariable String id) {
-        testPlanService.restorePlan(id); return Result.ok();
-    }
-
-    @DeleteMapping("/{id}/permanent") public Result<?> permanentDelete(@PathVariable String id) {
-        testPlanService.permanentDelete(id); return Result.ok();
     }
 
     @GetMapping("/{id}/cases") public Result<?> getCases(@PathVariable String id) {

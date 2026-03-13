@@ -63,7 +63,7 @@ async function permanentDel(id: string) {
 function formatTime(t: string) { return t ? t.replace('T', ' ').substring(0, 19) : ''; }
 
 const columns = ref([
-  { title: '用例集名称', dataIndex: 'caseSetName', key: 'caseSetName', ellipsis: true, resizable: true, width: 360 },
+  { title: '用例集名称', dataIndex: 'itemName', key: 'itemName', ellipsis: true, resizable: true, width: 360 },
   { title: '删除人', dataIndex: 'deletedByName', key: 'deletedByName', resizable: true, width: 140 },
   { title: '删除时间', key: 'deletedAt', dataIndex: 'deletedAt', resizable: true, width: 220 },
   { title: '操作', key: 'action', resizable: true, width: 200 },

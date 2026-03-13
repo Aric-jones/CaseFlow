@@ -126,9 +126,16 @@ export interface CustomAttribute {
 
 export interface RecycleBinItem {
   id: string;
-  caseSetId: string;
+  /** CASE_SET 或 TEST_PLAN */
+  itemType: string;
+  /** 业务ID（用例集ID或测试计划ID） */
+  itemId?: string;
+  /** 删除时记录的名称（用于展示） */
+  itemName?: string;
+  /** 旧数据兼容字段 */
   caseSetName?: string;
-  originalDirectoryId: string;
+  projectId?: string;
+  originalDirectoryId?: string;
   deletedBy: string;
   deletedByName?: string;
   deletedAt: string;

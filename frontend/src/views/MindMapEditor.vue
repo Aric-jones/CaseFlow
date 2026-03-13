@@ -517,36 +517,40 @@ function syncToNode(checkAutoChain = false) {
 }
 
 /**
- * 选中 TITLE 类型后，检查直接子节点：
- * - 至少有3个直接子节点
- * - 且前3个都没有 nodeType（或 nodeType 为空/null/undefined）
- * 满足以上条件才自动赋予 PRECONDITION / STEP / EXPECTED
+ * 选中 TITLE 类型后，检查是否存在连续父子链：
+ * - titleNode 有且仅有 1 个直接子节点 B
+ * - B 有且仅有 1 个直接子节点 C
+ * - C 有且仅有 1 个直接子节点 D（D 没有子节点）
+ * - B、C、D 都没有 nodeType
+ * 满足以上条件才自动赋予 B=PRECONDITION / C=STEP / D=EXPECTED
  */
 function autoAssignCaseChain(titleNode: any) {
-  const children: any[] = titleNode.children || [];
-  if (children.length < 3) return;
-  const first3 = children.slice(0, 3);
-  // 检查前3个子节点是否都没有 nodeType（包括 null/undefined/空字符串）
-  if (first3.some((c: any) => {
-    const nodeType = c.nodeData?.data?._raw?.nodeType;
-    return nodeType !== null && nodeType !== undefined && nodeType !== '';
-  })) return;
+  const b = titleNode.children?.[0];
+  if (!b || titleNode.children.length !== 1) return;
+  const c = b.children?.[0];
+  if (!c || b.children.length !== 1) return;
+  const d = c.children?.[0];
+  if (!d || c.children.length !== 1) return;
+  // D 必须是叶节点
+  if (d.children && d.children.length > 0) return;
 
+  // B、C、D 都不能有 nodeType
+  const hasType = (node: any) => {
+    const t = node.nodeData?.data?._raw?.nodeType;
+    return t !== null && t !== undefined && t !== '';
+  };
+  if (hasType(b) || hasType(c) || hasType(d)) return;
+
+  const targets = [b, c, d];
   const types = ['PRECONDITION', 'STEP', 'EXPECTED'];
   for (let i = 0; i < 3; i++) {
-    const child = first3[i];
-    // 确保 nodeData.data 存在
-    if (!child.nodeData) child.nodeData = {};
-    if (!child.nodeData.data) child.nodeData.data = {};
-    // 确保 _raw 存在
-    let raw = child.nodeData.data._raw;
+    const node = targets[i];
+    if (!node.nodeData) node.nodeData = {};
+    if (!node.nodeData.data) node.nodeData.data = {};
+    let raw = node.nodeData.data._raw;
     if (!raw) {
-      raw = { 
-        text: child.nodeData.data.text || child.data?.text || '', 
-        nodeType: null, 
-        properties: {} 
-      };
-      child.nodeData.data._raw = raw;
+      raw = { text: node.nodeData.data.text || '', nodeType: null, properties: {} };
+      node.nodeData.data._raw = raw;
     }
     raw.nodeType = types[i];
   }

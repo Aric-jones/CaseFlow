@@ -183,14 +183,11 @@ CREATE TABLE test_plans (
     created_by_name VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '创建人',
     updated_by      VARCHAR(32)   DEFAULT NULL                        COMMENT '修改人编号',
     updated_by_name VARCHAR(100)  DEFAULT NULL                        COMMENT '修改人',
+    deleted         TINYINT       NOT NULL DEFAULT 0                  COMMENT '逻辑删除: 0=正常 1=已删除',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted         TINYINT       NOT NULL DEFAULT 0                  COMMENT '逻辑删除: 0=正常 1=已删除',
-    deleted_at      DATETIME      DEFAULT NULL                        COMMENT '删除时间',
-    deleted_by      VARCHAR(32)   DEFAULT NULL                        COMMENT '删除人编号',
-    deleted_by_name VARCHAR(100)  DEFAULT NULL                        COMMENT '删除人',
     PRIMARY KEY (id),
-    INDEX idx_project (project_id)
+    INDEX idx_project_deleted (project_id, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='测试计划表';
 
 -- ========================================
@@ -246,11 +243,15 @@ CREATE TABLE custom_attributes (
 -- 回收站
 -- ========================================
 CREATE TABLE recycle_bin (
-    id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID(UUID)',
-    case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '用例集ID',
-    original_directory_id VARCHAR(32) NOT NULL                        COMMENT '原目录ID',
-    deleted_by      VARCHAR(32)   NOT NULL                            COMMENT '删除人编号',
-    deleted_by_name VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '删除人',
-    deleted_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '删除时间',
-    PRIMARY KEY (id)
+    id                    VARCHAR(32)   NOT NULL                            COMMENT '记录ID(UUID)',
+    item_type             VARCHAR(20)   NOT NULL DEFAULT 'CASE_SET'         COMMENT '类型: CASE_SET / TEST_PLAN',
+    item_id               VARCHAR(32)   NOT NULL                            COMMENT '业务ID（用例集ID或测试计划ID）',
+    item_name             VARCHAR(200)  DEFAULT NULL                        COMMENT '删除时的名称',
+    project_id            VARCHAR(32)   DEFAULT NULL                        COMMENT '所属项目ID',
+    original_directory_id VARCHAR(32)   DEFAULT NULL                        COMMENT '原目录ID',
+    deleted_by            VARCHAR(32)   NOT NULL                            COMMENT '删除人编号',
+    deleted_by_name       VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '删除人',
+    deleted_at            DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '删除时间',
+    PRIMARY KEY (id),
+    INDEX idx_project_type (project_id, item_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='回收站表';
