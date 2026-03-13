@@ -78,6 +78,10 @@
     <a-modal v-model:open="showForm" :title="editingPlan ? '编辑测试计划' : '新建测试计划'" @ok="submitForm" width="680px">
       <a-form layout="vertical">
         <a-form-item label="计划名称"><a-input v-model:value="planName" placeholder="输入名称" /></a-form-item>
+        <a-form-item label="所属目录">
+          <a-tree-select v-model:value="formDirId" :tree-data="treeData" placeholder="选择目录（可选）"
+            allow-clear tree-default-expand-all :field-names="{ children: 'children', label: 'title', value: 'key' }" style="width: 100%" />
+        </a-form-item>
         <a-form-item label="执行人">
           <a-select mode="multiple" v-model:value="executorIds" placeholder="选择执行人"
             :options="allUsers.map(u => ({ value: u.id, label: u.displayName }))" />
@@ -134,6 +138,7 @@ const showCaseSelect = ref(false);
 const planName = ref('');
 const executorIds = ref<string[]>([]);
 const editingPlan = ref<TestPlan | null>(null);
+const formDirId = ref<string | undefined>();
 const addingDir = ref(false);
 const newDirName = ref('');
 const addParentId = ref<string | null>(null);
@@ -222,6 +227,7 @@ onUnmounted(() => document.removeEventListener('click', hideCtx));
 function openCreate() {
   editingPlan.value = null;
   planName.value = ''; executorIds.value = []; selectedCases.value = [];
+  formDirId.value = selectedDir.value || undefined;
   showForm.value = true;
 }
 
@@ -229,6 +235,7 @@ function openCreate() {
 async function openEdit(plan: TestPlan) {
   editingPlan.value = plan;
   planName.value = plan.name;
+  formDirId.value = plan.directoryId || undefined;
   try {
     const res = await testPlanApi.getExecutors(plan.id);
     executorIds.value = res.data.map((e: any) => e.userId);
@@ -240,11 +247,11 @@ async function openEdit(plan: TestPlan) {
 async function submitForm() {
   if (!planName.value.trim()) { message.error('请输入计划名称'); return; }
   if (editingPlan.value) {
-    await testPlanApi.update(editingPlan.value.id, { name: planName.value, executorIds: executorIds.value });
+    await testPlanApi.update(editingPlan.value.id, { name: planName.value, directoryId: formDirId.value, executorIds: executorIds.value });
     message.success('更新成功');
   } else {
     if (!store.currentProject) return;
-    await testPlanApi.create({ name: planName.value, directoryId: selectedDir.value ?? undefined, projectId: store.currentProject.id, executorIds: executorIds.value, cases: selectedCases.value });
+    await testPlanApi.create({ name: planName.value, directoryId: formDirId.value ?? undefined, projectId: store.currentProject.id, executorIds: executorIds.value, cases: selectedCases.value });
     message.success('创建成功');
   }
   showForm.value = false; loadPlans();
