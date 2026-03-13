@@ -48,10 +48,17 @@
               </span>
             </template>
             <template v-if="column.key === 'executor'">
-              <span v-if="record._isLeaf">{{ record._executorName || '未分配' }}</span>
+              <a-select v-if="record._isLeaf" :value="record._executorId || undefined" placeholder="未分配"
+                allow-clear show-search option-filter-prop="label" size="small" style="width:100%"
+                :options="executorOptions"
+                @click.stop
+                @change="(v: any) => onExecutorChange(record._caseId, v)" />
             </template>
             <template v-if="column.key === 'result'">
-              <a-tag v-if="record._isLeaf" :color="resColor(record._result)">{{ resLabel(record._result) }}</a-tag>
+              <a-select v-if="record._isLeaf" :value="record._result" size="small" style="width:100%"
+                :options="resultOpts"
+                @click.stop
+                @change="(v: any) => onResultChange(record._caseId, v, record)" />
             </template>
             <template v-if="column.key === 'action'">
               <a-popconfirm v-if="record._isLeaf" title="确认移除该用例？" @confirm.stop="removeCase(record._caseId)">
@@ -89,15 +96,15 @@
             <label>预期结果</label>
             <div style="white-space:pre-wrap">{{ caseDetail.expected }}</div>
           </div>
-          <div class="field" v-if="caseDetail.props && Object.keys(caseDetail.props).length">
+          <div class="field" v-if="filteredProps.length">
             <label>属性</label>
             <ul class="props-ul">
-              <li v-for="(v, k) in caseDetail.props" :key="k">
-                <b>{{ propLabel(String(k)) }}</b>&nbsp;
-                <template v-if="String(k) === 'mark'">
-                  <a-tag :color="markColor(v)">{{ markLabel(v) }}</a-tag>
+              <li v-for="item in filteredProps" :key="item.key">
+                <b>{{ propLabel(item.key) }}</b>&nbsp;
+                <template v-if="item.key === 'mark'">
+                  <a-tag :color="markColor(item.val)">{{ markLabel(item.val) }}</a-tag>
                 </template>
-                <template v-else>{{ Array.isArray(v) ? v.join(', ') : v }}</template>
+                <template v-else>{{ Array.isArray(item.val) ? item.val.join(', ') : item.val }}</template>
               </li>
             </ul>
           </div>
@@ -183,10 +190,13 @@ const filterExecutor = ref<string | undefined>();
 const filterResult = ref<string | undefined>();
 const reasonModal = ref({ visible: false, action: '', text: '' });
 
+/** 计划关联的执行人列表 {userId, displayName} */
+const planExecutors = ref<{userId: string; displayName: string}[]>([]);
+
 const cols = [
   { title: '测试用例', key: 'title', ellipsis: true },
-  { title: '执行人', key: 'executor', width: 100 },
-  { title: '执行结果', key: 'result', width: 100 },
+  { title: '执行人', key: 'executor', width: 140 },
+  { title: '执行结果', key: 'result', width: 120 },
   { title: '操作', key: 'action', width: 80 },
 ];
 const resultOpts = [
@@ -206,9 +216,7 @@ const progressPct = computed(() => stats.value.total ? Math.round(stats.value.ex
 const curIdx = computed(() => selectedCase.value ? cases.value.findIndex((c: any) => c.id === selectedCase.value.id) : -1);
 
 const executorOptions = computed(() => {
-  const m = new Map<string, string>();
-  cases.value.forEach((c: any) => { if (c.executorId && c.executorName) m.set(c.executorId, c.executorName); });
-  return Array.from(m, ([value, label]) => ({ value, label }));
+  return planExecutors.value.map(e => ({ value: e.userId, label: e.displayName }));
 });
 
 const executorProgress = computed(() => {
@@ -248,6 +256,46 @@ const caseDetail = computed(() => {
   };
 });
 
+/** 过滤掉 null / undefined / 空字符串 / mark=NONE 的属性 */
+const filteredProps = computed(() => {
+  const props = caseDetail.value.props;
+  if (!props || typeof props !== 'object') return [];
+  return Object.entries(props).filter(([k, v]) => {
+    if (v == null || v === '' || v === 'NONE') return false;
+    if (Array.isArray(v) && v.length === 0) return false;
+    return true;
+  }).map(([k, v]) => ({ key: k, val: v }));
+});
+
+/** 行内修改执行人 */
+async function onExecutorChange(caseId: string, executorId: string | null) {
+  if (!caseId) return;
+  await testPlanApi.updateCaseExecutor(caseId, executorId || null);
+  const c = cases.value.find((x: any) => x.id === caseId);
+  if (c) {
+    c.executorId = executorId || null;
+    c.executorName = planExecutors.value.find(e => e.userId === executorId)?.displayName || '';
+  }
+  rebuildTree();
+}
+
+/** 行内修改执行结果 */
+async function onResultChange(caseId: string, result: string, record: any) {
+  if (!caseId) return;
+  if (result === 'FAIL' || result === 'SKIP') {
+    selectedCase.value = cases.value.find((x: any) => x.id === caseId) || null;
+    reasonModal.value = { visible: true, action: result, text: '' };
+    return;
+  }
+  await testPlanApi.executeCase(caseId, result);
+  const c = cases.value.find((x: any) => x.id === caseId);
+  if (c) { c.result = result; c.executedAt = new Date().toISOString(); }
+  rebuildTree();
+  if (selectedCase.value?.id === caseId) {
+    selectedCase.value = { ...selectedCase.value, result };
+  }
+}
+
 // ── 工具函数 ──────────────────────────────────────────
 function resLabel(r: string) { return ({ PASS: '通过', FAIL: '不通过', SKIP: '跳过' } as any)[r] || '待执行'; }
 function resColor(r: string) { return ({ PASS: 'success', FAIL: 'error', SKIP: 'warning' } as any)[r] || 'default'; }
@@ -259,9 +307,14 @@ function markColor(v: any) { return ({ PENDING: 'red', TO_CONFIRM: 'orange', TO_
 
 // ── 数据加载 ─────────────────────────────────────────
 async function loadData() {
-  const [pRes, cRes] = await Promise.all([testPlanApi.get(planId), testPlanApi.getCases(planId)]);
+  const [pRes, cRes, eRes] = await Promise.all([
+    testPlanApi.get(planId),
+    testPlanApi.getCases(planId),
+    testPlanApi.getExecutors(planId),
+  ]);
   plan.value = pRes.data;
   cases.value = cRes.data;
+  planExecutors.value = eRes.data || [];
   rebuildTree();
   if (selectedCase.value) {
     selectedCase.value = cases.value.find((c: any) => c.id === selectedCase.value.id) || cases.value[0] || null;
@@ -330,7 +383,8 @@ function rebuildTree() {
 function mergePaths(csList: any[], csId: string, allKeys: string[]): any[] {
   interface TreeNode {
     _key: string; _text: string; _nodeType: string | null;
-    _isLeaf?: boolean; _caseId?: string; _result?: string; _executorName?: string;
+    _isLeaf?: boolean; _caseId?: string; _result?: string;
+    _executorId?: string; _executorName?: string;
     children?: TreeNode[];
     _childMap?: Map<string, TreeNode>;
   }
@@ -355,6 +409,7 @@ function mergePaths(csList: any[], csId: string, allKeys: string[]): any[] {
           child._isLeaf = true;
           child._caseId = c.id;
           child._result = c.result;
+          child._executorId = c.executorId;
           child._executorName = c.executorName;
         }
         current._childMap.set(nodeId, child);
@@ -363,6 +418,7 @@ function mergePaths(csList: any[], csId: string, allKeys: string[]): any[] {
         child._isLeaf = true;
         child._caseId = c.id;
         child._result = c.result;
+        child._executorId = c.executorId;
         child._executorName = c.executorName;
       }
       current = child;
@@ -424,11 +480,20 @@ function goToMindMap() { if (selectedCase.value?.caseSetId) router.push(`/mind-m
 // ── 执行操作 ─────────────────────────────────────────
 async function doExecute(result: string, reasonText?: string) {
   if (!selectedCase.value) return;
-  await testPlanApi.executeCase(selectedCase.value.id, result, reasonText);
+  const caseId = selectedCase.value.id;
+  await testPlanApi.executeCase(caseId, result, reasonText);
   message.success('已记录');
-  const prevId = selectedCase.value.id;
-  await loadData();
-  const idx = cases.value.findIndex((c: any) => c.id === prevId);
+  // 本地更新，避免全量刷新
+  const c = cases.value.find((x: any) => x.id === caseId);
+  if (c) {
+    c.result = result;
+    c.reason = reasonText || null;
+    c.executedAt = new Date().toISOString();
+  }
+  rebuildTree();
+  selectedCase.value = { ...selectedCase.value, result, reason: reasonText || null };
+  // 自动跳到下一条
+  const idx = cases.value.findIndex((x: any) => x.id === caseId);
   if (idx >= 0 && idx < cases.value.length - 1) selectedCase.value = cases.value[idx + 1];
 }
 

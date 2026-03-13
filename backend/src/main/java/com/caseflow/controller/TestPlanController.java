@@ -5,20 +5,22 @@ import com.caseflow.common.Result;
 import com.caseflow.entity.TestPlan;
 import com.caseflow.entity.TestPlanCase;
 import com.caseflow.entity.TestPlanExecutor;
+import com.caseflow.entity.User;
 import com.caseflow.mapper.TestPlanCaseMapper;
 import com.caseflow.mapper.TestPlanExecutorMapper;
+import com.caseflow.mapper.UserMapper;
 import com.caseflow.service.TestPlanService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @RestController @RequestMapping("/api/test-plans") @RequiredArgsConstructor
 public class TestPlanController {
     private final TestPlanService testPlanService;
     private final TestPlanExecutorMapper executorMapper;
     private final TestPlanCaseMapper caseMapper;
+    private final UserMapper userMapper;
 
     @GetMapping public Result<?> list(@RequestParam String projectId,
             @RequestParam(required = false) String keyword,
@@ -34,10 +36,25 @@ public class TestPlanController {
         return Result.ok(plan);
     }
 
+    /** 返回执行人列表，包含 userId + displayName */
     @GetMapping("/{id}/executors") public Result<?> getExecutors(@PathVariable String id) {
-        return Result.ok(executorMapper.selectList(
+        List<TestPlanExecutor> execs = executorMapper.selectList(
             new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TestPlanExecutor>()
-                .eq(TestPlanExecutor::getPlanId, id)));
+                .eq(TestPlanExecutor::getPlanId, id));
+        Set<String> uids = new HashSet<>();
+        execs.forEach(e -> { if (e.getUserId() != null) uids.add(e.getUserId()); });
+        Map<String, String> nameMap = new HashMap<>();
+        if (!uids.isEmpty()) {
+            userMapper.selectBatchIds(uids).forEach(u -> nameMap.put(u.getId(), u.getDisplayName()));
+        }
+        List<Map<String, String>> result = new ArrayList<>();
+        for (TestPlanExecutor e : execs) {
+            Map<String, String> m = new LinkedHashMap<>();
+            m.put("userId", e.getUserId());
+            m.put("displayName", nameMap.getOrDefault(e.getUserId(), e.getUserId()));
+            result.add(m);
+        }
+        return Result.ok(result);
     }
 
     @SuppressWarnings("unchecked")
@@ -94,6 +111,15 @@ public class TestPlanController {
     /** 刷新用例：回源重新拍快照，保留已有执行状态，同步新增/修改 */
     @PostMapping("/{id}/refresh") public Result<?> refreshCases(@PathVariable String id) {
         testPlanService.refreshCases(id); return Result.ok();
+    }
+
+    /** 更新单条用例的执行人 */
+    @PutMapping("/cases/{id}/executor") public Result<?> updateCaseExecutor(@PathVariable String id, @RequestBody Map<String, String> body) {
+        TestPlanCase tc = caseMapper.selectById(id);
+        if (tc == null) return Result.error("用例不存在");
+        tc.setExecutorId(body.get("executorId"));
+        caseMapper.updateById(tc);
+        return Result.ok();
     }
 
     @PutMapping("/cases/{id}/execute") public Result<?> execute(@PathVariable String id, @RequestBody Map<String, String> body) {

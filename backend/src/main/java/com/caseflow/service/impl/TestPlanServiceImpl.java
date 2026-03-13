@@ -153,11 +153,17 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
 
     @Override
     public void addCasesFromSets(String planId, List<String> caseSetIds) {
+        // 查询计划关联的执行人，用于轮询分配
+        List<String> executorIds = executorMapper.selectList(
+                new LambdaQueryWrapper<TestPlanExecutor>().eq(TestPlanExecutor::getPlanId, planId))
+                .stream().map(TestPlanExecutor::getUserId).collect(Collectors.toList());
+
+        int execIdx = 0;
+
         for (String csId : caseSetIds) {
             CaseSet cs = caseSetMapper.selectById(csId);
             if (cs == null) continue;
 
-            // 加载必填属性（限 TITLE 类型）
             List<String> required = getRequiredAttrs(cs.getProjectId());
 
             Map<String, MindNode> allNodes = new HashMap<>();
@@ -167,7 +173,6 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
 
             List<List<Map<String, Object>>> validPaths = findValidPaths(root, allNodes, childrenByParent, required);
             for (List<Map<String, Object>> path : validPaths) {
-                // TITLE 是倒数第 4 个节点
                 String titleNodeId = str(path.get(path.size() - 4).get("id"));
                 TestPlanCase tc = new TestPlanCase();
                 tc.setPlanId(planId);
@@ -175,6 +180,10 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
                 tc.setCaseSetId(csId);
                 tc.setPathSnapshot(path);
                 tc.setResult("PENDING");
+                if (!executorIds.isEmpty()) {
+                    tc.setExecutorId(executorIds.get(execIdx % executorIds.size()));
+                    execIdx++;
+                }
                 caseMapper.insert(tc);
             }
         }
@@ -239,18 +248,23 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
     //  refreshCases：按 node_id 回源重新拍快照，保留执行状态
     // ═══════════════════════════════════════════════════════════════
 
+    /**
+     * 刷新用例：对每条已有用例，回源检查路径是否结构一致（节点ID序列相同）。
+     * - 结构一致但值变化 → 更新快照（保留执行状态）
+     * - 结构变化或源不存在 → 不做修改，保留旧快照
+     * - 不新增、不删除
+     */
     @Override @Transactional
     public void refreshCases(String planId) {
         List<TestPlanCase> existing = getCases(planId);
         if (existing.isEmpty()) return;
 
-        // 按用例集分组
         Map<String, List<TestPlanCase>> byCsId = existing.stream()
                 .collect(Collectors.groupingBy(TestPlanCase::getCaseSetId));
 
         for (Map.Entry<String, List<TestPlanCase>> entry : byCsId.entrySet()) {
             String csId = entry.getKey();
-            List<TestPlanCase> cases = entry.getValue();
+            List<TestPlanCase> planCases = entry.getValue();
 
             CaseSet cs = caseSetMapper.selectById(csId);
             if (cs == null) continue;
@@ -261,7 +275,6 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
             MindNode root = loadTree(csId, allNodes, childrenByParent);
             if (root == null) continue;
 
-            // 提取当前所有有效路径，按 TITLE node_id 索引
             List<List<Map<String, Object>>> validPaths = findValidPaths(root, allNodes, childrenByParent, required);
             Map<String, List<Map<String, Object>>> pathByTitle = new HashMap<>();
             for (List<Map<String, Object>> path : validPaths) {
@@ -269,31 +282,28 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
                 pathByTitle.put(titleId, path);
             }
 
-            Set<String> existingTitleIds = cases.stream().map(TestPlanCase::getNodeId).collect(Collectors.toSet());
-
-            // 更新已有用例的快照
-            for (TestPlanCase tc : cases) {
+            for (TestPlanCase tc : planCases) {
                 List<Map<String, Object>> newPath = pathByTitle.get(tc.getNodeId());
-                if (newPath != null) {
+                if (newPath == null) continue;
+                // 比较路径结构（节点ID序列）是否一致
+                if (isSameStructure(tc.getPathSnapshot(), newPath)) {
                     tc.setPathSnapshot(newPath);
                     caseMapper.updateById(tc);
                 }
-                // 源 TITLE 被删除则保留旧快照不动
-            }
-
-            // 添加新增的有效用例
-            for (Map.Entry<String, List<Map<String, Object>>> pe : pathByTitle.entrySet()) {
-                if (!existingTitleIds.contains(pe.getKey())) {
-                    TestPlanCase tc = new TestPlanCase();
-                    tc.setPlanId(planId);
-                    tc.setNodeId(pe.getKey());
-                    tc.setCaseSetId(csId);
-                    tc.setPathSnapshot(pe.getValue());
-                    tc.setResult("PENDING");
-                    caseMapper.insert(tc);
-                }
             }
         }
+    }
+
+    /** 比较两条路径的结构：节点ID序列完全相同则认为结构一致 */
+    private boolean isSameStructure(List<Map<String, Object>> oldPath, List<Map<String, Object>> newPath) {
+        if (oldPath == null || newPath == null) return oldPath == null && newPath == null;
+        if (oldPath.size() != newPath.size()) return false;
+        for (int i = 0; i < oldPath.size(); i++) {
+            String oldId = str(oldPath.get(i).get("id"));
+            String newId = str(newPath.get(i).get("id"));
+            if (!Objects.equals(oldId, newId)) return false;
+        }
+        return true;
     }
 
     // ═══════════════════════════════════════════════════════════════
