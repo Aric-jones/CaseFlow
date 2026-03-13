@@ -49,7 +49,7 @@
         <a-input-search v-model:value="keyword" placeholder="搜索" style="width: 280px" @search="() => loadPlans(1)" />
         <a-checkbox v-model:checked="onlyMine">只看我的</a-checkbox>
         <div style="flex: 1" />
-        <a-button type="primary" @click="openCreate"><PlusOutlined /> 新建测试计划</a-button>
+        <a-button type="primary" @click="$router.push('/test-plan/create')"><PlusOutlined /> 新建测试计划</a-button>
       </div>
       <a-table :columns="columns" :data-source="plans.records" row-key="id" :loading="loading"
         :pagination="{ current: plans.current, total: plans.total, pageSize: 20, onChange: loadPlans }" size="middle"
@@ -64,7 +64,7 @@
           <template v-if="column.key === 'action'">
             <a-space :size="0">
               <a-button type="link" size="small" @click="$router.push(`/test-plan/${record.id}/execute`)">执行</a-button>
-              <a-button type="link" size="small" @click="openEdit(record)">编辑</a-button>
+              <a-button type="link" size="small" @click="$router.push(`/test-plan/${record.id}/edit`)">编辑</a-button>
               <a-popconfirm title="确认删除？将移入回收站" @confirm="deletePlan(record.id)">
                 <a-button type="link" size="small" danger>删除</a-button>
               </a-popconfirm>
@@ -74,35 +74,6 @@
       </a-table>
     </a-layout-content>
 
-    <!-- 新建/编辑弹窗 -->
-    <a-modal v-model:open="showForm" :title="editingPlan ? '编辑测试计划' : '新建测试计划'" @ok="submitForm" width="680px">
-      <a-form layout="vertical">
-        <a-form-item label="计划名称"><a-input v-model:value="planName" placeholder="输入名称" /></a-form-item>
-        <a-form-item label="所属目录">
-          <a-tree-select v-model:value="formDirId" :tree-data="treeData" placeholder="选择目录（可选）"
-            allow-clear tree-default-expand-all :field-names="{ children: 'children', label: 'title', value: 'key' }" style="width: 100%" />
-        </a-form-item>
-        <a-form-item label="执行人">
-          <a-select mode="multiple" v-model:value="executorIds" placeholder="选择执行人"
-            :options="allUsers.map(u => ({ value: u.id, label: u.displayName }))" />
-        </a-form-item>
-        <a-form-item v-if="!editingPlan" label="选择用例集">
-          <a-button @click="showCaseSelect = true">选择</a-button>
-          <span style="margin-left: 8px; color: #999">已选 {{ selectedCases.length }} 条用例</span>
-        </a-form-item>
-      </a-form>
-    </a-modal>
-
-    <a-modal v-model:open="showCaseSelect" title="选择用例集" :footer="null" width="560px">
-      <a-list :data-source="caseSets">
-        <template #renderItem="{ item }">
-          <a-list-item>
-            <a-list-item-meta :title="item.name" :description="`${item.caseCount}条用例`" />
-            <template #actions><a-button type="link" @click="selectCaseSet(item.id)">选择</a-button></template>
-          </a-list-item>
-        </template>
-      </a-list>
-    </a-modal>
 
     <div v-if="ctxMenu.visible" class="context-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
       <div class="ctx-item" @click="startAdd(ctxMenu.nodeId!)"><PlusOutlined /> 新建子目录</div>
@@ -117,9 +88,9 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons-vue';
-import { directoryApi, testPlanApi, caseSetApi, mindNodeApi, userApi } from '../api';
+import { directoryApi, testPlanApi } from '../api';
 import { useAppStore } from '../stores/app';
-import type { DirectoryNode, TestPlan, CaseSet, User, MindNodeData, PageResult } from '../types';
+import type { DirectoryNode, TestPlan, PageResult } from '../types';
 
 const store = useAppStore();
 
@@ -130,15 +101,6 @@ const plans = ref<PageResult<TestPlan>>({ records: [], total: 0, size: 20, curre
 const keyword = ref('');
 const onlyMine = ref(false);
 const loading = ref(false);
-const allUsers = ref<User[]>([]);
-const caseSets = ref<CaseSet[]>([]);
-const selectedCases = ref<{ nodeId: string; caseSetId: string }[]>([]);
-const showForm = ref(false);
-const showCaseSelect = ref(false);
-const planName = ref('');
-const executorIds = ref<string[]>([]);
-const editingPlan = ref<TestPlan | null>(null);
-const formDirId = ref<string | undefined>();
 const addingDir = ref(false);
 const newDirName = ref('');
 const addParentId = ref<string | null>(null);
@@ -181,7 +143,7 @@ async function loadPlans(page = 1) {
 watch(() => store.currentProject, () => { loadDirs(); loadPlans(); });
 watch(selectedDir, () => loadPlans());
 watch(onlyMine, () => loadPlans());
-onMounted(() => { loadDirs(); loadPlans(); userApi.listAll().then(r => allUsers.value = r.data); });
+onMounted(() => { loadDirs(); loadPlans(); });
 
 function toggleSider() { siderCollapsed.value = !siderCollapsed.value; }
 
@@ -223,64 +185,10 @@ onMounted(() => document.addEventListener('click', hideCtx));
 onUnmounted(() => document.removeEventListener('click', hideCtx));
 
 // ── 计划 CRUD ─────────────────────────────────────────────────
-/** 打开新建弹窗 */
-function openCreate() {
-  editingPlan.value = null;
-  planName.value = ''; executorIds.value = []; selectedCases.value = [];
-  formDirId.value = selectedDir.value || undefined;
-  showForm.value = true;
-}
-
-/** 打开编辑弹窗，并加载该计划的执行人 */
-async function openEdit(plan: TestPlan) {
-  editingPlan.value = plan;
-  planName.value = plan.name;
-  formDirId.value = plan.directoryId || undefined;
-  try {
-    const res = await testPlanApi.getExecutors(plan.id);
-    executorIds.value = res.data.map((e: any) => e.userId);
-  } catch { executorIds.value = []; }
-  showForm.value = true;
-}
-
-/** 提交创建/编辑表单 */
-async function submitForm() {
-  if (!planName.value.trim()) { message.error('请输入计划名称'); return; }
-  if (editingPlan.value) {
-    await testPlanApi.update(editingPlan.value.id, { name: planName.value, directoryId: formDirId.value, executorIds: executorIds.value });
-    message.success('更新成功');
-  } else {
-    if (!store.currentProject) return;
-    await testPlanApi.create({ name: planName.value, directoryId: formDirId.value ?? undefined, projectId: store.currentProject.id, executorIds: executorIds.value, cases: selectedCases.value });
-    message.success('创建成功');
-  }
-  showForm.value = false; loadPlans();
-}
-
 /** 逻辑删除（移入回收站） */
 async function deletePlan(id: string) {
   await testPlanApi.delete(id); message.success('已移入回收站'); loadPlans();
 }
-
-/** 从用例集中提取符合条件的用例节点 */
-async function selectCaseSet(csId: string) {
-  const res = await mindNodeApi.tree(csId);
-  if (!res.data.length) return;
-  function collect(n: MindNodeData, path: MindNodeData[]): void {
-    const p = [...path, n];
-    if (!n.children?.length) {
-      if (p.length >= 5 && p[p.length-1].nodeType === 'EXPECTED' && n.id) {
-        selectedCases.value.push({ nodeId: n.id, caseSetId: csId });
-      }
-    } else { for (const c of n.children) collect(c, p); }
-  }
-  collect(res.data[0], []);
-  message.success('已添加用例');
-}
-
-onMounted(async () => {
-  if (store.currentProject) caseSets.value = (await caseSetApi.list({ projectId: store.currentProject.id, size: 1000 })).data.records;
-});
 
 // ── 工具 ──────────────────────────────────────────────────────
 /** 格式化时间为 yyyy-MM-dd HH:mm:ss */

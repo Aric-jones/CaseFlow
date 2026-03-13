@@ -55,10 +55,10 @@ public class TestPlanController {
             TestPlanExecutor e = new TestPlanExecutor(); e.setPlanId(plan.getId()); e.setUserId(eid);
             executorMapper.insert(e);
         }
-        List<Map<String, String>> cases = (List<Map<String, String>>) body.get("cases");
-        if (cases != null) for (Map<String, String> c : cases) {
-            TestPlanCase tc = new TestPlanCase(); tc.setPlanId(plan.getId()); tc.setNodeId(c.get("nodeId"));
-            tc.setCaseSetId(c.get("caseSetId")); tc.setResult("PENDING"); caseMapper.insert(tc);
+        // 通过 caseSetIds 自动查 TITLE 节点创建用例
+        List<String> caseSetIds = (List<String>) body.get("caseSetIds");
+        if (caseSetIds != null && !caseSetIds.isEmpty()) {
+            testPlanService.addCasesFromSets(plan.getId(), caseSetIds);
         }
         return Result.ok(plan);
     }
@@ -67,8 +67,10 @@ public class TestPlanController {
     @Transactional
     @PutMapping("/{id}") public Result<?> update(@PathVariable String id, @RequestBody Map<String, Object> body) {
         String name = (String) body.get("name");
+        String directoryId = (String) body.get("directoryId");
         List<String> executorIds = (List<String>) body.get("executorIds");
-        testPlanService.updatePlan(id, name, executorIds);
+        List<String> caseSetIds = (List<String>) body.get("caseSetIds");
+        testPlanService.updatePlan(id, name, directoryId, executorIds, caseSetIds);
         return Result.ok();
     }
 
@@ -76,8 +78,22 @@ public class TestPlanController {
         testPlanService.softDelete(id); return Result.ok();
     }
 
+    /** 获取测试计划已关联的用例集 ID 列表 */
+    @GetMapping("/{id}/case-set-ids") public Result<?> getCaseSetIds(@PathVariable String id) {
+        List<String> ids = caseMapper.selectList(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TestPlanCase>()
+                .eq(TestPlanCase::getPlanId, id).select(TestPlanCase::getCaseSetId))
+            .stream().map(TestPlanCase::getCaseSetId).distinct().collect(java.util.stream.Collectors.toList());
+        return Result.ok(ids);
+    }
+
     @GetMapping("/{id}/cases") public Result<?> getCases(@PathVariable String id) {
         return Result.ok(testPlanService.getCasesRich(id));
+    }
+
+    /** 刷新用例：回源重新拍快照，保留已有执行状态，同步新增/修改 */
+    @PostMapping("/{id}/refresh") public Result<?> refreshCases(@PathVariable String id) {
+        testPlanService.refreshCases(id); return Result.ok();
     }
 
     @PutMapping("/cases/{id}/execute") public Result<?> execute(@PathVariable String id, @RequestBody Map<String, String> body) {

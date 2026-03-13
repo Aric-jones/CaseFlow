@@ -106,7 +106,7 @@ const panelTabs = [
   { value: 'comments', label: '评论' },
   { value: 'review', label: '评审' },
 ];
-const markOptions = [{value:'NONE',label:'无'},{value:'PENDING',label:'待完成'},{value:'TO_CONFIRM',label:'待确认'},{value:'TO_MODIFY',label:'待修改'}];
+const markOptions = [{value:'NONE',label:'无'},{value:'待完成',label:'待完成'},{value:'待确认',label:'待确认'},{value:'待修改',label:'待修改'}];
 let cleanupMouseOverrides: (() => void) | null = null;
 
 const revLabel: Record<string, string> = { PENDING: '未评审', APPROVED: '通过', REJECTED: '不通过', NEED_MODIFY: '待修改' };

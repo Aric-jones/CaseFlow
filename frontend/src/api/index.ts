@@ -113,11 +113,12 @@ export const testPlanApi = {
   list: (params: any): R<PageResult<TestPlan>> => request.get('/test-plans', { params }),
   get: (id: string): R<TestPlan> => request.get(`/test-plans/${id}`),
   getExecutors: (id: string): R<any[]> => request.get(`/test-plans/${id}/executors`),
+  getCaseSetIds: (id: string): R<string[]> => request.get(`/test-plans/${id}/case-set-ids`),
   create: (data: any): R<TestPlan> => request.post('/test-plans', data),
   update: (id: string, data: any): R<void> => request.put(`/test-plans/${id}`, data),
-  /** 软删除，同时写入 recycle_bin */
   delete: (id: string): R<void> => request.delete(`/test-plans/${id}`),
   getCases: (id: string): R<any[]> => request.get(`/test-plans/${id}/cases`),
+  refreshCases: (id: string): R<void> => request.post(`/test-plans/${id}/refresh`),
   executeCase: (id: string, result: string, reason?: string): R<void> =>
     request.put(`/test-plans/cases/${id}/execute`, { result, reason }),
   removeCase: (id: string): R<void> => request.delete(`/test-plans/cases/${id}`),

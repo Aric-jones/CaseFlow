@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 @Data
 @TableName("users")
 public class User {
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
     private String username;
     private String displayName;

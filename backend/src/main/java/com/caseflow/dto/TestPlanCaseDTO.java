@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 测试计划用例的富查询结果，包含用例节点树、执行人名称等
+ * 测试计划用例 DTO，直接携带路径快照数据供前端展示
  */
 @Data
 public class TestPlanCaseDTO {
@@ -20,19 +20,9 @@ public class TestPlanCaseDTO {
     private String result;
     private String reason;
     private LocalDateTime executedAt;
-    /** 用例标题节点文本 */
-    private String title;
-    /** 用例的子节点列表（前置条件/步骤/预期结果等） */
-    private List<NodeInfo> children;
-    /** TITLE 节点的属性 */
-    private Map<String, Object> properties;
-
-    @Data
-    public static class NodeInfo {
-        private String id;
-        private String text;
-        private String nodeType;
-        private Map<String, Object> properties;
-        private List<NodeInfo> children;
-    }
+    /**
+     * 完整路径快照，每个元素 = {id, text, nodeType, properties}
+     * 从 root 到 EXPECTED，前端据此构建树和详情
+     */
+    private List<Map<String, Object>> pathSnapshot;
 }

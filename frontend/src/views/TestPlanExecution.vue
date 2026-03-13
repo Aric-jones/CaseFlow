@@ -15,9 +15,8 @@
       <div class="header-right">
         <span class="label">执行进度</span>
         <a-progress :percent="progressPct" :stroke-color="'#52c41a'" size="small" style="width:120px" />
-        <span class="c-pass">#通过 {{ stats.pass }}</span>
         <a-button type="link" @click="showReport = true">查看测试报告</a-button>
-        <a-button type="link" @click="loadData"><ReloadOutlined /> 刷新用例</a-button>
+        <a-button type="link" :loading="refreshing" @click="doRefresh"><ReloadOutlined /> 刷新用例</a-button>
       </div>
     </div>
 
@@ -35,7 +34,6 @@
 
     <!-- ===== 主体 ===== -->
     <div class="exec-body">
-      <!-- 左侧：树形用例列表 -->
       <div class="exec-left">
         <a-table :columns="cols" :data-source="displayTree" row-key="_key" size="small"
           :pagination="false" :scroll="{ y: 'calc(100vh - 200px)' }"
@@ -64,36 +62,37 @@
         </a-table>
       </div>
 
-      <!-- 右侧：用例详情 -->
+      <!-- 右侧详情 -->
       <div class="exec-right" v-if="selectedCase">
         <div class="detail-header">
           <span>用例详情</span>
           <a-tag :color="resColor(selectedCase.result)">{{ resLabel(selectedCase.result) }}</a-tag>
         </div>
         <div class="detail-body">
-          <!-- 用例标题 -->
+          <div class="field" v-if="caseDetail.modulePath">
+            <label>前置模块</label>
+            <div>{{ caseDetail.modulePath }}</div>
+          </div>
           <div class="field">
             <label>用例标题</label>
-            <div>{{ selectedCase.title }}</div>
+            <div>{{ caseDetail.title }}</div>
           </div>
-          <!-- 前置条件 / 步骤 / 预期结果（从子树中提取） -->
-          <div class="field" v-if="caseDetail.precondition !== undefined">
+          <div class="field" v-if="caseDetail.precondition">
             <label>前置条件</label>
-            <div>{{ caseDetail.precondition || '无' }}</div>
+            <div>{{ caseDetail.precondition }}</div>
           </div>
-          <div class="field" v-if="caseDetail.step !== undefined">
+          <div class="field" v-if="caseDetail.step">
             <label>步骤</label>
-            <div style="white-space:pre-wrap">{{ caseDetail.step || '无' }}</div>
+            <div style="white-space:pre-wrap">{{ caseDetail.step }}</div>
           </div>
-          <div class="field" v-if="caseDetail.expected !== undefined">
+          <div class="field" v-if="caseDetail.expected">
             <label>预期结果</label>
-            <div style="white-space:pre-wrap">{{ caseDetail.expected || '无' }}</div>
+            <div style="white-space:pre-wrap">{{ caseDetail.expected }}</div>
           </div>
-          <!-- 属性（分点展示，标记翻译中文） -->
-          <div class="field" v-if="selectedCase.properties && Object.keys(selectedCase.properties).length">
+          <div class="field" v-if="caseDetail.props && Object.keys(caseDetail.props).length">
             <label>属性</label>
             <ul class="props-ul">
-              <li v-for="(v, k) in selectedCase.properties" :key="k">
+              <li v-for="(v, k) in caseDetail.props" :key="k">
                 <b>{{ propLabel(String(k)) }}</b>&nbsp;
                 <template v-if="String(k) === 'mark'">
                   <a-tag :color="markColor(v)">{{ markLabel(v) }}</a-tag>
@@ -108,7 +107,7 @@
         <div class="detail-footer">
           <div class="footer-nav">
             <a-button size="small" :disabled="curIdx <= 0" @click="goPrev"><LeftOutlined /> 上一条</a-button>
-            <a-button size="small" :disabled="curIdx >= leafCases.length - 1" @click="goNext">下一条 <RightOutlined /></a-button>
+            <a-button size="small" :disabled="curIdx >= cases.length - 1" @click="goNext">下一条 <RightOutlined /></a-button>
           </div>
           <div class="footer-actions">
             <a-button class="btn-pass" @click="doExecute('PASS')">通过</a-button>
@@ -120,13 +119,13 @@
       <div class="exec-right empty" v-else><a-empty description="请选择用例" /></div>
     </div>
 
-    <!-- ===== 不通过/跳过原因弹窗 ===== -->
+    <!-- 原因弹窗 -->
     <a-modal v-model:open="reasonModal.visible" :title="reasonModal.action === 'FAIL' ? '不通过原因' : '跳过原因'" @ok="submitReason" ok-text="确认">
       <a-textarea v-model:value="reasonModal.text" :placeholder="'请填写' + (reasonModal.action === 'FAIL' ? '不通过' : '跳过') + '原因（必填）'"
         :auto-size="{ minRows: 3, maxRows: 6 }" />
     </a-modal>
 
-    <!-- ===== 测试报告弹窗 ===== -->
+    <!-- 测试报告弹窗 -->
     <a-modal v-model:open="showReport" title="测试报告" :footer="null" width="680px">
       <div class="rpt-section">
         <h4>整体执行进度</h4>
@@ -165,25 +164,20 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import { ArrowLeftOutlined, ReloadOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons-vue';
-import { testPlanApi, mindNodeApi, caseSetApi } from '../api';
-import type { TestPlan, MindNodeData } from '../types';
+import { testPlanApi } from '../api';
+import type { TestPlan } from '../types';
 
 const route = useRoute();
 const router = useRouter();
 const planId = String(route.params.planId);
 
-// ── 状态 ──────────────────────────────────────────────
 const plan = ref<TestPlan | null>(null);
-/** 后端 getCasesRich 返回的用例 DTO 列表 */
 const cases = ref<any[]>([]);
-/** 缓存的原始思维导图树，按 caseSetId 索引 */
-const rawTreeCache = ref<Map<string, MindNodeData[]>>(new Map());
-const rawNameCache = ref<Map<string, string>>(new Map());
-/** 最终展示在 Table 中的树形数据 */
 const displayTree = ref<any[]>([]);
 const expandedKeys = ref<string[]>([]);
 const selectedCase = ref<any>(null);
 const showReport = ref(false);
+const refreshing = ref(false);
 const filterKeyword = ref('');
 const filterExecutor = ref<string | undefined>();
 const filterResult = ref<string | undefined>();
@@ -203,23 +197,20 @@ const resultOpts = [
 // ── 统计 ──────────────────────────────────────────────
 const stats = computed(() => {
   const a = cases.value;
-  const p = a.filter(c => c.result === 'PASS').length;
-  const f = a.filter(c => c.result === 'FAIL').length;
-  const s = a.filter(c => c.result === 'SKIP').length;
+  const p = a.filter((c: any) => c.result === 'PASS').length;
+  const f = a.filter((c: any) => c.result === 'FAIL').length;
+  const s = a.filter((c: any) => c.result === 'SKIP').length;
   return { total: a.length, pass: p, fail: f, skip: s, pending: a.length - p - f - s, executed: p + f + s };
 });
 const progressPct = computed(() => stats.value.total ? Math.round(stats.value.executed / stats.value.total * 100) : 0);
-const leafCases = computed(() => cases.value);
-const curIdx = computed(() => selectedCase.value ? leafCases.value.findIndex((c: any) => c.id === selectedCase.value.id) : -1);
+const curIdx = computed(() => selectedCase.value ? cases.value.findIndex((c: any) => c.id === selectedCase.value.id) : -1);
 
-/** 执行人下拉选项 */
 const executorOptions = computed(() => {
   const m = new Map<string, string>();
   cases.value.forEach((c: any) => { if (c.executorId && c.executorName) m.set(c.executorId, c.executorName); });
   return Array.from(m, ([value, label]) => ({ value, label }));
 });
 
-/** 报告弹窗 - 执行人分组进度 */
 const executorProgress = computed(() => {
   const m = new Map<string, { name: string; total: number; pass: number; fail: number; skip: number; pending: number; executed: number }>();
   cases.value.forEach((c: any) => {
@@ -234,21 +225,27 @@ const executorProgress = computed(() => {
   return Array.from(m.values());
 });
 
-/** 从选中用例的子树中提取前置条件 / 步骤 / 预期结果文本 */
+/** 从 pathSnapshot 中提取详情 */
 const caseDetail = computed(() => {
   const sc = selectedCase.value;
-  if (!sc) return {};
-  const r: Record<string, string | undefined> = {};
-  function walk(nodes: any[]) {
-    for (const n of nodes) {
-      if (n.nodeType === 'PRECONDITION') r.precondition = n.text;
-      else if (n.nodeType === 'STEP') r.step = n.text;
-      else if (n.nodeType === 'EXPECTED') r.expected = n.text;
-      if (n.children?.length) walk(n.children);
-    }
-  }
-  walk(sc.children || []);
-  return r;
+  if (!sc?.pathSnapshot?.length) return {};
+  const path: any[] = sc.pathSnapshot;
+  const len = path.length;
+  if (len < 4) return {};
+  const titleNode = path[len - 4];
+  const preNode = path[len - 3];
+  const stepNode = path[len - 2];
+  const expectedNode = path[len - 1];
+  // 前置模块：从 index 1 (跳过root) 到 TITLE 之前
+  const moduleNodes = path.slice(1, len - 4);
+  return {
+    modulePath: moduleNodes.map((n: any) => n.text).join(' → ') || '',
+    title: titleNode?.text || '',
+    precondition: preNode?.text || '',
+    step: stepNode?.text || '',
+    expected: expectedNode?.text || '',
+    props: titleNode?.properties || {},
+  };
 });
 
 // ── 工具函数 ──────────────────────────────────────────
@@ -256,37 +253,16 @@ function resLabel(r: string) { return ({ PASS: '通过', FAIL: '不通过', SKIP
 function resColor(r: string) { return ({ PASS: 'success', FAIL: 'error', SKIP: 'warning' } as any)[r] || 'default'; }
 function ntLabel(t: string) { return ({ TITLE: '用例标题', PRECONDITION: '前置条件', STEP: '步骤', EXPECTED: '预期结果' } as any)[t] || t || ''; }
 function ntColor(t: string) { return ({ TITLE: 'purple', PRECONDITION: 'blue', STEP: 'green', EXPECTED: 'orange' } as any)[t] || 'default'; }
-/** 属性 key 翻译 */
 function propLabel(k: string) { return ({ mark: '标记', priority: '优先级', category: '分类', coverage: '覆盖集', device: '设备集' } as any)[k] || k; }
-/** 标记值翻译 */
-function markLabel(v: any) { return ({ P1: 'P1', P2: 'P2', P3: 'P3', not_reviewed: '未评审', pass: '通过', fail: '不通过' } as any)[v] || v; }
-function markColor(v: any) { return ({ P1: 'red', P2: 'orange', P3: 'blue', pass: 'success', fail: 'error' } as any)[v] || 'default'; }
+function markLabel(v: any) { return ({ PENDING: '待完成', TO_CONFIRM: '待确认', TO_MODIFY: '待修改', '待完成': '待完成', '待确认': '待确认', '待修改': '待修改' } as any)[v] || v; }
+function markColor(v: any) { return ({ PENDING: 'red', TO_CONFIRM: 'orange', TO_MODIFY: 'purple', '待完成': 'red', '待确认': 'orange', '待修改': 'purple' } as any)[v] || 'default'; }
 
 // ── 数据加载 ─────────────────────────────────────────
-/** 首次/刷新加载：获取计划信息、用例列表、思维导图树 */
 async function loadData() {
   const [pRes, cRes] = await Promise.all([testPlanApi.get(planId), testPlanApi.getCases(planId)]);
   plan.value = pRes.data;
   cases.value = cRes.data;
-
-  // 按 caseSetId 分组
-  const csMap = new Map<string, any[]>();
-  for (const c of cases.value) { (csMap.get(c.caseSetId) || (() => { const a: any[] = []; csMap.set(c.caseSetId, a); return a; })()).push(c); }
-
-  // 加载尚未缓存的思维导图树
-  const csIds = [...csMap.keys()];
-  const toLoad = csIds.filter(id => !rawTreeCache.value.has(id));
-  if (toLoad.length) {
-    const [trees, names] = await Promise.all([
-      Promise.all(toLoad.map(id => mindNodeApi.tree(id).then(r => r.data).catch(() => [] as MindNodeData[]))),
-      Promise.all(toLoad.map(id => caseSetApi.get(id).then(r => r.data.name).catch(() => id))),
-    ]);
-    toLoad.forEach((id, i) => { rawTreeCache.value.set(id, trees[i]); rawNameCache.value.set(id, names[i]); });
-  }
-
   rebuildTree();
-
-  // 恢复选中
   if (selectedCase.value) {
     selectedCase.value = cases.value.find((c: any) => c.id === selectedCase.value.id) || cases.value[0] || null;
   } else if (cases.value.length) {
@@ -294,77 +270,125 @@ async function loadData() {
   }
 }
 
-/** 根据当前 cases + 缓存的思维导图树 + 筛选条件，重新组装展示树 */
+/** 刷新用例：先让后端回源重新拍快照，再重新加载 */
+async function doRefresh() {
+  refreshing.value = true;
+  try {
+    await testPlanApi.refreshCases(planId);
+    await loadData();
+    message.success('用例已刷新');
+  } finally { refreshing.value = false; }
+}
+
+/**
+ * 从快照数据构建合并树：
+ * 多条 case 的 pathSnapshot 共享相同的祖先节点(通过 id 匹配)，
+ * 合并成一棵树用于 Table 展示。
+ */
 function rebuildTree() {
-  const csMap = new Map<string, any[]>();
-  for (const c of cases.value) { (csMap.get(c.caseSetId) || (() => { const a: any[] = []; csMap.set(c.caseSetId, a); return a; })()).push(c); }
+  // 先按筛选条件过滤
+  let filtered = cases.value;
+  if (filterKeyword.value) {
+    const kw = filterKeyword.value.toLowerCase();
+    filtered = filtered.filter((c: any) => {
+      const path: any[] = c.pathSnapshot || [];
+      return path.some((n: any) => (n.text || '').toLowerCase().includes(kw));
+    });
+  }
+  if (filterExecutor.value) filtered = filtered.filter((c: any) => c.executorId === filterExecutor.value);
+  if (filterResult.value) filtered = filtered.filter((c: any) => c.result === filterResult.value);
+
+  // 按 caseSetId 分组
+  const byCsId = new Map<string, any[]>();
+  for (const c of filtered) {
+    if (!byCsId.has(c.caseSetId)) byCsId.set(c.caseSetId, []);
+    byCsId.get(c.caseSetId)!.push(c);
+  }
 
   const tree: any[] = [];
   const allKeys: string[] = [];
 
-  for (const [csId, planCases] of csMap) {
-    const mindTree = rawTreeCache.value.get(csId);
-    if (!mindTree?.length) continue;
-
-    const caseNodeIds = new Set(planCases.map((c: any) => c.nodeId));
-    const caseMap = new Map<string, any>();
-    planCases.forEach((c: any) => caseMap.set(c.nodeId, c));
-
-    const filtered = filterBranches(mindTree[0]?.children || [], caseNodeIds, caseMap, csId);
-    if (!filtered.length) continue;
-
+  for (const [csId, csList] of byCsId) {
+    const csName = csList[0]?.caseSetName || csId;
     const csKey = `cs-${csId}`;
     allKeys.push(csKey);
-    collectKeys(filtered, allKeys);
-    tree.push({ _key: csKey, _text: rawNameCache.value.get(csId) || csId, _isGroup: true, children: filtered });
+
+    // 合并该用例集下所有路径快照为一棵树
+    const mergedChildren = mergePaths(csList, csId, allKeys);
+    tree.push({ _key: csKey, _text: csName, _isGroup: true, children: mergedChildren.length ? mergedChildren : undefined });
   }
 
   displayTree.value = tree;
   expandedKeys.value = [...allKeys];
 }
 
-/** 递归过滤思维导图树，只保留包含测试计划用例的分支 */
-function filterBranches(nodes: MindNodeData[], caseIds: Set<string>, caseMap: Map<string, any>, csId: string): any[] {
-  const out: any[] = [];
-  for (const nd of nodes) {
-    if (caseIds.has(nd.id!)) {
-      // 用例 TITLE 节点：构建完整子树，叶节点挂执行信息
-      const dto = caseMap.get(nd.id!)!;
-      // 筛选条件检查
-      if (filterKeyword.value && !(nd.text || '').toLowerCase().includes(filterKeyword.value.toLowerCase())) continue;
-      if (filterExecutor.value && dto.executorId !== filterExecutor.value) continue;
-      if (filterResult.value && dto.result !== filterResult.value) continue;
-      out.push(buildCase(nd, dto, csId));
-    } else {
-      const sub = filterBranches(nd.children || [], caseIds, caseMap, csId);
-      if (sub.length) out.push({ _key: `n-${csId}-${nd.id}`, _text: nd.text, _nodeType: nd.nodeType, children: sub });
+/**
+ * 将同一个用例集的多条路径快照合并成树：
+ * 共享祖先节点(通过原始 node id 去重)，
+ * 叶节点(EXPECTED)挂载执行信息。
+ */
+function mergePaths(csList: any[], csId: string, allKeys: string[]): any[] {
+  interface TreeNode {
+    _key: string; _text: string; _nodeType: string | null;
+    _isLeaf?: boolean; _caseId?: string; _result?: string; _executorName?: string;
+    children?: TreeNode[];
+    _childMap?: Map<string, TreeNode>;
+  }
+  const virtualRoot: TreeNode = { _key: 'vr', _text: '', _nodeType: null, _childMap: new Map() };
+
+  for (const c of csList) {
+    const path: any[] = c.pathSnapshot || [];
+    if (!path.length) continue;
+
+    let current = virtualRoot;
+    for (let i = 0; i < path.length; i++) {
+      const node = path[i];
+      const nodeId = node.id || `anon-${i}`;
+      const key = `p-${csId}-${nodeId}`;
+      const isLast = i === path.length - 1;
+
+      if (!current._childMap) current._childMap = new Map();
+      let child = current._childMap.get(nodeId);
+      if (!child) {
+        child = { _key: key, _text: node.text || '', _nodeType: node.nodeType || null };
+        if (isLast) {
+          child._isLeaf = true;
+          child._caseId = c.id;
+          child._result = c.result;
+          child._executorName = c.executorName;
+        }
+        current._childMap.set(nodeId, child);
+        allKeys.push(key);
+      } else if (isLast) {
+        child._isLeaf = true;
+        child._caseId = c.id;
+        child._result = c.result;
+        child._executorName = c.executorName;
+      }
+      current = child;
     }
   }
-  return out;
-}
 
-/** 将 TITLE 节点和子树构建为表格行，叶节点挂载执行信息 */
-function buildCase(title: MindNodeData, dto: any, csId: string): any {
-  const kids = buildKids(title.children || [], dto, csId);
-  return { _key: `t-${csId}-${title.id}`, _text: title.text, _nodeType: title.nodeType || 'TITLE', _caseId: dto.id, children: kids.length ? kids : undefined };
-}
+  // 将 _childMap 转为 children 数组（递归）
+  function toArray(node: TreeNode): TreeNode[] {
+    if (!node._childMap || node._childMap.size === 0) return [];
+    const arr: TreeNode[] = [];
+    for (const child of node._childMap.values()) {
+      const kids = toArray(child);
+      if (kids.length) child.children = kids;
+      delete child._childMap;
+      arr.push(child);
+    }
+    return arr;
+  }
 
-/** 递归构建子行，最深叶节点标记 _isLeaf 并挂载执行数据 */
-function buildKids(nodes: MindNodeData[], dto: any, csId: string): any[] {
-  return nodes.map(n => {
-    const sub = buildKids(n.children || [], dto, csId);
-    const leaf = sub.length === 0;
-    return {
-      _key: `c-${csId}-${n.id}`, _text: n.text, _nodeType: n.nodeType,
-      ...(leaf ? { _isLeaf: true, _caseId: dto.id, _result: dto.result, _executorName: dto.executorName } : {}),
-      children: leaf ? undefined : sub,
-    };
-  });
-}
-
-/** 递归收集所有 key（用于默认全部展开） */
-function collectKeys(nodes: any[], keys: string[]) {
-  for (const n of nodes) { keys.push(n._key); if (n.children) collectKeys(n.children, keys); }
+  // 跳过根节点（index 0 是 mind map root），直接返回其子节点
+  const rootChildren = toArray(virtualRoot);
+  if (rootChildren.length === 1 && !rootChildren[0]._isLeaf) {
+    // 如果只有一个根节点且不是叶子，跳过它直接返回子
+    return rootChildren[0].children || [];
+  }
+  return rootChildren;
 }
 
 // ── 表格交互 ─────────────────────────────────────────
@@ -374,13 +398,10 @@ function onExpand(_expanded: boolean, record: any) {
   if (i >= 0) expandedKeys.value.splice(i, 1); else expandedKeys.value.push(k);
 }
 
-/** 点击行：选中对应用例 + 展开/收起 */
 function customRow(record: any) {
   return {
     onClick: () => {
-      // 选中用例
       if (record._caseId) selectedCase.value = cases.value.find((c: any) => c.id === record._caseId) || null;
-      // 点击节点展开/收起
       if (record.children?.length) {
         const k = record._key;
         const i = expandedKeys.value.indexOf(k);
@@ -396,38 +417,36 @@ function rowClass(record: any) {
   return '';
 }
 
-function goPrev() { if (curIdx.value > 0) selectedCase.value = leafCases.value[curIdx.value - 1]; }
-function goNext() { if (curIdx.value < leafCases.value.length - 1) selectedCase.value = leafCases.value[curIdx.value + 1]; }
+function goPrev() { if (curIdx.value > 0) selectedCase.value = cases.value[curIdx.value - 1]; }
+function goNext() { if (curIdx.value < cases.value.length - 1) selectedCase.value = cases.value[curIdx.value + 1]; }
 function goToMindMap() { if (selectedCase.value?.caseSetId) router.push(`/mind-map/${selectedCase.value.caseSetId}`); }
 
 // ── 执行操作 ─────────────────────────────────────────
-/** 执行通过（直接提交并自动下一条） */
 async function doExecute(result: string, reasonText?: string) {
   if (!selectedCase.value) return;
   await testPlanApi.executeCase(selectedCase.value.id, result, reasonText);
   message.success('已记录');
   const prevId = selectedCase.value.id;
   await loadData();
-  const idx = leafCases.value.findIndex((c: any) => c.id === prevId);
-  if (idx >= 0 && idx < leafCases.value.length - 1) selectedCase.value = leafCases.value[idx + 1];
+  const idx = cases.value.findIndex((c: any) => c.id === prevId);
+  if (idx >= 0 && idx < cases.value.length - 1) selectedCase.value = cases.value[idx + 1];
 }
 
-/** 打开不通过/跳过原因弹窗 */
 function openReasonModal(action: string) {
   if (!selectedCase.value) return;
   reasonModal.value = { visible: true, action, text: '' };
 }
 
-/** 提交原因并执行 */
 async function submitReason() {
   if (!reasonModal.value.text.trim()) { message.error('请填写原因'); return; }
   reasonModal.value.visible = false;
   await doExecute(reasonModal.value.action, reasonModal.value.text.trim());
 }
 
-/** 移除用例 */
 async function removeCase(caseId: string) {
-  await testPlanApi.removeCase(caseId); message.success('已移除'); await loadData();
+  await testPlanApi.removeCase(caseId);
+  message.success('已移除');
+  await loadData();
 }
 
 onMounted(loadData);
@@ -435,8 +454,6 @@ onMounted(loadData);
 
 <style scoped>
 .exec-page { display:flex; flex-direction:column; height:100vh; background:#f5f5f5; }
-
-/* 顶栏 */
 .exec-header { display:flex; align-items:center; justify-content:space-between; background:#fff; border-bottom:1px solid #e8e8e8; padding:10px 20px; flex-shrink:0; }
 .header-left { display:flex; align-items:center; gap:12px; }
 .header-right { display:flex; align-items:center; gap:8px; }
@@ -446,36 +463,25 @@ onMounted(loadData);
 .c-fail { color:#ff4d4f; font-weight:600; }
 .c-skip { color:#faad14; font-weight:600; }
 .label { font-size:13px; color:#999; }
-
-/* 搜索栏 */
 .exec-filter { display:flex; gap:8px; align-items:center; padding:10px 20px; background:#fff; border-bottom:1px solid #f0f0f0; flex-shrink:0; }
 .filter-label { font-size:13px; color:#666; }
-
-/* 主体 */
 .exec-body { display:flex; flex:1; overflow:hidden; }
 .exec-left { flex:1; overflow:auto; background:#fff; }
 .exec-left :deep(.ant-table-row) { cursor:pointer; }
 .exec-right { width:380px; flex-shrink:0; display:flex; flex-direction:column; background:#fff; border-left:1px solid #f0f0f0; }
 .exec-right.empty { justify-content:center; align-items:center; }
-
-/* 表格 */
 .leaf-text { font-weight:normal; }
 :deep(.selected-row) td { background:#e6f4ff !important; }
 :deep(.group-row) td { background:#fafafa !important; font-weight:600; }
-
-/* 详情面板 */
 .detail-header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid #f0f0f0; font-weight:600; font-size:14px; }
 .detail-body { flex:1; overflow:auto; padding:12px 16px; }
 .field { margin-bottom:14px; }
-.field.indent { padding-left:16px; }
 .field label { display:block; font-size:12px; color:#999; margin-bottom:4px; font-weight:600; }
 .field div { font-size:13px; color:#333; line-height:1.6; }
 .props-ul { list-style:disc; padding-left:20px; margin:0; }
 .props-ul li { font-size:13px; margin-bottom:4px; }
 .link-edit { font-size:13px; color:#1677ff; cursor:pointer; }
 .link-edit:hover { text-decoration:underline; }
-
-/* 底部按钮：分两行 */
 .detail-footer { padding:12px 16px; border-top:1px solid #f0f0f0; }
 .footer-nav { display:flex; justify-content:center; gap:12px; margin-bottom:10px; }
 .footer-actions { display:flex; justify-content:center; gap:10px; }
@@ -485,8 +491,6 @@ onMounted(loadData);
 .btn-fail:hover { background:#ff7875; border-color:#ff7875; color:#fff; }
 .btn-skip { background:#1677ff; border-color:#1677ff; color:#fff; }
 .btn-skip:hover { background:#4096ff; border-color:#4096ff; color:#fff; }
-
-/* 报告弹窗 */
 .rpt-section h4 { margin-bottom:12px; font-size:15px; }
 .rpt-overview { display:flex; align-items:center; gap:32px; }
 .rpt-nums { display:flex; gap:24px; }

@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 @Data
 @TableName("recycle_bin")
 public class RecycleBin {
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
     /** 类型：CASE_SET 或 TEST_PLAN */
     private String itemType;

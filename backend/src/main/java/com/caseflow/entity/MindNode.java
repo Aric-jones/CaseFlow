@@ -9,7 +9,7 @@ import java.util.Map;
 @Data
 @TableName(value = "mind_nodes", autoResultMap = true)
 public class MindNode {
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
     private String caseSetId;
     private String parentId;

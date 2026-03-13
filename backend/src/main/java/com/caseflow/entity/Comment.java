@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 @Data
 @TableName("comments")
 public class Comment {
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
     private String nodeId;
     private String caseSetId;

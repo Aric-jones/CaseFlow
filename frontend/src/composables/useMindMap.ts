@@ -20,6 +20,9 @@ export const NODE_TYPE_COLOR: Record<string, string> = {
 };
 
 export const MARK_COLOR: Record<string, string> = {
+  '待完成': '#ff4d4f',
+  '待确认': '#faad14',
+  '待修改': '#722ed1',
   PENDING: '#ff4d4f',
   TO_CONFIRM: '#faad14',
   TO_MODIFY: '#722ed1',

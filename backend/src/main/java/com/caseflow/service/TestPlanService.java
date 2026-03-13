@@ -9,16 +9,30 @@ import java.util.List;
 
 public interface TestPlanService extends IService<TestPlan> {
     Page<TestPlan> listPlans(String projectId, String keyword, int page, int size);
-    /** 返回带完整用例树信息的列表 */
+
+    /** 返回带快照数据的用例列表，前端直接用于展示 */
     List<TestPlanCaseDTO> getCasesRich(String planId);
+
     List<TestPlanCase> getCases(String planId);
+
     void executeCase(String caseId, String result, String reason);
+
     void removeCase(String caseId);
-    void updatePlan(String id, String name, List<String> executorIds);
-    /** 软删除：标记 deleted=1 并向 recycle_bin 写入一条记录 */
+
+    void updatePlan(String id, String name, String directoryId, List<String> executorIds, List<String> caseSetIds);
+
+    /**
+     * 从用例集中提取有效用例路径（满足 TITLE→PRE→STEP→EXPECTED 规则 + 必填属性校验），
+     * 生成路径快照写入 test_plan_cases
+     */
+    void addCasesFromSets(String planId, List<String> caseSetIds);
+
+    /** 刷新用例：按 node_id 回源重新拍快照，保留执行状态 */
+    void refreshCases(String planId);
+
     void softDelete(String planId);
-    /** 从回收站恢复，recycleBinId 为 recycle_bin.id */
+
     void restorePlan(String recycleBinId);
-    /** 从回收站彻底删除，recycleBinId 为 recycle_bin.id，级联清理执行人/用例 */
+
     void permanentDelete(String recycleBinId);
 }

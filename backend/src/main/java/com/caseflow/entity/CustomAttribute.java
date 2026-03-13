@@ -9,7 +9,7 @@ import java.util.List;
 @Data
 @TableName(value = "custom_attributes", autoResultMap = true)
 public class CustomAttribute {
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
     private String projectId;
     private String name;

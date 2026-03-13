@@ -205,10 +205,11 @@ CREATE TABLE test_plan_executors (
 -- 测试计划用例 (关联表不加审计字段)
 -- ========================================
 CREATE TABLE test_plan_cases (
-    id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID(UUID)',
+    id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID',
     plan_id         VARCHAR(32)   NOT NULL                            COMMENT '计划ID',
-    node_id         VARCHAR(32)   NOT NULL                            COMMENT '预期结果节点ID(标识一条用例)',
+    node_id         VARCHAR(32)   NOT NULL                            COMMENT '源TITLE节点ID(用于刷新时回源)',
     case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '来源用例集ID',
+    path_snapshot   JSON          DEFAULT NULL                        COMMENT '完整路径快照JSON,从root到EXPECTED的所有节点',
     executor_id     VARCHAR(32)   DEFAULT NULL                        COMMENT '分配的执行人ID',
     result          ENUM('PENDING','PASS','FAIL','SKIP')
                                   NOT NULL DEFAULT 'PENDING'          COMMENT '执行结果: 待执行/通过/失败/跳过',

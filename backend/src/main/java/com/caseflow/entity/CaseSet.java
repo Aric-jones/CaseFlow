@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 @Data
 @TableName("case_sets")
 public class CaseSet {
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
     private String name;
     private String directoryId;

@@ -21,6 +21,8 @@ const router = createRouter({
     },
     { path: '/mind-map/:caseSetId', component: () => import('../views/MindMapEditor.vue') },
     { path: '/review/:caseSetId', component: () => import('../views/ReviewPage.vue') },
+    { path: '/test-plan/create', component: () => import('../views/TestPlanForm.vue') },
+    { path: '/test-plan/:planId/edit', component: () => import('../views/TestPlanForm.vue') },
     { path: '/test-plan/:planId/execute', component: () => import('../views/TestPlanExecution.vue') },
   ],
 });

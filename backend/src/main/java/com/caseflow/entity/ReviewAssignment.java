@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 @Data
 @TableName("review_assignments")
 public class ReviewAssignment {
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
     private String caseSetId;
     private String reviewerId;

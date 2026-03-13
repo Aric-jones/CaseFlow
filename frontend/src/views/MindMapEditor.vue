@@ -90,7 +90,7 @@
               <div class="prop-field">
                 <label>标记</label>
                 <a-select :value="editForm?.properties?.mark || 'NONE'" @change="(v: any) => { if (editForm) { editForm.properties.mark = v === 'NONE' ? undefined : v; syncToNode(); } }" style="width: 100%"
-                  :options="[{value:'NONE',label:'无'},{value:'PENDING',label:'待完成'},{value:'TO_CONFIRM',label:'待确认'},{value:'TO_MODIFY',label:'待修改'}]" />
+                  :options="[{value:'NONE',label:'无'},{value:'待完成',label:'待完成'},{value:'待确认',label:'待确认'},{value:'待修改',label:'待修改'}]" />
               </div>
               <a-divider style="margin: 8px 0" />
               <div style="color: #1677ff; font-weight: 600; font-size: 12px; margin-bottom: 8px">动态属性</div>

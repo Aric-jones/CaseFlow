@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 @Data
 @TableName("case_history")
 public class CaseHistory {
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.ASSIGN_ID)
     private String id;
     private String caseSetId;
     private String snapshot;
