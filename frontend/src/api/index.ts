@@ -117,7 +117,7 @@ export const testPlanApi = {
   update: (id: string, data: any): R<void> => request.put(`/test-plans/${id}`, data),
   /** 软删除，同时写入 recycle_bin */
   delete: (id: string): R<void> => request.delete(`/test-plans/${id}`),
-  getCases: (id: string): R<TestPlanCase[]> => request.get(`/test-plans/${id}/cases`),
+  getCases: (id: string): R<any[]> => request.get(`/test-plans/${id}/cases`),
   executeCase: (id: string, result: string, reason?: string): R<void> =>
     request.put(`/test-plans/cases/${id}/execute`, { result, reason }),
   removeCase: (id: string): R<void> => request.delete(`/test-plans/cases/${id}`),

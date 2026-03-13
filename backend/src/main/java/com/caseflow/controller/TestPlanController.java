@@ -77,7 +77,7 @@ public class TestPlanController {
     }
 
     @GetMapping("/{id}/cases") public Result<?> getCases(@PathVariable String id) {
-        return Result.ok(testPlanService.getCases(id));
+        return Result.ok(testPlanService.getCasesRich(id));
     }
 
     @PutMapping("/cases/{id}/execute") public Result<?> execute(@PathVariable String id, @RequestBody Map<String, String> body) {
