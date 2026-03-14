@@ -102,9 +102,9 @@ CREATE TABLE case_sets (
 -- 思维导图节点
 -- ========================================
 CREATE TABLE mind_nodes (
-    id              VARCHAR(32)   NOT NULL                            COMMENT '节点ID(UUID)',
+    id              VARCHAR(64)   NOT NULL                            COMMENT '节点ID(前端生成)',
     case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '所属用例集ID',
-    parent_id       VARCHAR(32)   DEFAULT NULL                        COMMENT '父节点ID, NULL表示根节点',
+    parent_id       VARCHAR(64)   DEFAULT NULL                        COMMENT '父节点ID, NULL表示根节点',
     text            VARCHAR(500)  NOT NULL DEFAULT ''                 COMMENT '节点文本内容',
     node_type       ENUM('TITLE','PRECONDITION','STEP','EXPECTED')
                                   DEFAULT NULL                        COMMENT '节点类型: 用例标题/前置条件/步骤/预期结果, 可为空',
@@ -123,7 +123,7 @@ CREATE TABLE mind_nodes (
 -- ========================================
 CREATE TABLE comments (
     id              VARCHAR(32)   NOT NULL                            COMMENT '评论ID(UUID)',
-    node_id         VARCHAR(32)   NOT NULL                            COMMENT '关联节点ID',
+    node_id         VARCHAR(64)   NOT NULL                            COMMENT '关联节点ID',
     case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '关联用例集ID',
     parent_id       VARCHAR(32)   DEFAULT NULL                        COMMENT '父评论ID(回复时填写)',
     user_id         VARCHAR(32)   NOT NULL                            COMMENT '评论人用户ID',
@@ -207,7 +207,7 @@ CREATE TABLE test_plan_executors (
 CREATE TABLE test_plan_cases (
     id              VARCHAR(32)   NOT NULL                            COMMENT '记录ID',
     plan_id         VARCHAR(32)   NOT NULL                            COMMENT '计划ID',
-    node_id         VARCHAR(32)   NOT NULL                            COMMENT '源TITLE节点ID(用于刷新时回源)',
+    node_id         VARCHAR(64)   NOT NULL                            COMMENT '源TITLE节点ID(用于刷新时回源)',
     case_set_id     VARCHAR(32)   NOT NULL                            COMMENT '来源用例集ID',
     path_snapshot   JSON          DEFAULT NULL                        COMMENT '完整路径快照JSON,从root到EXPECTED的所有节点',
     executor_id     VARCHAR(32)   DEFAULT NULL                        COMMENT '分配的执行人ID',

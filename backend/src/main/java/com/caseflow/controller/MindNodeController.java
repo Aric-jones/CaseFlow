@@ -13,7 +13,7 @@ public class MindNodeController {
     private final MindNodeService mindNodeService;
 
     @GetMapping("/tree") public Result<?> tree(@RequestParam String caseSetId) { return Result.ok(mindNodeService.getTree(caseSetId)); }
-    @PostMapping("/batch-save") public Result<?> batchSave(@RequestParam String caseSetId, @RequestBody List<MindNodeDTO> nodes) { mindNodeService.batchSave(caseSetId, nodes); return Result.ok(); }
+    @PostMapping("/batch-save") public Result<?> batchSave(@RequestParam String caseSetId, @RequestBody List<MindNodeDTO> nodes) { return Result.ok(mindNodeService.batchSave(caseSetId, nodes)); }
     @PostMapping public Result<?> create(@RequestBody MindNode node) { return Result.ok(mindNodeService.createNode(node)); }
     @PutMapping("/{id}") public Result<?> update(@PathVariable String id, @RequestBody MindNode node) { return Result.ok(mindNodeService.updateNode(id, node)); }
     @DeleteMapping("/{id}") public Result<?> delete(@PathVariable String id) { mindNodeService.deleteNode(id); return Result.ok(); }

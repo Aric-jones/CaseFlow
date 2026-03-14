@@ -5,7 +5,7 @@ import com.caseflow.entity.MindNode;
 import java.util.List;
 public interface MindNodeService extends IService<MindNode> {
     List<MindNodeDTO> getTree(String caseSetId);
-    void batchSave(String caseSetId, List<MindNodeDTO> nodes);
+    int batchSave(String caseSetId, List<MindNodeDTO> nodes);
     MindNode createNode(MindNode node);
     MindNode updateNode(String id, MindNode updated);
     void deleteNode(String id);

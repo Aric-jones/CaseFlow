@@ -348,23 +348,37 @@ function closePanel() {
 // 数据格式转换 (不使用 tag, 自定义SVG渲染)
 // =============================================
 
+/** 生成前端稳定节点 ID：n_{时间戳}_{随机串} */
+function generateNodeId(): string {
+  return 'n_' + Date.now() + '_' + Math.random().toString(36).substring(2, 10);
+}
+
 /** 将后端 MindNodeData 转为 simple-mind-map 数据结构 */
 function nodeToMM(node: MindNodeData): any {
+  const nodeId = node.id || generateNodeId();
   return {
     data: {
       text: node.text,
-      uid: node.id || ('n_' + Math.random().toString(36).substring(2, 10)),
-      _raw: { ...node, children: undefined },
+      uid: nodeId,
+      _raw: { ...node, id: nodeId, children: undefined },
     },
     children: (node.children || []).map(c => nodeToMM(c)),
   };
 }
 
-/** 将 simple-mind-map 数据转回后端 MindNodeData */
+/** 将 simple-mind-map 数据转回后端 MindNodeData（折叠节点回退路径） */
 function mmToTree(mmNode: any): MindNodeData {
   const raw = mmNode.data?._raw || {};
+  let nodeId = raw.id;
+  if (!nodeId) {
+    nodeId = generateNodeId();
+    if (mmNode.data) {
+      if (!mmNode.data._raw) mmNode.data._raw = {};
+      mmNode.data._raw.id = nodeId;
+    }
+  }
   return {
-    id: raw.id,
+    id: nodeId,
     text: mmNode.data?.text ?? raw.text ?? '',
     nodeType: raw.nodeType || null,
     sortOrder: raw.sortOrder || 0,
@@ -386,6 +400,17 @@ function getFullTree(): MindNodeData[] {
 function renderNodeToTree(rNode: any): MindNodeData {
   const raw = rNode.nodeData?.data?._raw || {};
   const text = rNode.nodeData?.data?.text || raw.text || '';
+
+  // 确保每个节点都有稳定 ID，写回渲染树避免下次保存丢失
+  let nodeId = raw.id;
+  if (!nodeId) {
+    nodeId = generateNodeId();
+    if (rNode.nodeData?.data) {
+      if (!rNode.nodeData.data._raw) rNode.nodeData.data._raw = {};
+      rNode.nodeData.data._raw.id = nodeId;
+    }
+  }
+
   const renderChildren: any[] = rNode.children || [];
   const dataChildren: any[] = rNode.nodeData?.children || [];
   let children: MindNodeData[];
@@ -403,7 +428,7 @@ function renderNodeToTree(rNode: any): MindNodeData {
     });
   }
   return {
-    id: raw.id,
+    id: nodeId,
     text,
     nodeType: raw.nodeType || null,
     sortOrder: raw.sortOrder || 0,
@@ -729,8 +754,8 @@ async function handleSave() {
   saving.value = true;
   try {
     const tree = getFullTree();
-    await mindNodeApi.batchSave(caseSetId, tree);
-    caseCount.value = tree.length > 0 ? countValid(tree[0]) : 0;
+    const res = await mindNodeApi.batchSave(caseSetId, tree);
+    caseCount.value = typeof res.data === 'number' ? res.data : (tree.length > 0 ? countValid(tree[0]) : 0);
     await caseHistoryApi.save(caseSetId);
     savedTreeSnapshot = computeTreeHash();
     hasUnsavedChanges.value = false;
