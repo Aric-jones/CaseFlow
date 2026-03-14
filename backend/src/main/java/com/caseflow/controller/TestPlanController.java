@@ -72,10 +72,15 @@ public class TestPlanController {
             TestPlanExecutor e = new TestPlanExecutor(); e.setPlanId(plan.getId()); e.setUserId(eid);
             executorMapper.insert(e);
         }
-        // 通过 caseSetIds 自动查 TITLE 节点创建用例
         List<String> caseSetIds = (List<String>) body.get("caseSetIds");
+        Map<String, Map<String, List<String>>> filters =
+                (Map<String, Map<String, List<String>>>) body.get("filters");
         if (caseSetIds != null && !caseSetIds.isEmpty()) {
-            testPlanService.addCasesFromSets(plan.getId(), caseSetIds);
+            if (filters != null && !filters.isEmpty()) {
+                testPlanService.addCasesFromSetsWithFilters(plan.getId(), caseSetIds, filters);
+            } else {
+                testPlanService.addCasesFromSets(plan.getId(), caseSetIds);
+            }
         }
         return Result.ok(plan);
     }
@@ -106,6 +111,19 @@ public class TestPlanController {
 
     @GetMapping("/{id}/cases") public Result<?> getCases(@PathVariable String id) {
         return Result.ok(testPlanService.getCasesRich(id));
+    }
+
+    /** 获取用例集 TITLE 节点的属性值统计（用于筛选面板） */
+    @GetMapping("/attribute-values") public Result<?> attributeValues(@RequestParam String caseSetId) {
+        return Result.ok(testPlanService.getTitleAttributeValues(caseSetId));
+    }
+
+    /** 预览有效用例路径快照（支持属性筛选） */
+    @SuppressWarnings("unchecked")
+    @PostMapping("/preview-cases") public Result<?> previewCases(@RequestBody Map<String, Object> body) {
+        String caseSetId = (String) body.get("caseSetId");
+        Map<String, List<String>> filters = (Map<String, List<String>>) body.get("filters");
+        return Result.ok(testPlanService.previewValidPaths(caseSetId, filters));
     }
 
     /** 刷新用例：回源重新拍快照，保留已有执行状态，同步新增/修改 */

@@ -205,6 +205,97 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
     }
 
     // ═══════════════════════════════════════════════════════════════
+    //  带属性筛选的创建 / 预览 / 属性值统计
+    // ═══════════════════════════════════════════════════════════════
+
+    @Override
+    public void addCasesFromSetsWithFilters(String planId, List<String> caseSetIds,
+                                            Map<String, Map<String, List<String>>> filters) {
+        List<String> executorIds = executorMapper.selectList(
+                new LambdaQueryWrapper<TestPlanExecutor>().eq(TestPlanExecutor::getPlanId, planId))
+                .stream().map(TestPlanExecutor::getUserId).collect(Collectors.toList());
+        int execIdx = 0;
+        for (String csId : caseSetIds) {
+            Map<String, List<String>> csFilter = filters != null ? filters.getOrDefault(csId, null) : null;
+            List<List<Map<String, Object>>> paths = previewValidPaths(csId, csFilter);
+            for (List<Map<String, Object>> path : paths) {
+                String titleNodeId = str(path.get(path.size() - 4).get("id"));
+                TestPlanCase tc = new TestPlanCase();
+                tc.setPlanId(planId);
+                tc.setNodeId(titleNodeId);
+                tc.setCaseSetId(csId);
+                tc.setPathSnapshot(path);
+                tc.setResult("PENDING");
+                if (!executorIds.isEmpty()) {
+                    tc.setExecutorId(executorIds.get(execIdx % executorIds.size()));
+                    execIdx++;
+                }
+                caseMapper.insert(tc);
+            }
+        }
+    }
+
+    @Override
+    public List<List<Map<String, Object>>> previewValidPaths(String caseSetId, Map<String, List<String>> attrFilters) {
+        CaseSet cs = caseSetMapper.selectById(caseSetId);
+        if (cs == null) return List.of();
+        List<String> required = getRequiredAttrs(cs.getProjectId());
+        Map<String, MindNode> allNodes = new HashMap<>();
+        Map<String, List<MindNode>> childrenByParent = new HashMap<>();
+        MindNode root = loadTree(caseSetId, allNodes, childrenByParent);
+        if (root == null) return List.of();
+        List<List<Map<String, Object>>> validPaths = findValidPaths(root, allNodes, childrenByParent, required);
+        if (attrFilters == null || attrFilters.isEmpty()) return validPaths;
+        // 属性筛选：匹配 TITLE 节点 properties
+        return validPaths.stream().filter(path -> {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> props = (Map<String, Object>) path.get(path.size() - 4).get("properties");
+            if (props == null) props = Map.of();
+            for (Map.Entry<String, List<String>> fe : attrFilters.entrySet()) {
+                List<String> allowed = fe.getValue();
+                if (allowed == null || allowed.isEmpty()) continue;
+                Object val = props.get(fe.getKey());
+                if (val == null) return false;
+                if (val instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<String> valList = (List<String>) val;
+                    if (valList.stream().noneMatch(allowed::contains)) return false;
+                } else {
+                    if (!allowed.contains(val.toString())) return false;
+                }
+            }
+            return true;
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    public Map<String, Set<String>> getTitleAttributeValues(String caseSetId) {
+        List<MindNode> titles = mindNodeMapper.selectList(
+                new LambdaQueryWrapper<MindNode>()
+                        .eq(MindNode::getCaseSetId, caseSetId)
+                        .eq(MindNode::getNodeType, "TITLE"));
+        Map<String, Set<String>> result = new LinkedHashMap<>();
+        for (MindNode n : titles) {
+            Map<String, Object> props = n.getProperties();
+            if (props == null) continue;
+            for (Map.Entry<String, Object> e : props.entrySet()) {
+                String key = e.getKey();
+                Object val = e.getValue();
+                if (val == null || "NONE".equals(val) || "".equals(val)) continue;
+                result.computeIfAbsent(key, k -> new LinkedHashSet<>());
+                if (val instanceof List) {
+                    for (Object item : (List<?>) val) {
+                        if (item != null) result.get(key).add(item.toString());
+                    }
+                } else {
+                    result.get(key).add(val.toString());
+                }
+            }
+        }
+        return result;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     //  getCasesRich：直接从快照数据构建 DTO
     // ═══════════════════════════════════════════════════════════════
 

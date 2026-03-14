@@ -119,6 +119,10 @@ export const testPlanApi = {
   delete: (id: string): R<void> => request.delete(`/test-plans/${id}`),
   getCases: (id: string): R<any[]> => request.get(`/test-plans/${id}/cases`),
   refreshCases: (id: string): R<void> => request.post(`/test-plans/${id}/refresh`),
+  getAttributeValues: (caseSetId: string): R<Record<string, string[]>> =>
+    request.get('/test-plans/attribute-values', { params: { caseSetId } }),
+  previewCases: (caseSetId: string, filters?: Record<string, string[]>): R<any[]> =>
+    request.post('/test-plans/preview-cases', { caseSetId, filters }),
   updateCaseExecutor: (id: string, executorId: string | null): R<void> =>
     request.put(`/test-plans/cases/${id}/executor`, { executorId }),
   executeCase: (id: string, result: string, reason?: string): R<void> =>

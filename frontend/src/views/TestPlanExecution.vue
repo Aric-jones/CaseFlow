@@ -55,7 +55,9 @@
                 @change="(v: any) => onExecutorChange(record._caseId, v)" />
             </template>
             <template v-if="column.key === 'result'">
-              <a-select v-if="record._isLeaf" :value="record._result" size="small" style="width:100%"
+              <a-select v-if="record._isLeaf" :value="record._result" size="small"
+                :class="'res-select res-' + (record._result || 'PENDING').toLowerCase()"
+                style="width:100%"
                 :options="resultOpts"
                 @click.stop
                 @change="(v: any) => onResultChange(record._caseId, v, record)" />
@@ -76,40 +78,43 @@
           <a-tag :color="resColor(selectedCase.result)">{{ resLabel(selectedCase.result) }}</a-tag>
         </div>
         <div class="detail-body">
-          <div class="field" v-if="caseDetail.modulePath">
-            <label>前置模块</label>
-            <div>{{ caseDetail.modulePath }}</div>
+          <div class="detail-card" v-if="caseDetail.modulePath">
+            <div class="card-label"><span class="card-dot" style="background:#1677ff"></span>前置模块</div>
+            <div class="card-value path-value">{{ caseDetail.modulePath }}</div>
           </div>
-          <div class="field">
-            <label>用例标题</label>
-            <div>{{ caseDetail.title }}</div>
+          <div class="detail-card">
+            <div class="card-label"><span class="card-dot" style="background:#722ed1"></span>用例标题</div>
+            <div class="card-value" style="font-weight:600">{{ caseDetail.title }}</div>
           </div>
-          <div class="field" v-if="caseDetail.precondition">
-            <label>前置条件</label>
-            <div>{{ caseDetail.precondition }}</div>
+          <div class="detail-card" v-if="caseDetail.precondition">
+            <div class="card-label"><span class="card-dot" style="background:#1890ff"></span>前置条件</div>
+            <div class="card-value">{{ caseDetail.precondition }}</div>
           </div>
-          <div class="field" v-if="caseDetail.step">
-            <label>步骤</label>
-            <div style="white-space:pre-wrap">{{ caseDetail.step }}</div>
+          <div class="detail-card" v-if="caseDetail.step">
+            <div class="card-label"><span class="card-dot" style="background:#52c41a"></span>步骤</div>
+            <div class="card-value" style="white-space:pre-wrap">{{ caseDetail.step }}</div>
           </div>
-          <div class="field" v-if="caseDetail.expected">
-            <label>预期结果</label>
-            <div style="white-space:pre-wrap">{{ caseDetail.expected }}</div>
+          <div class="detail-card" v-if="caseDetail.expected">
+            <div class="card-label"><span class="card-dot" style="background:#fa8c16"></span>预期结果</div>
+            <div class="card-value" style="white-space:pre-wrap">{{ caseDetail.expected }}</div>
           </div>
-          <div class="field" v-if="filteredProps.length">
-            <label>属性</label>
-            <ul class="props-ul">
-              <li v-for="item in filteredProps" :key="item.key">
-                <b>{{ propLabel(item.key) }}</b>&nbsp;
+          <div class="detail-card" v-if="filteredProps.length">
+            <div class="card-label"><span class="card-dot" style="background:#eb2f96"></span>属性</div>
+            <div class="props-grid">
+              <div v-for="item in filteredProps" :key="item.key" class="prop-item">
+                <span class="prop-name">{{ propLabel(item.key) }}</span>
                 <template v-if="item.key === 'mark'">
-                  <a-tag :color="markColor(item.val)">{{ markLabel(item.val) }}</a-tag>
+                  <a-tag :color="markColor(item.val)" size="small">{{ markLabel(item.val) }}</a-tag>
                 </template>
-                <template v-else>{{ Array.isArray(item.val) ? item.val.join(', ') : item.val }}</template>
-              </li>
-            </ul>
+                <template v-else>
+                  <span class="prop-val">{{ Array.isArray(item.val) ? item.val.join(', ') : item.val }}</span>
+                </template>
+              </div>
+            </div>
           </div>
-          <a-divider style="margin:12px 0" />
-          <a class="link-edit" @click="goToMindMap">去修改用例 →</a>
+          <div style="margin-top:16px">
+            <a class="link-edit" @click="goToMindMap">去修改用例 →</a>
+          </div>
         </div>
         <div class="detail-footer">
           <div class="footer-nav">
@@ -533,18 +538,33 @@ onMounted(loadData);
 .exec-body { display:flex; flex:1; overflow:hidden; }
 .exec-left { flex:1; overflow:auto; background:#fff; }
 .exec-left :deep(.ant-table-row) { cursor:pointer; }
-.exec-right { width:380px; flex-shrink:0; display:flex; flex-direction:column; background:#fff; border-left:1px solid #f0f0f0; }
+.exec-right { width:400px; flex-shrink:0; display:flex; flex-direction:column; background:#fff; border-left:1px solid #f0f0f0; }
 .exec-right.empty { justify-content:center; align-items:center; }
 .leaf-text { font-weight:normal; }
 :deep(.selected-row) td { background:#e6f4ff !important; }
 :deep(.group-row) td { background:#fafafa !important; font-weight:600; }
+
+/* 执行结果下拉框字体颜色 */
+:deep(.res-select.res-pending) .ant-select-selection-item { color:#1677ff; font-weight:600; }
+:deep(.res-select.res-pass) .ant-select-selection-item { color:#52c41a; font-weight:600; }
+:deep(.res-select.res-fail) .ant-select-selection-item { color:#ff4d4f; font-weight:600; }
+:deep(.res-select.res-skip) .ant-select-selection-item { color:#faad14; font-weight:600; }
+
+/* 用例详情卡片样式 */
 .detail-header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid #f0f0f0; font-weight:600; font-size:14px; }
-.detail-body { flex:1; overflow:auto; padding:12px 16px; }
-.field { margin-bottom:14px; }
-.field label { display:block; font-size:12px; color:#999; margin-bottom:4px; font-weight:600; }
-.field div { font-size:13px; color:#333; line-height:1.6; }
-.props-ul { list-style:disc; padding-left:20px; margin:0; }
-.props-ul li { font-size:13px; margin-bottom:4px; }
+.detail-body { flex:1; overflow:auto; padding:16px; }
+.detail-card { margin-bottom:16px; background:#fafafa; border-radius:8px; padding:12px 14px; border:1px solid #f0f0f0; }
+.card-label { display:flex; align-items:center; gap:6px; font-size:12px; color:#999; font-weight:600; margin-bottom:6px; }
+.card-dot { width:6px; height:6px; border-radius:50%; display:inline-block; flex-shrink:0; }
+.card-value { font-size:13px; color:#333; line-height:1.7; }
+.path-value { color:#1677ff; font-size:12px; }
+
+/* 属性网格 */
+.props-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.prop-item { display:flex; align-items:center; gap:6px; font-size:13px; background:#fff; border-radius:6px; padding:6px 10px; border:1px solid #e8e8e8; }
+.prop-name { color:#999; font-size:12px; white-space:nowrap; }
+.prop-val { color:#333; font-weight:500; }
+
 .link-edit { font-size:13px; color:#1677ff; cursor:pointer; }
 .link-edit:hover { text-decoration:underline; }
 .detail-footer { padding:12px 16px; border-top:1px solid #f0f0f0; }
