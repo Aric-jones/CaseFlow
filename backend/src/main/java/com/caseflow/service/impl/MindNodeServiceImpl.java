@@ -193,7 +193,7 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
      * 有效用例判定：
      * 1) 至少 5 个节点（root + 至少 0 个模块 + TITLE + PRE + STEP + EXPECTED）
      * 2) 最后 4 个节点类型依次为 TITLE → PRECONDITION → STEP → EXPECTED
-     * 3) TITLE 节点的必填属性已填写
+     * 3) EXPECTED 节点的必填属性已填写
      */
     private boolean isValidCasePath(List<MindNode> path, List<String> required) {
         if (path.size() < 5) return false;
@@ -203,9 +203,9 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
         if (!"STEP".equals(path.get(len - 2).getNodeType())) return false;
         if (!"EXPECTED".equals(path.get(len - 1).getNodeType())) return false;
 
-        // 校验 TITLE 必填属性
+        // 校验 EXPECTED 必填属性
         if (!required.isEmpty()) {
-            Map<String, Object> props = path.get(len - 4).getProperties();
+            Map<String, Object> props = path.get(len - 1).getProperties();
             if (props == null) props = Map.of();
             for (String attr : required) {
                 Object v = props.get(attr);
@@ -217,7 +217,7 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
         return true;
     }
 
-    /** 获取项目中标记为必填、且限定 TITLE 类型的自定义属性名称 */
+    /** 获取项目中标记为必填、且限定 EXPECTED 类型的自定义属性名称 */
     private List<String> getRequiredAttrs(String projectId) {
         return customAttributeMapper.selectList(
                         new LambdaQueryWrapper<CustomAttribute>()
@@ -226,7 +226,7 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
                 .stream()
                 .filter(a -> {
                     String limit = a.getNodeTypeLimit();
-                    return limit == null || limit.isEmpty() || limit.contains("TITLE");
+                    return limit == null || limit.isEmpty() || limit.contains("EXPECTED");
                 })
                 .map(CustomAttribute::getName)
                 .collect(Collectors.toList());

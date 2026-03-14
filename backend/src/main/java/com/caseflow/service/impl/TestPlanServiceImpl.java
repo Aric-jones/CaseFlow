@@ -89,7 +89,7 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
      * 检查路径是否满足有效用例规则：
      * 1) 至少5个节点（root + 至少0个模块 + TITLE + PRE + STEP + EXPECTED）
      * 2) 最后4个节点类型依次为 TITLE, PRECONDITION, STEP, EXPECTED
-     * 3) TITLE 节点的必填属性已填写
+     * 3) EXPECTED 节点的必填属性已填写
      */
     private boolean isValidCasePath(List<Map<String, Object>> path, List<String> required) {
         if (path.size() < 5) return false;
@@ -101,10 +101,10 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
         if (!"TITLE".equals(t3) || !"PRECONDITION".equals(t2) || !"STEP".equals(t1) || !"EXPECTED".equals(t0)) {
             return false;
         }
-        // 校验 TITLE 节点必填属性
+        // 校验 EXPECTED 节点必填属性
         if (!required.isEmpty()) {
             @SuppressWarnings("unchecked")
-            Map<String, Object> props = (Map<String, Object>) path.get(len - 4).get("properties");
+            Map<String, Object> props = (Map<String, Object>) path.get(len - 1).get("properties");
             if (props == null) props = Map.of();
             for (String attr : required) {
                 Object v = props.get(attr);
@@ -189,7 +189,7 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
         }
     }
 
-    /** 获取项目中限定 TITLE 类型且标记为必填的自定义属性名称 */
+    /** 获取项目中限定 EXPECTED 类型且标记为必填的自定义属性名称 */
     private List<String> getRequiredAttrs(String projectId) {
         return customAttributeMapper.selectList(
                 new LambdaQueryWrapper<CustomAttribute>()
@@ -198,7 +198,7 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
                 .stream()
                 .filter(a -> {
                     String limit = a.getNodeTypeLimit();
-                    return limit == null || limit.isEmpty() || limit.contains("TITLE");
+                    return limit == null || limit.isEmpty() || limit.contains("EXPECTED");
                 })
                 .map(CustomAttribute::getName)
                 .collect(Collectors.toList());
@@ -246,10 +246,10 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
         if (root == null) return List.of();
         List<List<Map<String, Object>>> validPaths = findValidPaths(root, allNodes, childrenByParent, required);
         if (attrFilters == null || attrFilters.isEmpty()) return validPaths;
-        // 属性筛选：匹配 TITLE 节点 properties
+        // 属性筛选：匹配 EXPECTED 节点 properties
         return validPaths.stream().filter(path -> {
             @SuppressWarnings("unchecked")
-            Map<String, Object> props = (Map<String, Object>) path.get(path.size() - 4).get("properties");
+            Map<String, Object> props = (Map<String, Object>) path.get(path.size() - 1).get("properties");
             if (props == null) props = Map.of();
             for (Map.Entry<String, List<String>> fe : attrFilters.entrySet()) {
                 List<String> allowed = fe.getValue();
@@ -273,7 +273,7 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
         List<MindNode> titles = mindNodeMapper.selectList(
                 new LambdaQueryWrapper<MindNode>()
                         .eq(MindNode::getCaseSetId, caseSetId)
-                        .eq(MindNode::getNodeType, "TITLE"));
+                        .eq(MindNode::getNodeType, "EXPECTED"));
         Map<String, Set<String>> result = new LinkedHashMap<>();
         for (MindNode n : titles) {
             Map<String, Object> props = n.getProperties();

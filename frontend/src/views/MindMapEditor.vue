@@ -97,17 +97,28 @@
               <template v-for="attr in filteredEditAttrs" :key="attr.id">
                 <div class="prop-field">
                   <label>{{ attr.name }}</label>
+                  <!-- 单选 + 平铺 -->
                   <a-radio-group v-if="attr.displayType === 'TILE' && !attr.multiSelect"
                     :value="editForm?.properties[attr.name]"
                     @change="(e: any) => { if (editForm) { editForm.properties[attr.name] = e.target.value; syncToNode(); } }"
-                    style="display: flex; flex-wrap: wrap; gap: 4px">
+                    class="tile-group">
                     <a-radio-button v-for="o in attr.options" :key="o" :value="o"
+                      class="tile-btn"
                       :class="attr.name === '优先级' ? `priority-${o.toLowerCase()}` : ''">{{ o }}</a-radio-button>
                   </a-radio-group>
+                  <!-- 多选 + 平铺 -->
+                  <div v-else-if="attr.multiSelect && attr.displayType === 'TILE'" class="tile-group">
+                    <span v-for="o in attr.options" :key="o"
+                      class="tile-tag"
+                      :class="{ active: (editForm?.properties[attr.name] || []).includes(o) }"
+                      @click="toggleTileTag(attr.name, o)">{{ o }}</span>
+                  </div>
+                  <!-- 多选 + 下拉 -->
                   <a-select v-else-if="attr.multiSelect" mode="multiple"
                     :value="Array.isArray(editForm?.properties[attr.name]) ? editForm?.properties[attr.name] : []"
                     @change="(v: any) => { if (editForm) { editForm.properties[attr.name] = v; syncToNode(); } }"
                     :options="attr.options.map((o: string) => ({ value: o, label: o }))" style="width: 100%" />
+                  <!-- 单选 + 下拉 -->
                   <a-select v-else
                     :value="editForm?.properties[attr.name] || undefined"
                     @change="(v: any) => { if (editForm) { editForm.properties[attr.name] = v; syncToNode(); } }"
@@ -495,6 +506,17 @@ function navigateToNode(uid: string) {
 // =============================================
 // 实时同步: 属性面板 → 节点
 // =============================================
+
+/** 多选平铺标签的切换 */
+function toggleTileTag(attrName: string, option: string) {
+  if (!editForm.value) return;
+  const cur = editForm.value.properties[attrName];
+  const arr: string[] = Array.isArray(cur) ? [...cur] : [];
+  const idx = arr.indexOf(option);
+  if (idx >= 0) arr.splice(idx, 1); else arr.push(option);
+  editForm.value.properties[attrName] = arr;
+  syncToNode();
+}
 
 /** 将属性面板表单数据同步到当前激活节点 */
 function syncToNode(checkAutoChain = false) {
@@ -1100,6 +1122,26 @@ onUnmounted(() => {
 
 .prop-field { margin-bottom: 10px; }
 .prop-field label { display: block; font-size: 12px; color: #999; margin-bottom: 3px; }
+
+/* 属性选择器圆角 */
+.prop-field :deep(.ant-select-selector) { border-radius: 16px !important; }
+.prop-field :deep(.ant-radio-button-wrapper) { border-radius: 16px !important; }
+.prop-field :deep(.ant-radio-button-wrapper:first-child) { border-radius: 16px !important; }
+.prop-field :deep(.ant-radio-button-wrapper:last-child) { border-radius: 16px !important; }
+
+/* 平铺布局 */
+.tile-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.tile-btn { border-radius: 16px !important; }
+
+/* 多选平铺标签 */
+.tile-tag {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 2px 12px; border-radius: 16px; font-size: 12px; cursor: pointer;
+  border: 1px solid #d9d9d9; background: #fff; color: #595959;
+  transition: all 0.2s; user-select: none; line-height: 22px;
+}
+.tile-tag:hover { border-color: #1677ff; color: #1677ff; }
+.tile-tag.active { background: #1677ff; border-color: #1677ff; color: #fff; }
 
 .empty-hint {
   display: flex; align-items: center; justify-content: center;
