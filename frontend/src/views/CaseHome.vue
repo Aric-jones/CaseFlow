@@ -131,6 +131,7 @@ import { message, Modal } from 'ant-design-vue';
 import { PlusOutlined, ImportOutlined, DeleteOutlined, SearchOutlined, EditOutlined, CopyOutlined, SwapOutlined, MoreOutlined, InboxOutlined } from '@ant-design/icons-vue';
 import { directoryApi, caseSetApi } from '../api';
 import { useAppStore } from '../stores/app';
+import { useResizableColumns } from '../composables/useResizableColumns';
 import type { DirectoryNode, CaseSet, PageResult } from '../types';
 
 const router = useRouter();
@@ -277,7 +278,7 @@ function statusColor(s: string) {
   return m[s] || 'default';
 }
 
-const columns = ref([
+const { columns, handleResizeColumn } = useResizableColumns('case-home', [
   { title: '用例集名称', dataIndex: 'name', key: 'name', resizable: true, width: 200 },
   { title: '用例数量', dataIndex: 'caseCount', key: 'caseCount', resizable: true, width: 90 },
   { title: '状态', key: 'status', resizable: true, width: 110 },
@@ -286,10 +287,6 @@ const columns = ref([
   { title: '关联需求', key: 'requirementLink', resizable: true, width: 100 },
   { title: '操作', key: 'action', resizable: true, width: 200, fixed: 'right' as const },
 ]);
-
-function handleResizeColumn(w: number, col: any) {
-  col.width = w;
-}
 function formatTime(t: string) {
   if (!t) return '';
   return t.replace('T', ' ').substring(0, 19);

@@ -37,6 +37,7 @@ import { ref, reactive, onMounted } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined } from '@ant-design/icons-vue';
 import { projectApi } from '../../api';
+import { useResizableColumns } from '../../composables/useResizableColumns';
 import type { Project } from '../../types';
 
 const projects = ref<Project[]>([]);
@@ -54,12 +55,10 @@ async function save() {
   message.success('保存成功'); showModal.value = false; load();
 }
 
-const columns = ref([
+const { columns, handleResizeColumn } = useResizableColumns('project-mgmt', [
   { title: '项目名称', dataIndex: 'name', key: 'name', resizable: true, width: 220 },
   { title: '描述', dataIndex: 'description', key: 'description', resizable: true, width: 420 },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', resizable: true, width: 220 },
   { title: '操作', key: 'action', resizable: true, width: 180 },
 ]);
-
-function handleResizeColumn(w: number, col: any) { col.width = w; }
 </script>

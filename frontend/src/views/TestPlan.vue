@@ -55,10 +55,18 @@
         :pagination="{ current: plans.current, total: plans.total, pageSize: 20, onChange: loadPlans }" size="middle"
         @resizeColumn="handleResizeColumn">
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'status'">
-            <a-tag :color="record.status === 'COMPLETED' ? 'success' : record.status === 'IN_PROGRESS' ? 'processing' : 'default'">
-              {{ record.status === 'NOT_STARTED' ? '未开始' : record.status === 'IN_PROGRESS' ? '进行中' : '已完成' }}
-            </a-tag>
+          <template v-if="column.key === 'progress'">
+            <div style="display:flex; align-items:center; gap:8px; min-width:120px">
+              <a-progress :percent="record.caseTotal ? Math.round(record.caseExecuted / record.caseTotal * 100) : 0"
+                :stroke-color="'#52c41a'" size="small" style="flex:1;min-width:60px" :show-info="false" />
+              <span style="font-size:12px; color:#666; white-space:nowrap">{{ record.caseExecuted || 0 }}/{{ record.caseTotal || 0 }}</span>
+            </div>
+          </template>
+          <template v-if="column.key === 'executors'">
+            <a-tooltip v-if="record.executorNames?.length" :title="record.executorNames.join('、')">
+              <span class="executor-cell">{{ record.executorNames.join('、') }}</span>
+            </a-tooltip>
+            <span v-else style="color:#ccc">未分配</span>
           </template>
           <template v-if="column.key === 'createdAt'">{{ fmtTime(record.createdAt) }}</template>
           <template v-if="column.key === 'action'">
@@ -90,6 +98,7 @@ import { message } from 'ant-design-vue';
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons-vue';
 import { directoryApi, testPlanApi } from '../api';
 import { useAppStore } from '../stores/app';
+import { useResizableColumns } from '../composables/useResizableColumns';
 import type { DirectoryNode, TestPlan, PageResult } from '../types';
 
 const store = useAppStore();
@@ -194,19 +203,18 @@ async function deletePlan(id: string) {
 /** 格式化时间为 yyyy-MM-dd HH:mm:ss */
 function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 19) : ''; }
 
-/** 调整列宽 */
-function handleResizeColumn(w: number, col: any) { col.width = w; }
-
-const columns = ref([
-  { title: '计划名称', dataIndex: 'name', resizable: true, width: 200 },
-  { title: '状态', key: 'status', resizable: true, width: 100 },
-  { title: '创建人', dataIndex: 'createdByName', resizable: true, width: 100 },
+const { columns, handleResizeColumn } = useResizableColumns('test-plan', [
+  { title: '计划名称', dataIndex: 'name', key: 'name', resizable: true, width: 200 },
+  { title: '执行进度', key: 'progress', resizable: true, width: 200 },
+  { title: '执行人', key: 'executors', resizable: true, width: 150, ellipsis: true },
+  { title: '创建人', dataIndex: 'createdByName', key: 'createdByName', resizable: true, width: 100 },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', resizable: true, width: 160 },
   { title: '操作', key: 'action', resizable: true, width: 180, fixed: 'right' as const },
 ]);
 </script>
 
 <style scoped>
+.executor-cell { max-width: 130px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
 .context-menu { position: fixed; background: #fff; border: 1px solid #e8e8e8; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); padding: 4px 0; z-index: 1000; min-width: 140px; }
 .ctx-item { padding: 6px 16px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 8px; }
 .ctx-item:hover { background: #f5f5f5; }

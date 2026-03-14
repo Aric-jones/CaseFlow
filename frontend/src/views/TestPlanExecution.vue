@@ -115,6 +115,10 @@
               </li>
             </ul>
           </div>
+          <div class="detail-section" v-if="selectedCase.reason">
+            <div class="section-label">{{ selectedCase.result === 'FAIL' ? '不通过原因' : '跳过原因' }}</div>
+            <div class="section-value reason-value">{{ selectedCase.reason }}</div>
+          </div>
           <div style="margin-top:16px">
             <a class="link-edit" @click="goToMindMap">去修改用例 →</a>
           </div>
@@ -569,6 +573,7 @@ onMounted(loadData);
 .attr-name { color:#595959; white-space:nowrap; min-width:60px; }
 .attr-item :deep(.ant-tag) { border-radius:10px; }
 
+.reason-value { color:#ff4d4f; background:#fff2f0; padding:8px 12px; border-radius:6px; border:1px solid #ffccc7; font-size:13px; line-height:1.6; white-space:pre-wrap; }
 .link-edit { font-size:13px; color:#1677ff; cursor:pointer; }
 .link-edit:hover { text-decoration:underline; }
 .detail-footer { padding:12px 16px; border-top:1px solid #f0f0f0; }

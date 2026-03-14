@@ -52,6 +52,7 @@ import { message } from 'ant-design-vue';
 import { PlusOutlined } from '@ant-design/icons-vue';
 import { customAttributeApi } from '../../api';
 import { useAppStore } from '../../stores/app';
+import { useResizableColumns } from '../../composables/useResizableColumns';
 import type { CustomAttribute } from '../../types';
 
 const store = useAppStore();
@@ -85,7 +86,7 @@ async function save() {
   message.success('保存成功'); showModal.value = false; loadAttrs();
 }
 
-const columns = ref([
+const { columns, handleResizeColumn } = useResizableColumns('attr-mgmt', [
   { title: '属性名', dataIndex: 'name', key: 'name', resizable: true, width: 180 },
   { title: '属性值', key: 'options', resizable: true, width: 320 },
   { title: '多选', dataIndex: 'multiSelect', key: 'multiSelect', resizable: true, width: 90, customRender: ({ text }: any) => text ? '是' : '否' },
@@ -94,6 +95,4 @@ const columns = ref([
   { title: '展示', dataIndex: 'displayType', key: 'displayType', resizable: true, width: 100 },
   { title: '操作', key: 'action', resizable: true, width: 140 },
 ]);
-
-function handleResizeColumn(w: number, col: any) { col.width = w; }
 </script>

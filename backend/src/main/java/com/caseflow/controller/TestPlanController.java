@@ -10,10 +10,13 @@ import com.caseflow.mapper.TestPlanCaseMapper;
 import com.caseflow.mapper.TestPlanExecutorMapper;
 import com.caseflow.mapper.UserMapper;
 import com.caseflow.service.TestPlanService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController @RequestMapping("/api/test-plans") @RequiredArgsConstructor
 public class TestPlanController {
@@ -27,7 +30,60 @@ public class TestPlanController {
             @RequestParam(required = false) String directoryId,
             @RequestParam(defaultValue = "false") boolean onlyMine,
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
-        return Result.ok(testPlanService.listPlans(projectId, keyword, page, size));
+        Page<TestPlan> planPage = testPlanService.listPlans(projectId, keyword, page, size);
+        List<String> planIds = planPage.getRecords().stream().map(TestPlan::getId).collect(Collectors.toList());
+        if (planIds.isEmpty()) return Result.ok(planPage);
+
+        // 批量查询用例统计
+        List<TestPlanCase> allCases = caseMapper.selectList(
+                new LambdaQueryWrapper<TestPlanCase>().in(TestPlanCase::getPlanId, planIds));
+        Map<String, List<TestPlanCase>> casesGrouped = allCases.stream()
+                .collect(Collectors.groupingBy(TestPlanCase::getPlanId));
+
+        // 批量查询执行人
+        List<TestPlanExecutor> allExecs = executorMapper.selectList(
+                new LambdaQueryWrapper<TestPlanExecutor>().in(TestPlanExecutor::getPlanId, planIds));
+        Map<String, List<TestPlanExecutor>> execsGrouped = allExecs.stream()
+                .collect(Collectors.groupingBy(TestPlanExecutor::getPlanId));
+        Set<String> allUids = allExecs.stream().map(TestPlanExecutor::getUserId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<String, String> userNameMap = new HashMap<>();
+        if (!allUids.isEmpty()) {
+            userMapper.selectBatchIds(allUids).forEach(u -> userNameMap.put(u.getId(), u.getDisplayName()));
+        }
+
+        // 组装带统计信息的结果
+        List<Map<String, Object>> enriched = new ArrayList<>();
+        for (TestPlan p : planPage.getRecords()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", p.getId()); m.put("name", p.getName());
+            m.put("directoryId", p.getDirectoryId()); m.put("projectId", p.getProjectId());
+            m.put("createdBy", p.getCreatedBy()); m.put("createdByName", p.getCreatedByName());
+            m.put("createdAt", p.getCreatedAt()); m.put("updatedAt", p.getUpdatedAt());
+
+            List<TestPlanCase> pc = casesGrouped.getOrDefault(p.getId(), List.of());
+            int total = pc.size();
+            int pass = (int) pc.stream().filter(c -> "PASS".equals(c.getResult())).count();
+            int fail = (int) pc.stream().filter(c -> "FAIL".equals(c.getResult())).count();
+            int skip = (int) pc.stream().filter(c -> "SKIP".equals(c.getResult())).count();
+            m.put("caseTotal", total);
+            m.put("caseExecuted", pass + fail + skip);
+            m.put("casePass", pass); m.put("caseFail", fail); m.put("caseSkip", skip);
+
+            List<TestPlanExecutor> pe = execsGrouped.getOrDefault(p.getId(), List.of());
+            List<String> executorNames = pe.stream()
+                    .map(e -> userNameMap.getOrDefault(e.getUserId(), e.getUserId()))
+                    .filter(Objects::nonNull).collect(Collectors.toList());
+            m.put("executorNames", executorNames);
+            enriched.add(m);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("records", enriched);
+        result.put("total", planPage.getTotal());
+        result.put("size", planPage.getSize());
+        result.put("current", planPage.getCurrent());
+        result.put("pages", planPage.getPages());
+        return Result.ok(result);
     }
 
     @GetMapping("/{id}") public Result<?> get(@PathVariable String id) {

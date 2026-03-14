@@ -98,14 +98,12 @@
                 <div class="prop-field">
                   <label>{{ attr.name }}</label>
                   <!-- 单选 + 平铺 -->
-                  <a-radio-group v-if="attr.displayType === 'TILE' && !attr.multiSelect"
-                    :value="editForm?.properties[attr.name]"
-                    @change="(e: any) => { if (editForm) { editForm.properties[attr.name] = e.target.value; syncToNode(); } }"
-                    class="tile-group">
-                    <a-radio-button v-for="o in attr.options" :key="o" :value="o"
-                      class="tile-btn"
-                      :class="attr.name === '优先级' ? `priority-${o.toLowerCase()}` : ''">{{ o }}</a-radio-button>
-                  </a-radio-group>
+                  <div v-if="attr.displayType === 'TILE' && !attr.multiSelect" class="tile-group">
+                    <span v-for="o in attr.options" :key="o"
+                      class="tile-tag"
+                      :class="[editForm?.properties[attr.name] === o ? 'active' : '', attr.name === '优先级' ? `priority-${o.toLowerCase()}` : '']"
+                      @click="toggleSingleTileTag(attr.name, o)">{{ o }}</span>
+                  </div>
                   <!-- 多选 + 平铺 -->
                   <div v-else-if="attr.multiSelect && attr.displayType === 'TILE'" class="tile-group">
                     <span v-for="o in attr.options" :key="o"
@@ -506,6 +504,14 @@ function navigateToNode(uid: string) {
 // =============================================
 // 实时同步: 属性面板 → 节点
 // =============================================
+
+/** 单选平铺标签的切换（点击已选中的可取消） */
+function toggleSingleTileTag(attrName: string, option: string) {
+  if (!editForm.value) return;
+  const cur = editForm.value.properties[attrName];
+  editForm.value.properties[attrName] = cur === option ? undefined : option;
+  syncToNode();
+}
 
 /** 多选平铺标签的切换 */
 function toggleTileTag(attrName: string, option: string) {
@@ -1125,15 +1131,11 @@ onUnmounted(() => {
 
 /* 属性选择器圆角 */
 .prop-field :deep(.ant-select-selector) { border-radius: 16px !important; }
-.prop-field :deep(.ant-radio-button-wrapper) { border-radius: 16px !important; }
-.prop-field :deep(.ant-radio-button-wrapper:first-child) { border-radius: 16px !important; }
-.prop-field :deep(.ant-radio-button-wrapper:last-child) { border-radius: 16px !important; }
 
 /* 平铺布局 */
 .tile-group { display: flex; flex-wrap: wrap; gap: 6px; }
-.tile-btn { border-radius: 16px !important; }
 
-/* 多选平铺标签 */
+/* 平铺标签（单选和多选共用） */
 .tile-tag {
   display: inline-flex; align-items: center; justify-content: center;
   padding: 2px 12px; border-radius: 16px; font-size: 12px; cursor: pointer;
@@ -1142,6 +1144,10 @@ onUnmounted(() => {
 }
 .tile-tag:hover { border-color: #1677ff; color: #1677ff; }
 .tile-tag.active { background: #1677ff; border-color: #1677ff; color: #fff; }
+.tile-tag.priority-p0.active { background: #f5222d; border-color: #f5222d; }
+.tile-tag.priority-p1.active { background: #fa8c16; border-color: #fa8c16; }
+.tile-tag.priority-p2.active { background: #1677ff; border-color: #1677ff; }
+.tile-tag.priority-p3.active { background: #8c8c8c; border-color: #8c8c8c; }
 
 .empty-hint {
   display: flex; align-items: center; justify-content: center;

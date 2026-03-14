@@ -54,6 +54,7 @@ import { ref, reactive, onMounted } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined } from '@ant-design/icons-vue';
 import { userApi, projectApi } from '../../api';
+import { useResizableColumns } from '../../composables/useResizableColumns';
 import type { User, Project } from '../../types';
 
 const users = ref<User[]>([]);
@@ -76,7 +77,7 @@ async function addUser() {
   message.success('创建成功'); showAdd.value = false; Object.assign(form, { username: '', displayName: '', identity: 'TEST', projectIds: [] }); loadUsers();
 }
 
-const columns = ref([
+const { columns, handleResizeColumn } = useResizableColumns('member-mgmt', [
   { title: '用户名', dataIndex: 'username', key: 'username', resizable: true, width: 180 },
   { title: '显示名', dataIndex: 'displayName', key: 'displayName', resizable: true, width: 180 },
   { title: '角色', key: 'role', resizable: true, width: 130 },
@@ -84,6 +85,4 @@ const columns = ref([
   { title: '状态', key: 'status', resizable: true, width: 100 },
   { title: '操作', key: 'action', resizable: true, width: 120 },
 ]);
-
-function handleResizeColumn(w: number, col: any) { col.width = w; }
 </script>

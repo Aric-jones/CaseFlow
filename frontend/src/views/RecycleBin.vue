@@ -35,6 +35,7 @@ import { ref, watch, onMounted } from 'vue';
 import { message } from 'ant-design-vue';
 import { recycleBinApi } from '../api';
 import { useAppStore } from '../stores/app';
+import { useResizableColumns } from '../composables/useResizableColumns';
 import type { RecycleBinItem } from '../types';
 
 const store = useAppStore();
@@ -62,14 +63,10 @@ async function permanentDel(id: string) {
 
 function formatTime(t: string) { return t ? t.replace('T', ' ').substring(0, 19) : ''; }
 
-const columns = ref([
+const { columns, handleResizeColumn } = useResizableColumns('recycle-bin', [
   { title: '用例集名称', dataIndex: 'itemName', key: 'itemName', ellipsis: true, resizable: true, width: 360 },
   { title: '删除人', dataIndex: 'deletedByName', key: 'deletedByName', resizable: true, width: 140 },
   { title: '删除时间', key: 'deletedAt', dataIndex: 'deletedAt', resizable: true, width: 220 },
   { title: '操作', key: 'action', resizable: true, width: 200 },
 ]);
-
-function handleResizeColumn(w: number, col: any) {
-  col.width = w;
-}
 </script>

@@ -189,17 +189,13 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
         }
     }
 
-    /** 获取项目中限定 EXPECTED 类型且标记为必填的自定义属性名称 */
+    /** 获取项目中标记为必填的自定义属性名称（属性统一挂在 EXPECTED 节点） */
     private List<String> getRequiredAttrs(String projectId) {
         return customAttributeMapper.selectList(
                 new LambdaQueryWrapper<CustomAttribute>()
                         .eq(CustomAttribute::getProjectId, projectId)
                         .eq(CustomAttribute::getRequired, 1))
                 .stream()
-                .filter(a -> {
-                    String limit = a.getNodeTypeLimit();
-                    return limit == null || limit.isEmpty() || limit.contains("EXPECTED");
-                })
                 .map(CustomAttribute::getName)
                 .collect(Collectors.toList());
     }
