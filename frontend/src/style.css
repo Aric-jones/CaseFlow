@@ -1,26 +1,153 @@
+/* ===== 基础重置 ===== */
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body, #app { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+html, body, #app { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif; color: #1f2329; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-thumb { background: #d9d9d9; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #bfbfbf; }
+::-webkit-scrollbar-thumb { background: #c8cdd6; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #adb4be; }
+::-webkit-scrollbar-track { background: transparent; }
 
-.dir-tree-item { display: flex; align-items: center; justify-content: space-between; width: 100%; }
-.dir-tree-item .actions { visibility: hidden; }
-.dir-tree-item:hover .actions { visibility: visible; }
+/* ===== 通用工具类 ===== */
+.text-link { color: #1677ff; cursor: pointer; transition: color 0.2s; }
+.text-link:hover { color: #4096ff; }
 
-.inline-input { padding: 2px 6px; border: 1px solid #1677ff; border-radius: 4px; outline: none; font-size: 13px; width: 140px; }
-
-.priority-p0 { color: #f5222d; font-weight: bold; }
-.priority-p1 { color: #fa8c16; font-weight: bold; }
-.priority-p2 { color: #1677ff; }
-.priority-p3 { color: #8c8c8c; }
-
-/* simple-mind-map 节点全局样式: 所有节点有边框 */
-.smm-node .smm-node-shape { stroke: #c9ced6 !important; stroke-width: 1px !important; rx: 6px; ry: 6px; }
+/* ===== 思维导图节点 ===== */
+.smm-node .smm-node-shape { stroke: #c9ced6 !important; stroke-width: 1px !important; }
 .smm-node.active .smm-node-shape { stroke: #1677ff !important; stroke-width: 2px !important; }
 .smm-node:hover .smm-node-shape { stroke: #4096ff !important; }
 .smm-node .smm-node-tag-item { border-radius: 3px !important; font-size: 11px !important; }
 .smm-node .smm-node-text { font-size: 13px !important; }
 .smm-root-node .smm-node-shape { stroke: #1677ff !important; stroke-width: 2px !important; }
-.smm-expand-btn { cursor: pointer; }
 .smm-select-area { fill: rgba(22,119,255,0.1) !important; stroke: #1677ff !important; }
+
+/* ===== Element Plus 全局覆盖 ===== */
+
+/* —— 顶部导航菜单 —— */
+.el-menu--horizontal.top-menu {
+  border-bottom: none !important;
+  background: transparent !important;
+  height: 56px;
+}
+.el-menu--horizontal.top-menu > .el-menu-item,
+.el-menu--horizontal.top-menu > .el-sub-menu > .el-sub-menu__title {
+  height: 56px !important;
+  line-height: 56px !important;
+  font-size: 14px;
+  color: #4a5568 !important;
+  border-bottom: 3px solid transparent !important;
+  padding: 0 16px !important;
+}
+.el-menu--horizontal.top-menu > .el-menu-item:hover,
+.el-menu--horizontal.top-menu > .el-sub-menu:hover > .el-sub-menu__title {
+  color: #1677ff !important;
+  background: transparent !important;
+}
+.el-menu--horizontal.top-menu > .el-menu-item.is-active {
+  color: #1677ff !important;
+  border-bottom-color: #1677ff !important;
+  background: transparent !important;
+  font-weight: 600;
+}
+.el-menu--horizontal.top-menu > .el-sub-menu.is-active > .el-sub-menu__title {
+  color: #1677ff !important;
+  border-bottom-color: #1677ff !important;
+  font-weight: 600;
+}
+/* 子菜单图标颜色 */
+.el-menu--horizontal.top-menu .el-icon { color: inherit !important; }
+/* 子菜单弹出层圆角 */
+.el-menu--popup { border-radius: 8px !important; overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.1) !important; }
+.el-menu--popup .el-menu-item { font-size: 14px; }
+
+/* —— 表格 —— */
+.el-table {
+  font-size: 14px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+}
+.el-table--border { border: 1px solid #ebedf0 !important; }
+.el-table--border .el-table__cell { border-right: 1px solid #ebedf0 !important; }
+.el-table th.el-table__cell {
+  background: #f7f8fa !important;
+  font-weight: 600;
+  color: #1f2329;
+  font-size: 13px;
+}
+.el-table td.el-table__cell, .el-table th.el-table__cell { padding: 10px 12px; }
+.el-table__row:hover > td.el-table__cell { background-color: #f0f5ff !important; }
+/* 修复 el-table 右侧空列问题 */
+.el-table__cell.el-table__column-resize-proxy { display: none; }
+/* 隐藏空白表头单元格的resize手柄 */
+.el-table colgroup col:last-child { min-width: 0; }
+
+/* —— 分页 —— */
+.el-pagination { font-size: 14px; }
+.el-pagination.is-background .el-pager li.is-active { background-color: #1677ff; }
+
+/* —— 目录树 —— */
+.el-tree { font-size: 13px; overflow: auto; flex: 1; }
+.el-tree-node__content { height: 36px; border-radius: 6px; margin: 1px 8px; }
+.el-tree-node__content:hover { background: #f0f2f5; }
+.el-tree-node.is-current > .el-tree-node__content { background: #e8f0fe; color: #1677ff; font-weight: 500; }
+
+/* —— 按钮 —— */
+.el-button--primary {
+  --el-button-bg-color: #1677ff;
+  --el-button-border-color: #1677ff;
+  --el-button-hover-bg-color: #4096ff;
+  --el-button-hover-border-color: #4096ff;
+  --el-button-active-bg-color: #0958d9;
+}
+
+/* —— 输入框 —— */
+.el-input__wrapper {
+  box-shadow: 0 0 0 1px #dcdfe6 inset;
+  transition: box-shadow 0.2s;
+}
+.el-input__wrapper:hover { box-shadow: 0 0 0 1px #c0c4cc inset; }
+.el-input__wrapper.is-focus { box-shadow: 0 0 0 1px #1677ff inset !important; }
+
+/* —— 弹窗 —— */
+.el-dialog { border-radius: 10px !important; overflow: hidden; }
+.el-dialog__header { border-bottom: 1px solid #f0f2f5; padding: 16px 20px 14px; }
+.el-dialog__title { font-size: 15px; font-weight: 600; }
+.el-dialog__footer { border-top: 1px solid #f0f2f5; padding: 12px 20px 16px; }
+.el-dialog__body { padding: 20px; }
+
+/* —— 卡片 —— */
+.el-card {
+  border-radius: 8px; border: 1px solid #ebedf0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.el-card:hover {
+  box-shadow: 0 6px 20px rgba(0,0,0,0.1) !important;
+  transform: translateY(-2px);
+}
+/* 内容卡片悬停动画（pages中的 content-card / form-card） */
+.content-card, .form-card {
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.content-card:hover, .form-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+}
+
+/* —— Select —— */
+.el-select-dropdown { border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+
+/* —— Tag —— */
+.el-tag { border-radius: 4px; font-size: 12px; }
+.el-tag--small { border-radius: 3px; }
+
+/* —— Popconfirm —— */
+.el-popconfirm { font-size: 13px; }
+
+/* —— Form —— */
+.el-form-item__label { font-weight: 500; color: #4a5568; }
+
+/* —— Progress —— */
+.el-progress-bar__outer { border-radius: 4px; }
+
+/* —— Descriptions —— */
+.el-descriptions__label { font-weight: 500; background: #f7f8fa; }

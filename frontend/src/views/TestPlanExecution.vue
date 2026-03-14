@@ -1,81 +1,93 @@
 <template>
   <div class="exec-page">
-    <!-- ===== 顶栏 ===== -->
+    <!-- 顶栏 -->
     <div class="exec-header">
       <div class="header-left">
-        <a-button type="text" @click="$router.push('/test-plans')"><ArrowLeftOutlined /></a-button>
+        <el-button text @click="$router.push('/test-plans')">
+          <el-icon><ArrowLeft /></el-icon>
+        </el-button>
         <strong class="plan-name">{{ plan?.name }}</strong>
-        <span class="stat-group">
-          已执行 <b>{{ stats.executed }}/{{ stats.total }}</b>
+        <div class="stat-group">
+          <span>已执行 <b>{{ stats.executed }}/{{ stats.total }}</b></span>
           <span class="c-fail">不通过 {{ stats.fail }}</span>
           <span class="c-pass">通过 {{ stats.pass }}</span>
           <span class="c-skip">跳过 {{ stats.skip }}</span>
-        </span>
+        </div>
       </div>
       <div class="header-right">
-        <span class="label">执行进度</span>
-        <a-progress :percent="progressPct" :stroke-color="'#52c41a'" size="small" style="width:120px" />
-        <a-button type="link" @click="showReport = true">查看测试报告</a-button>
-        <a-button type="link" :loading="refreshing" @click="doRefresh"><ReloadOutlined /> 刷新用例</a-button>
+        <span style="font-size:13px;color:#909399">执行进度</span>
+        <el-progress :percentage="progressPct" color="#52c41a" :show-text="false" style="width:120px" />
+        <el-button text type="primary" @click="showReport = true">查看测试报告</el-button>
+        <el-button text type="primary" :loading="refreshing" @click="doRefresh">
+          <el-icon><Refresh /></el-icon> 刷新用例
+        </el-button>
       </div>
     </div>
 
-    <!-- ===== 搜索栏 ===== -->
+    <!-- 搜索栏 -->
     <div class="exec-filter">
       <span class="filter-label">用例名称</span>
-      <a-input v-model:value="filterKeyword" placeholder="搜索" allow-clear style="width:180px" @change="rebuildTree" />
+      <el-input v-model="filterKeyword" placeholder="搜索" clearable style="width:180px" @input="rebuildTree" />
       <span class="filter-label">执行人</span>
-      <a-select v-model:value="filterExecutor" placeholder="全部执行人" allow-clear style="width:140px"
-        :options="executorOptions" @change="rebuildTree" />
+      <el-select v-model="filterExecutor" placeholder="全部执行人" clearable style="width:140px" @change="rebuildTree">
+        <el-option v-for="o in executorOptions" :key="o.value" :label="o.label" :value="o.value" />
+      </el-select>
       <span class="filter-label">执行结果</span>
-      <a-select v-model:value="filterResult" placeholder="全部结果" allow-clear style="width:140px"
-        :options="resultOpts" @change="rebuildTree" />
+      <el-select v-model="filterResult" placeholder="全部结果" clearable style="width:140px" @change="rebuildTree">
+        <el-option v-for="o in resultOpts" :key="o.value" :label="o.label" :value="o.value" />
+      </el-select>
     </div>
 
-    <!-- ===== 主体 ===== -->
+    <!-- 主体 -->
     <div class="exec-body">
+      <!-- 左侧树表格 -->
       <div class="exec-left">
-        <a-table :columns="cols" :data-source="displayTree" row-key="_key" size="small"
-          :pagination="false" :scroll="{ y: 'calc(100vh - 200px)' }"
-          :row-class-name="rowClass" :custom-row="customRow"
-          :expanded-row-keys="expandedKeys" @expand="onExpand"
-          :expandable="{ childrenColumnName: 'children' }">
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'title'">
-              <span :class="{ 'leaf-text': record._isLeaf }">
-                <a-tag v-if="record._nodeType" :color="ntColor(record._nodeType)" style="font-size:11px">{{ ntLabel(record._nodeType) }}</a-tag>
-                {{ record._text }}
-              </span>
+        <el-table ref="treeTableRef" :data="displayTree" row-key="_key" border
+          :tree-props="{ children: 'children' }" default-expand-all
+          :row-class-name="rowClass" @row-click="onRowClick" style="width:100%">
+          <el-table-column label="测试用例" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-tag v-if="row._nodeType" :type="ntType(row._nodeType)"
+                size="small" style="margin-right:4px;font-size:11px">{{ ntLabel(row._nodeType) }}</el-tag>
+              <span :class="{ 'font-bold': row._isGroup }">{{ row._text }}</span>
             </template>
-            <template v-if="column.key === 'executor'">
-              <a-select v-if="record._isLeaf" :value="record._executorId || undefined" placeholder="未分配"
-                allow-clear show-search option-filter-prop="label" size="big" style="width:100%"
-                :options="executorOptions"
-                @click.stop
-                @change="(v: any) => onExecutorChange(record._caseId, v)" />
+          </el-table-column>
+          <el-table-column label="执行人" width="150">
+            <template #default="{ row }">
+              <el-select v-if="row._isLeaf" :model-value="row._executorId || undefined"
+                placeholder="未分配" clearable filterable size="small" style="width:100%"
+                @click.stop @change="(v: any) => onExecutorChange(row._caseId, v)">
+                <el-option v-for="o in executorOptions" :key="o.value" :label="o.label" :value="o.value" />
+              </el-select>
             </template>
-            <template v-if="column.key === 'result'">
-              <a-select v-if="record._isLeaf" :value="record._result" size="big"
-                :class="'res-select res-' + (record._result || 'PENDING').toLowerCase()"
-                style="width:100%"
-                :options="resultOpts"
-                @click.stop
-                @change="(v: any) => onResultChange(record._caseId, v, record)" />
+          </el-table-column>
+          <el-table-column label="执行结果" width="120">
+            <template #default="{ row }">
+              <el-select v-if="row._isLeaf" :model-value="row._result || 'PENDING'"
+                size="small" style="width:100%"
+                :class="'res-sel res-' + (row._result || 'PENDING').toLowerCase()"
+                @click.stop @change="(v: any) => onResultChange(row._caseId, v, row)">
+                <el-option v-for="o in resultOpts" :key="o.value" :label="o.label" :value="o.value" />
+              </el-select>
             </template>
-            <template v-if="column.key === 'action'">
-              <a-popconfirm v-if="record._isLeaf" title="确认移除该用例？" @confirm.stop="removeCase(record._caseId)">
-                <a-button type="link" size="small" danger @click.stop>移除</a-button>
-              </a-popconfirm>
+          </el-table-column>
+          <el-table-column label="操作" width="80" :resizable="false">
+            <template #default="{ row }">
+              <el-popconfirm v-if="row._isLeaf" title="确认移除该用例？" @confirm.stop="removeCase(row._caseId)">
+                <template #reference>
+                  <el-button text type="danger" size="small" @click.stop>移除</el-button>
+                </template>
+              </el-popconfirm>
             </template>
-          </template>
-        </a-table>
+          </el-table-column>
+        </el-table>
       </div>
 
       <!-- 右侧详情 -->
       <div class="exec-right" v-if="selectedCase">
         <div class="detail-header">
           <span>用例详情</span>
-          <a-tag :color="resColor(selectedCase.result)">{{ resLabel(selectedCase.result) }}</a-tag>
+          <el-tag :type="resType(selectedCase.result)" size="small">{{ resLabel(selectedCase.result) }}</el-tag>
         </div>
         <div class="detail-body">
           <div class="detail-section" v-if="caseDetail.modulePath">
@@ -104,20 +116,20 @@
               <li v-for="item in filteredProps" :key="item.key" class="attr-item">
                 <span class="attr-name">{{ propLabel(item.key) }}</span>
                 <template v-if="item.key === 'mark'">
-                  <a-tag :color="markColor(item.val)" size="small">{{ markLabel(item.val) }}</a-tag>
+                  <el-tag :type="markType(item.val)" size="small" round>{{ markLabel(item.val) }}</el-tag>
                 </template>
                 <template v-else-if="Array.isArray(item.val)">
-                  <a-tag v-for="v in item.val" :key="v" color="blue" size="small">{{ v }}</a-tag>
+                  <el-tag v-for="v in item.val" :key="v" type="primary" size="small" round>{{ v }}</el-tag>
                 </template>
                 <template v-else>
-                  <a-tag color="blue" size="small">{{ item.val }}</a-tag>
+                  <el-tag type="primary" size="small" round>{{ item.val }}</el-tag>
                 </template>
               </li>
             </ul>
           </div>
           <div class="detail-section" v-if="selectedCase.reason">
             <div class="section-label">{{ selectedCase.result === 'FAIL' ? '不通过原因' : '跳过原因' }}</div>
-            <div class="section-value reason-value">{{ selectedCase.reason }}</div>
+            <div class="reason-value">{{ selectedCase.reason }}</div>
           </div>
           <div style="margin-top:16px">
             <a class="link-edit" @click="goToMindMap">去修改用例 →</a>
@@ -125,64 +137,77 @@
         </div>
         <div class="detail-footer">
           <div class="footer-nav">
-            <a-button size="small" :disabled="curIdx <= 0" @click="goPrev"><LeftOutlined /> 上一条</a-button>
-            <a-button size="small" :disabled="curIdx >= cases.length - 1" @click="goNext">下一条 <RightOutlined /></a-button>
+            <el-button size="small" :disabled="curIdx <= 0" @click="goPrev">
+              <el-icon><ArrowLeft /></el-icon> 上一条
+            </el-button>
+            <el-button size="small" :disabled="curIdx >= cases.length - 1" @click="goNext">
+              下一条 <el-icon><ArrowRight /></el-icon>
+            </el-button>
           </div>
           <div class="footer-actions">
-            <a-button class="btn-pass" @click="doExecute('PASS')">通过</a-button>
-            <a-button class="btn-fail" @click="openReasonModal('FAIL')">不通过</a-button>
-            <a-button class="btn-skip" @click="openReasonModal('SKIP')">跳过</a-button>
+            <el-button class="btn-pass" @click="doExecute('PASS')">通过</el-button>
+            <el-button class="btn-fail" @click="openReasonModal('FAIL')">不通过</el-button>
+            <el-button class="btn-skip" @click="openReasonModal('SKIP')">跳过</el-button>
           </div>
         </div>
       </div>
-      <div class="exec-right empty" v-else><a-empty description="请选择用例" /></div>
+      <div class="exec-right empty" v-else>
+        <el-empty description="请选择用例" />
+      </div>
     </div>
 
     <!-- 原因弹窗 -->
-    <a-modal v-model:open="reasonModal.visible" :title="reasonModal.action === 'FAIL' ? '不通过原因' : '跳过原因'" @ok="submitReason" ok-text="确认">
-      <a-textarea v-model:value="reasonModal.text" :placeholder="'请填写' + (reasonModal.action === 'FAIL' ? '不通过' : '跳过') + '原因（必填）'"
-        :auto-size="{ minRows: 3, maxRows: 6 }" />
-    </a-modal>
+    <el-dialog v-model="reasonModal.visible" :title="reasonModal.action === 'FAIL' ? '不通过原因' : '跳过原因'" width="480px">
+      <el-input v-model="reasonModal.text" type="textarea" :rows="3"
+        :placeholder="'请填写' + (reasonModal.action === 'FAIL' ? '不通过' : '跳过') + '原因（必填）'" />
+      <template #footer>
+        <el-button @click="reasonModal.visible = false">取消</el-button>
+        <el-button type="primary" @click="submitReason">确认</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 测试报告弹窗 -->
-    <a-modal v-model:open="showReport" title="测试报告" :footer="null" width="680px">
+    <el-dialog v-model="showReport" title="测试报告" width="680px">
       <div class="rpt-section">
         <h4>整体执行进度</h4>
         <div class="rpt-overview">
-          <a-progress type="circle" :percent="progressPct" :size="100" :stroke-color="'#52c41a'" />
+          <el-progress type="circle" :percentage="progressPct" color="#52c41a" :width="100" />
           <div class="rpt-nums">
             <div class="num"><span class="val">{{ stats.total }}</span><span class="lbl">总用例</span></div>
             <div class="num"><span class="val">{{ stats.executed }}</span><span class="lbl">已执行</span></div>
-            <div class="num"><span class="val">{{ stats.pass }}</span><span class="lbl">通过</span></div>
+            <div class="num"><span class="val c-pass">{{ stats.pass }}</span><span class="lbl">通过</span></div>
           </div>
         </div>
         <div class="rpt-sub">
           <span class="c-fail">{{ stats.fail }} 不通过</span>
           <span class="c-skip">{{ stats.skip }} 跳过</span>
-          <span style="color:#999">{{ stats.pending }} 待执行</span>
+          <span style="color:#909399">{{ stats.pending }} 待执行</span>
         </div>
       </div>
-      <a-divider />
+      <el-divider />
       <div class="rpt-section">
         <h4>执行人进度</h4>
         <div v-for="ep in executorProgress" :key="ep.name" style="margin-bottom:12px">
           <div class="ep-row">
             <span class="ep-name">{{ ep.name }}</span>
-            <a-progress :percent="ep.total ? Math.round(ep.executed/ep.total*100) : 0" :stroke-color="'#52c41a'" style="flex:1;margin:0 12px" />
+            <el-progress :percentage="ep.total ? Math.round(ep.executed/ep.total*100) : 0"
+              color="#52c41a" style="flex:1;margin:0 12px" :show-text="false" />
             <span class="ep-pct">{{ ep.total ? Math.round(ep.executed/ep.total*100) : 0 }}% ({{ ep.executed }}/{{ ep.total }})</span>
           </div>
           <div class="ep-detail">通过 {{ ep.pass }} &nbsp; 不通过 {{ ep.fail }} &nbsp; 跳过 {{ ep.skip }} &nbsp; 待执行 {{ ep.pending }}</div>
         </div>
       </div>
-    </a-modal>
+      <template #footer>
+        <el-button @click="showReport = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { message } from 'ant-design-vue';
-import { ArrowLeftOutlined, ReloadOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons-vue';
+import { ElMessage } from 'element-plus';
 import { testPlanApi } from '../api';
 import type { TestPlan } from '../types';
 
@@ -193,7 +218,6 @@ const planId = String(route.params.planId);
 const plan = ref<TestPlan | null>(null);
 const cases = ref<any[]>([]);
 const displayTree = ref<any[]>([]);
-const expandedKeys = ref<string[]>([]);
 const selectedCase = ref<any>(null);
 const showReport = ref(false);
 const refreshing = ref(false);
@@ -201,22 +225,13 @@ const filterKeyword = ref('');
 const filterExecutor = ref<string | undefined>();
 const filterResult = ref<string | undefined>();
 const reasonModal = ref({ visible: false, action: '', text: '' });
+const planExecutors = ref<{ userId: string; displayName: string }[]>([]);
 
-/** 计划关联的执行人列表 {userId, displayName} */
-const planExecutors = ref<{userId: string; displayName: string}[]>([]);
-
-const cols = [
-  { title: '测试用例', key: 'title', ellipsis: true },
-  { title: '执行人', key: 'executor', width: 140 },
-  { title: '执行结果', key: 'result', width: 120 },
-  { title: '操作', key: 'action', width: 80 },
-];
 const resultOpts = [
   { value: 'PENDING', label: '待执行' }, { value: 'PASS', label: '通过' },
   { value: 'FAIL', label: '不通过' }, { value: 'SKIP', label: '跳过' },
 ];
 
-// ── 统计 ──────────────────────────────────────────────
 const stats = computed(() => {
   const a = cases.value;
   const p = a.filter((c: any) => c.result === 'PASS').length;
@@ -226,17 +241,14 @@ const stats = computed(() => {
 });
 const progressPct = computed(() => stats.value.total ? Math.round(stats.value.executed / stats.value.total * 100) : 0);
 const curIdx = computed(() => selectedCase.value ? cases.value.findIndex((c: any) => c.id === selectedCase.value.id) : -1);
-
-const executorOptions = computed(() => {
-  return planExecutors.value.map(e => ({ value: e.userId, label: e.displayName }));
-});
+const executorOptions = computed(() => planExecutors.value.map(e => ({ value: e.userId, label: e.displayName })));
 
 const executorProgress = computed(() => {
-  const m = new Map<string, { name: string; total: number; pass: number; fail: number; skip: number; pending: number; executed: number }>();
+  const m = new Map<string, any>();
   cases.value.forEach((c: any) => {
     const k = c.executorId || '_', n = c.executorName || '未分配';
     if (!m.has(k)) m.set(k, { name: n, total: 0, pass: 0, fail: 0, skip: 0, pending: 0, executed: 0 });
-    const e = m.get(k)!; e.total++;
+    const e = m.get(k); e.total++;
     if (c.result === 'PASS') { e.pass++; e.executed++; }
     else if (c.result === 'FAIL') { e.fail++; e.executed++; }
     else if (c.result === 'SKIP') { e.skip++; e.executed++; }
@@ -245,54 +257,42 @@ const executorProgress = computed(() => {
   return Array.from(m.values());
 });
 
-/** 从 pathSnapshot 中提取详情 */
 const caseDetail = computed(() => {
   const sc = selectedCase.value;
-  if (!sc?.pathSnapshot?.length) return {};
+  if (!sc?.pathSnapshot?.length) return {} as any;
   const path: any[] = sc.pathSnapshot;
   const len = path.length;
-  if (len < 4) return {};
-  const titleNode = path[len - 4];
-  const preNode = path[len - 3];
-  const stepNode = path[len - 2];
-  const expectedNode = path[len - 1];
-  // 前置模块：从 index 1 (跳过root) 到 TITLE 之前
+  if (len < 4) return {} as any;
   const moduleNodes = path.slice(1, len - 4);
   return {
     modulePath: moduleNodes.map((n: any) => n.text).join(' → ') || '',
-    title: titleNode?.text || '',
-    precondition: preNode?.text || '',
-    step: stepNode?.text || '',
-    expected: expectedNode?.text || '',
-    props: expectedNode?.properties || {},
+    title: path[len - 4]?.text || '',
+    precondition: path[len - 3]?.text || '',
+    step: path[len - 2]?.text || '',
+    expected: path[len - 1]?.text || '',
+    props: path[len - 1]?.properties || {},
   };
 });
 
-/** 过滤掉 null / undefined / 空字符串 / mark=NONE 的属性 */
 const filteredProps = computed(() => {
   const props = caseDetail.value.props;
   if (!props || typeof props !== 'object') return [];
-  return Object.entries(props).filter(([k, v]) => {
+  return Object.entries(props).filter(([, v]) => {
     if (v == null || v === '' || v === 'NONE') return false;
     if (Array.isArray(v) && v.length === 0) return false;
     return true;
   }).map(([k, v]) => ({ key: k, val: v }));
 });
 
-/** 行内修改执行人 */
 async function onExecutorChange(caseId: string, executorId: string | null) {
   if (!caseId) return;
   await testPlanApi.updateCaseExecutor(caseId, executorId || null);
   const c = cases.value.find((x: any) => x.id === caseId);
-  if (c) {
-    c.executorId = executorId || null;
-    c.executorName = planExecutors.value.find(e => e.userId === executorId)?.displayName || '';
-  }
+  if (c) { c.executorId = executorId || null; c.executorName = planExecutors.value.find(e => e.userId === executorId)?.displayName || ''; }
   rebuildTree();
 }
 
-/** 行内修改执行结果 */
-async function onResultChange(caseId: string, result: string, record: any) {
+async function onResultChange(caseId: string, result: string, _record: any) {
   if (!caseId) return;
   if (result === 'FAIL' || result === 'SKIP') {
     selectedCase.value = cases.value.find((x: any) => x.id === caseId) || null;
@@ -303,27 +303,19 @@ async function onResultChange(caseId: string, result: string, record: any) {
   const c = cases.value.find((x: any) => x.id === caseId);
   if (c) { c.result = result; c.executedAt = new Date().toISOString(); }
   rebuildTree();
-  if (selectedCase.value?.id === caseId) {
-    selectedCase.value = { ...selectedCase.value, result };
-  }
+  if (selectedCase.value?.id === caseId) selectedCase.value = { ...selectedCase.value, result };
 }
 
-// ── 工具函数 ──────────────────────────────────────────
 function resLabel(r: string) { return ({ PASS: '通过', FAIL: '不通过', SKIP: '跳过' } as any)[r] || '待执行'; }
-function resColor(r: string) { return ({ PASS: 'success', FAIL: 'error', SKIP: 'warning' } as any)[r] || 'default'; }
+function resType(r: string): any { return ({ PASS: 'success', FAIL: 'danger', SKIP: 'warning' } as any)[r] || 'info'; }
 function ntLabel(t: string) { return ({ TITLE: '用例标题', PRECONDITION: '前置条件', STEP: '步骤', EXPECTED: '预期结果' } as any)[t] || t || ''; }
-function ntColor(t: string) { return ({ TITLE: 'purple', PRECONDITION: 'blue', STEP: 'green', EXPECTED: 'orange' } as any)[t] || 'default'; }
+function ntType(t: string): any { return ({ TITLE: 'primary', PRECONDITION: 'info', STEP: 'success', EXPECTED: 'warning' } as any)[t] || ''; }
 function propLabel(k: string) { return ({ mark: '标记', priority: '优先级', category: '分类', coverage: '覆盖集', device: '设备集' } as any)[k] || k; }
 function markLabel(v: any) { return ({ PENDING: '待完成', TO_CONFIRM: '待确认', TO_MODIFY: '待修改', '待完成': '待完成', '待确认': '待确认', '待修改': '待修改' } as any)[v] || v; }
-function markColor(v: any) { return ({ PENDING: 'red', TO_CONFIRM: 'orange', TO_MODIFY: 'purple', '待完成': 'red', '待确认': 'orange', '待修改': 'purple' } as any)[v] || 'default'; }
+function markType(v: any): any { return ({ PENDING: 'danger', TO_CONFIRM: 'warning', TO_MODIFY: '', '待完成': 'danger', '待确认': 'warning', '待修改': '' } as any)[v] || 'info'; }
 
-// ── 数据加载 ─────────────────────────────────────────
 async function loadData() {
-  const [pRes, cRes, eRes] = await Promise.all([
-    testPlanApi.get(planId),
-    testPlanApi.getCases(planId),
-    testPlanApi.getExecutors(planId),
-  ]);
+  const [pRes, cRes, eRes] = await Promise.all([testPlanApi.get(planId), testPlanApi.getCases(planId), testPlanApi.getExecutors(planId)]);
   plan.value = pRes.data;
   cases.value = cRes.data;
   planExecutors.value = eRes.data || [];
@@ -335,176 +327,93 @@ async function loadData() {
   }
 }
 
-/** 刷新用例：先让后端回源重新拍快照，再重新加载 */
 async function doRefresh() {
   refreshing.value = true;
-  try {
-    await testPlanApi.refreshCases(planId);
-    await loadData();
-    message.success('用例已刷新');
-  } finally { refreshing.value = false; }
+  try { await testPlanApi.refreshCases(planId); await loadData(); ElMessage.success('用例已刷新'); }
+  finally { refreshing.value = false; }
 }
 
-/**
- * 从快照数据构建合并树：
- * 多条 case 的 pathSnapshot 共享相同的祖先节点(通过 id 匹配)，
- * 合并成一棵树用于 Table 展示。
- */
 function rebuildTree() {
-  // 先按筛选条件过滤
   let filtered = cases.value;
   if (filterKeyword.value) {
     const kw = filterKeyword.value.toLowerCase();
-    filtered = filtered.filter((c: any) => {
-      const path: any[] = c.pathSnapshot || [];
-      return path.some((n: any) => (n.text || '').toLowerCase().includes(kw));
-    });
+    filtered = filtered.filter((c: any) => (c.pathSnapshot || []).some((n: any) => (n.text || '').toLowerCase().includes(kw)));
   }
   if (filterExecutor.value) filtered = filtered.filter((c: any) => c.executorId === filterExecutor.value);
   if (filterResult.value) filtered = filtered.filter((c: any) => c.result === filterResult.value);
 
-  // 按 caseSetId 分组
   const byCsId = new Map<string, any[]>();
   for (const c of filtered) {
     if (!byCsId.has(c.caseSetId)) byCsId.set(c.caseSetId, []);
     byCsId.get(c.caseSetId)!.push(c);
   }
-
   const tree: any[] = [];
-  const allKeys: string[] = [];
-
   for (const [csId, csList] of byCsId) {
     const csName = csList[0]?.caseSetName || csId;
-    const csKey = `cs-${csId}`;
-    allKeys.push(csKey);
-
-    // 合并该用例集下所有路径快照为一棵树
-    const mergedChildren = mergePaths(csList, csId, allKeys);
-    tree.push({ _key: csKey, _text: csName, _isGroup: true, children: mergedChildren.length ? mergedChildren : undefined });
+    const merged = mergePaths(csList, csId);
+    tree.push({ _key: `cs-${csId}`, _text: csName, _isGroup: true, children: merged.length ? merged : undefined });
   }
-
   displayTree.value = tree;
-  expandedKeys.value = [...allKeys];
 }
 
-/**
- * 将同一个用例集的多条路径快照合并成树：
- * 共享祖先节点(通过原始 node id 去重)，
- * 叶节点(EXPECTED)挂载执行信息。
- */
-function mergePaths(csList: any[], csId: string, allKeys: string[]): any[] {
-  interface TreeNode {
-    _key: string; _text: string; _nodeType: string | null;
-    _isLeaf?: boolean; _caseId?: string; _result?: string;
-    _executorId?: string; _executorName?: string;
-    children?: TreeNode[];
-    _childMap?: Map<string, TreeNode>;
-  }
-  const virtualRoot: TreeNode = { _key: 'vr', _text: '', _nodeType: null, _childMap: new Map() };
-
+function mergePaths(csList: any[], csId: string): any[] {
+  interface TN { _key: string; _text: string; _nodeType: string | null; _isLeaf?: boolean; _caseId?: string; _result?: string; _executorId?: string; children?: TN[]; _childMap?: Map<string, TN>; }
+  const vr: TN = { _key: 'vr', _text: '', _nodeType: null, _childMap: new Map() };
   for (const c of csList) {
     const path: any[] = c.pathSnapshot || [];
     if (!path.length) continue;
-
-    let current = virtualRoot;
+    let cur = vr;
     for (let i = 0; i < path.length; i++) {
       const node = path[i];
       const nodeId = node.id || `anon-${i}`;
-      const key = `p-${csId}-${nodeId}`;
       const isLast = i === path.length - 1;
-
-      if (!current._childMap) current._childMap = new Map();
-      let child = current._childMap.get(nodeId);
+      if (!cur._childMap) cur._childMap = new Map();
+      let child = cur._childMap.get(nodeId);
       if (!child) {
-        child = { _key: key, _text: node.text || '', _nodeType: node.nodeType || null };
-        if (isLast) {
-          child._isLeaf = true;
-          child._caseId = c.id;
-          child._result = c.result;
-          child._executorId = c.executorId;
-          child._executorName = c.executorName;
-        }
-        current._childMap.set(nodeId, child);
-        allKeys.push(key);
-      } else if (isLast) {
-        child._isLeaf = true;
-        child._caseId = c.id;
-        child._result = c.result;
-        child._executorId = c.executorId;
-        child._executorName = c.executorName;
-      }
-      current = child;
+        child = { _key: `p-${csId}-${nodeId}`, _text: node.text || '', _nodeType: node.nodeType || null };
+        if (isLast) { child._isLeaf = true; child._caseId = c.id; child._result = c.result; child._executorId = c.executorId; }
+        cur._childMap.set(nodeId, child);
+      } else if (isLast) { child._isLeaf = true; child._caseId = c.id; child._result = c.result; child._executorId = c.executorId; }
+      cur = child;
     }
   }
-
-  // 将 _childMap 转为 children 数组（递归）
-  function toArray(node: TreeNode): TreeNode[] {
+  function toArr(node: TN): TN[] {
     if (!node._childMap || node._childMap.size === 0) return [];
-    const arr: TreeNode[] = [];
+    const arr: TN[] = [];
     for (const child of node._childMap.values()) {
-      const kids = toArray(child);
+      const kids = toArr(child);
       if (kids.length) child.children = kids;
       delete child._childMap;
       arr.push(child);
     }
     return arr;
   }
-
-  // 跳过根节点（index 0 是 mind map root），直接返回其子节点
-  const rootChildren = toArray(virtualRoot);
-  if (rootChildren.length === 1 && !rootChildren[0]._isLeaf) {
-    // 如果只有一个根节点且不是叶子，跳过它直接返回子
-    return rootChildren[0].children || [];
-  }
+  const rootChildren = toArr(vr);
+  if (rootChildren.length === 1 && !rootChildren[0]._isLeaf) return rootChildren[0].children || [];
   return rootChildren;
 }
 
-// ── 表格交互 ─────────────────────────────────────────
-function onExpand(_expanded: boolean, record: any) {
-  const k = record._key;
-  const i = expandedKeys.value.indexOf(k);
-  if (i >= 0) expandedKeys.value.splice(i, 1); else expandedKeys.value.push(k);
-}
-
-function customRow(record: any) {
-  return {
-    onClick: () => {
-      if (record._caseId) selectedCase.value = cases.value.find((c: any) => c.id === record._caseId) || null;
-      if (record.children?.length) {
-        const k = record._key;
-        const i = expandedKeys.value.indexOf(k);
-        if (i >= 0) expandedKeys.value.splice(i, 1); else expandedKeys.value.push(k);
-      }
-    },
-  };
-}
-
-function rowClass(record: any) {
-  if (record._isLeaf && selectedCase.value?.id === record._caseId) return 'selected-row';
-  if (record._isGroup) return 'group-row';
+function rowClass({ row }: any) {
+  if (row._isLeaf && selectedCase.value?.id === row._caseId) return 'selected-row';
+  if (row._isGroup) return 'group-row';
   return '';
 }
-
+function onRowClick(row: any) {
+  if (row._caseId) selectedCase.value = cases.value.find((c: any) => c.id === row._caseId) || null;
+}
 function goPrev() { if (curIdx.value > 0) selectedCase.value = cases.value[curIdx.value - 1]; }
 function goNext() { if (curIdx.value < cases.value.length - 1) selectedCase.value = cases.value[curIdx.value + 1]; }
 function goToMindMap() { if (selectedCase.value?.caseSetId) router.push(`/mind-map/${selectedCase.value.caseSetId}`); }
 
-// ── 执行操作 ─────────────────────────────────────────
 async function doExecute(result: string, reasonText?: string) {
   if (!selectedCase.value) return;
   const caseId = selectedCase.value.id;
   await testPlanApi.executeCase(caseId, result, reasonText);
-  message.success('已记录');
-  // 本地更新，避免全量刷新
+  ElMessage.success('已记录');
   const c = cases.value.find((x: any) => x.id === caseId);
-  if (c) {
-    c.result = result;
-    c.reason = reasonText || null;
-    c.executedAt = new Date().toISOString();
-  }
+  if (c) { c.result = result; c.reason = reasonText || null; c.executedAt = new Date().toISOString(); }
   rebuildTree();
   selectedCase.value = { ...selectedCase.value, result, reason: reasonText || null };
-  // 自动跳到下一条
   const idx = cases.value.findIndex((x: any) => x.id === caseId);
   if (idx >= 0 && idx < cases.value.length - 1) selectedCase.value = cases.value[idx + 1];
 }
@@ -513,87 +422,74 @@ function openReasonModal(action: string) {
   if (!selectedCase.value) return;
   reasonModal.value = { visible: true, action, text: '' };
 }
-
 async function submitReason() {
-  if (!reasonModal.value.text.trim()) { message.error('请填写原因'); return; }
+  if (!reasonModal.value.text.trim()) { ElMessage.error('请填写原因'); return; }
   reasonModal.value.visible = false;
   await doExecute(reasonModal.value.action, reasonModal.value.text.trim());
 }
-
 async function removeCase(caseId: string) {
-  await testPlanApi.removeCase(caseId);
-  message.success('已移除');
-  await loadData();
+  await testPlanApi.removeCase(caseId); ElMessage.success('已移除'); await loadData();
 }
 
 onMounted(loadData);
 </script>
 
 <style scoped>
-.exec-page { display:flex; flex-direction:column; height:100vh; background:#f5f5f5; }
-.exec-header { display:flex; align-items:center; justify-content:space-between; background:#fff; border-bottom:1px solid #e8e8e8; padding:10px 20px; flex-shrink:0; }
+.exec-page { display:flex; flex-direction:column; height:100vh; background:#f5f7fa; }
+.exec-header { display:flex; align-items:center; justify-content:space-between; background:#fff; border-bottom:1px solid #e4e7ed; padding:10px 20px; flex-shrink:0; gap:12px; }
 .header-left { display:flex; align-items:center; gap:12px; }
 .header-right { display:flex; align-items:center; gap:8px; }
-.plan-name { font-size:15px; }
-.stat-group { font-size:13px; color:#666; display:flex; gap:12px; margin-left:8px; }
+.plan-name { font-size:15px; font-weight:600; }
+.stat-group { display:flex; gap:12px; font-size:13px; color:#606266; }
 .c-pass { color:#52c41a; font-weight:600; }
-.c-fail { color:#ff4d4f; font-weight:600; }
-.c-skip { color:#faad14; font-weight:600; }
-.label { font-size:13px; color:#999; }
-.exec-filter { display:flex; gap:8px; align-items:center; padding:10px 20px; background:#fff; border-bottom:1px solid #f0f0f0; flex-shrink:0; }
-.filter-label { font-size:13px; color:#666; }
+.c-fail { color:#f56c6c; font-weight:600; }
+.c-skip { color:#e6a23c; font-weight:600; }
+.exec-filter { display:flex; gap:8px; align-items:center; padding:10px 20px; background:#fff; border-bottom:1px solid #e4e7ed; flex-shrink:0; }
+.filter-label { font-size:13px; color:#606266; }
 .exec-body { display:flex; flex:1; overflow:hidden; }
 .exec-left { flex:1; overflow:auto; background:#fff; }
-.exec-left :deep(.ant-table-row) { cursor:pointer; }
-.exec-right { width:400px; flex-shrink:0; display:flex; flex-direction:column; background:#fff; border-left:1px solid #f0f0f0; }
+.exec-right { width:400px; flex-shrink:0; display:flex; flex-direction:column; background:#fff; border-left:1px solid #e4e7ed; }
 .exec-right.empty { justify-content:center; align-items:center; }
-.leaf-text { font-weight:normal; }
-:deep(.selected-row) td { background:#e6f4ff !important; }
+.font-bold { font-weight:600; }
+:deep(.selected-row) td { background:#ecf5ff !important; }
 :deep(.group-row) td { background:#fafafa !important; font-weight:600; }
 
-/* 执行结果下拉框字体颜色 */
-:deep(.res-select.res-pending) .ant-select-selection-item { color: #292929; }
-:deep(.res-select.res-pass) .ant-select-selection-item { color:#52c41a;  }
-:deep(.res-select.res-fail) .ant-select-selection-item { color:#ff4d4f;  }
-:deep(.res-select.res-skip) .ant-select-selection-item { color:#faad14;}
+/* 执行结果下拉框颜色 */
+:deep(.res-sel.res-pending .el-input__wrapper) { color:#606266; }
+:deep(.res-sel.res-pass .el-input__inner) { color:#52c41a; font-weight:500; }
+:deep(.res-sel.res-fail .el-input__inner) { color:#f56c6c; font-weight:500; }
+:deep(.res-sel.res-skip .el-input__inner) { color:#e6a23c; font-weight:500; }
 
-/* 用例详情样式 */
-.detail-header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid #f0f0f0; font-weight:600; font-size:14px; }
+/* 详情面板 */
+.detail-header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid #e4e7ed; font-weight:600; }
 .detail-body { flex:1; overflow:auto; padding:16px 20px; }
 .detail-section { margin-bottom:18px; }
-.section-label { font-size:13px; color:#8c8c8c; margin-bottom:6px; }
-.section-value { font-size:14px; color:#333; line-height:1.7; }
-.title-value { font-weight:600; font-size:15px; color:#222; }
-.path-value { color:#333; font-size:13px; }
-
-/* 属性列表 */
+.section-label { font-size:12px; color:#909399; margin-bottom:6px; }
+.section-value { font-size:14px; color:#303133; line-height:1.7; }
+.title-value { font-weight:600; font-size:15px; }
+.path-value { font-size:13px; color:#606266; }
 .attr-list { list-style:none; padding:0; margin:0; }
-.attr-item { display:flex; align-items:center; gap:8px; font-size:13px; padding:5px 0; }
-.attr-item::before { content:'•'; color:#1677ff; font-size:16px; font-weight:bold; }
-.attr-name { color:#595959; white-space:nowrap; min-width:60px; }
-.attr-item :deep(.ant-tag) { border-radius:10px; }
-
-.reason-value { color:#ff4d4f; background:#fff2f0; padding:8px 12px; border-radius:6px; border:1px solid #ffccc7; font-size:13px; line-height:1.6; white-space:pre-wrap; }
-.link-edit { font-size:13px; color:#1677ff; cursor:pointer; }
+.attr-item { display:flex; align-items:center; gap:8px; font-size:13px; padding:4px 0; flex-wrap:wrap; }
+.attr-item::before { content:'•'; color:#409eff; font-weight:bold; }
+.attr-name { color:#606266; white-space:nowrap; min-width:56px; }
+.reason-value { color:#f56c6c; background:#fef0f0; padding:8px 12px; border-radius:6px; border:1px solid #fbc4c4; font-size:13px; line-height:1.6; white-space:pre-wrap; }
+.link-edit { font-size:13px; color:#409eff; cursor:pointer; }
 .link-edit:hover { text-decoration:underline; }
-.detail-footer { padding:12px 16px; border-top:1px solid #f0f0f0; }
+.detail-footer { padding:12px 16px; border-top:1px solid #e4e7ed; }
 .footer-nav { display:flex; justify-content:center; gap:12px; margin-bottom:10px; }
 .footer-actions { display:flex; justify-content:center; gap:10px; }
-.btn-pass { background:#52c41a; border-color:#52c41a; color:#fff; }
-.btn-pass:hover { background:#73d13d; border-color:#73d13d; color:#fff; }
-.btn-fail { background:#ff4d4f; border-color:#ff4d4f; color:#fff; }
-.btn-fail:hover { background:#ff7875; border-color:#ff7875; color:#fff; }
-.btn-skip { background:#faad14; border-color:#faad14; color:#fff; }
-.btn-skip:hover { background: #f4c261; border-color: #f6c96e; color:#fff; }
+.btn-pass { background:#52c41a !important; border-color:#52c41a !important; color:#fff !important; }
+.btn-fail { background:#f56c6c !important; border-color:#f56c6c !important; color:#fff !important; }
+.btn-skip { background:#e6a23c !important; border-color:#e6a23c !important; color:#fff !important; }
 .rpt-section h4 { margin-bottom:12px; font-size:15px; }
-.rpt-overview { display:flex; align-items:center; gap:32px; }
+.rpt-overview { display:flex; align-items:center; gap:32px; margin-bottom:12px; }
 .rpt-nums { display:flex; gap:24px; }
 .num { display:flex; flex-direction:column; align-items:center; }
-.val { font-size:22px; font-weight:700; color:#333; }
-.lbl { font-size:12px; color:#999; }
-.rpt-sub { display:flex; gap:16px; margin-top:12px; font-size:13px; }
+.val { font-size:22px; font-weight:700; color:#303133; }
+.lbl { font-size:12px; color:#909399; }
+.rpt-sub { display:flex; gap:16px; font-size:13px; }
 .ep-row { display:flex; align-items:center; }
 .ep-name { width:80px; font-size:13px; flex-shrink:0; }
-.ep-pct { font-size:12px; color:#666; white-space:nowrap; }
-.ep-detail { font-size:12px; color:#999; padding-left:80px; }
+.ep-pct { font-size:12px; color:#606266; white-space:nowrap; }
+.ep-detail { font-size:12px; color:#909399; padding-left:80px; margin-top:2px; }
 </style>

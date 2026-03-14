@@ -1,67 +1,62 @@
 <template>
-  <div style="padding: 24px">
-    <h3>测试计划回收站</h3>
-    <a-empty v-if="!items.length && !loading" description="回收站为空" />
-    <a-table v-else :columns="columns" :data-source="items" row-key="id" :loading="loading"
-      :pagination="false" size="middle" :scroll="{ x: 900 }" @resizeColumn="handleResizeColumn">
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'name'">{{ record.itemName }}</template>
-        <template v-if="column.key === 'deletedAt'">{{ fmtTime(record.deletedAt) }}</template>
-        <template v-if="column.key === 'action'">
-          <a-space>
-            <a-button type="link" size="small" @click="restore(record.id)">恢复</a-button>
-            <a-popconfirm title="彻底删除？将同时删除执行人和关联用例，不可恢复" @confirm="permanentDel(record.id)">
-              <a-button type="link" size="small" danger>彻底删除</a-button>
-            </a-popconfirm>
-          </a-space>
-        </template>
-      </template>
-    </a-table>
+  <div class="settings-page">
+    <div class="page-header">
+      <h2>测试计划回收站</h2>
+    </div>
+    <div class="content-card">
+      <el-empty v-if="!items.length && !loading" description="回收站为空" :image-size="80" />
+      <el-table v-else :data="items" v-loading="loading" border style="width:100%">
+        <el-table-column label="计划名称" min-width="300" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.itemName }}</template>
+        </el-table-column>
+        <el-table-column label="删除人" prop="deletedByName" min-width="100" show-overflow-tooltip />
+        <el-table-column label="删除时间" min-width="170">
+          <template #default="{ row }">{{ fmtTime(row.deletedAt) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="150">
+          <template #default="{ row }">
+            <el-button text type="primary" size="small" @click="restore(row.id)">恢复</el-button>
+            <el-popconfirm title="彻底删除？将同时删除关联用例，不可恢复" @confirm="permanentDel(row.id)">
+              <template #reference>
+                <el-button text type="danger" size="small">彻底删除</el-button>
+              </template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue';
-import { message } from 'ant-design-vue';
+import { ElMessage } from 'element-plus';
 import { recycleBinApi } from '../api';
 import { useAppStore } from '../stores/app';
-import { useResizableColumns } from '../composables/useResizableColumns';
 import type { RecycleBinItem } from '../types';
 
 const store = useAppStore();
 const items = ref<RecycleBinItem[]>([]);
 const loading = ref(false);
 
-/** 加载测试计划回收站数据 */
 async function load() {
   if (!store.currentProject) return;
   loading.value = true;
-  try {
-    const res = await recycleBinApi.list(store.currentProject.id, 'TEST_PLAN');
-    items.value = (res.data as any) || [];
-  } catch { message.error('加载失败'); }
-  finally { loading.value = false; }
+  try { items.value = (await recycleBinApi.list(store.currentProject.id, 'TEST_PLAN')).data as any || []; }
+  catch { ElMessage.error('加载失败'); } finally { loading.value = false; }
 }
 watch(() => store.currentProject, load);
 onMounted(load);
 
-/** 恢复测试计划 */
-async function restore(id: string) {
-  await recycleBinApi.restore(id); message.success('已恢复'); load();
-}
-
-/** 彻底删除（级联删除执行人、用例） */
-async function permanentDel(id: string) {
-  await recycleBinApi.permanentDelete(id); message.success('已彻底删除'); load();
-}
-
-/** 格式化时间 */
+async function restore(id: string) { await recycleBinApi.restore(id); ElMessage.success('已恢复'); load(); }
+async function permanentDel(id: string) { await recycleBinApi.permanentDelete(id); ElMessage.success('已彻底删除'); load(); }
 function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 19) : ''; }
 
-const { columns, handleResizeColumn } = useResizableColumns('test-plan-recycle', [
-  { title: '计划名称', key: 'name', ellipsis: true, resizable: true, width: 360 },
-  { title: '删除人', dataIndex: 'deletedByName', key: 'deletedByName', resizable: true, width: 140 },
-  { title: '删除时间', key: 'deletedAt', dataIndex: 'deletedAt', resizable: true, width: 220 },
-  { title: '操作', key: 'action', resizable: true, width: 200 },
-]);
 </script>
+
+<style scoped>
+.settings-page { padding: 24px; height: 100%; overflow: auto; background: #f0f2f5; }
+.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.page-header h2 { font-size: 18px; font-weight: 600; color: #1f2329; margin: 0; }
+.content-card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+</style>

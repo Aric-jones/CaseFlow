@@ -1,61 +1,64 @@
 <template>
-  <a-layout style="height: 100vh">
-    <a-layout-header class="top-header">
+  <div class="app-layout">
+    <header class="app-header">
       <div class="header-left">
         <div class="logo" @click="$router.push('/cases')">
-          <FileTextOutlined style="font-size: 22px; color: #1677ff" />
-          <span style="font-size: 17px; font-weight: 600; color: #1677ff; margin-left: 8px">CaseFlow</span>
+          <el-icon size="20" color="#1677ff"><Document /></el-icon>
+          <span class="logo-text">CaseFlow</span>
         </div>
-        <a-menu mode="horizontal" :selectedKeys="[activeKey]" style="border: none; flex: 1; margin-left: 24px">
-          <a-menu-item key="/cases" @click="$router.push('/cases')">
-            <FileTextOutlined /> 用例首页
-          </a-menu-item>
-          <a-menu-item key="/test-plans" @click="$router.push('/test-plans')">
-            <ScheduleOutlined /> 测试计划
-          </a-menu-item>
-          <a-sub-menu v-if="store.user?.role !== 'MEMBER'" key="/settings">
-            <template #title><SettingOutlined /> 系统设置</template>
-            <a-menu-item key="/settings/members" @click="$router.push('/settings/members')">成员管理</a-menu-item>
-            <a-menu-item key="/settings/attributes" @click="$router.push('/settings/attributes')">用例属性管理</a-menu-item>
-            <a-menu-item key="/settings/projects" @click="$router.push('/settings/projects')">项目空间管理</a-menu-item>
-          </a-sub-menu>
-        </a-menu>
+        <el-menu mode="horizontal" :default-active="activeKey" class="top-menu"
+          :ellipsis="false" @select="(key: string) => $router.push(key)">
+          <el-menu-item index="/cases">
+            <el-icon><Document /></el-icon><span>用例首页</span>
+          </el-menu-item>
+          <el-menu-item index="/test-plans">
+            <el-icon><Calendar /></el-icon><span>测试计划</span>
+          </el-menu-item>
+          <el-sub-menu index="/settings" v-if="store.user?.role !== 'MEMBER'">
+            <template #title>
+              <el-icon><Setting /></el-icon><span>系统设置</span>
+            </template>
+            <el-menu-item index="/settings/members">成员管理</el-menu-item>
+            <el-menu-item index="/settings/attributes">用例属性管理</el-menu-item>
+            <el-menu-item index="/settings/projects">项目空间管理</el-menu-item>
+          </el-sub-menu>
+        </el-menu>
       </div>
       <div class="header-right">
-        <a-select
-          :value="store.currentProject?.id"
-          @change="handleProjectChange"
-          style="width: 160px"
-          :options="store.projects.map(p => ({ label: p.name, value: p.id }))"
-          placeholder="选择项目"
-        />
-        <a-dropdown placement="bottomRight">
-          <a-space style="cursor: pointer; margin-left: 16px">
-            <a-avatar size="small" style="background: #1677ff"><UserOutlined /></a-avatar>
-            <span>{{ store.user?.displayName }}</span>
-          </a-space>
-          <template #overlay>
-            <a-menu @click="handleUserMenu">
-              <a-menu-item key="profile"><IdcardOutlined /> 个人信息</a-menu-item>
-              <a-menu-item key="logout" danger><LogoutOutlined /> 退出登录</a-menu-item>
-            </a-menu>
+        <el-select :model-value="store.currentProject?.id" @change="handleProjectChange"
+          style="width:160px" placeholder="选择项目" size="default">
+          <el-option v-for="p in store.projects" :key="p.id" :label="p.name" :value="p.id" />
+        </el-select>
+        <el-dropdown placement="bottom-end" @command="handleUserMenu" class="user-dropdown">
+          <div class="user-trigger">
+            <el-avatar :size="32" style="background:#1677ff;font-size:13px;cursor:pointer">
+              {{ (store.user?.displayName || '?').charAt(0).toUpperCase() }}
+            </el-avatar>
+            <span class="user-name">{{ store.user?.displayName }}</span>
+            <el-icon size="12" color="#909399"><ArrowDown /></el-icon>
+          </div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="profile">
+                <el-icon><User /></el-icon>个人信息
+              </el-dropdown-item>
+              <el-dropdown-item command="logout" divided style="color:#f56c6c">
+                <el-icon><SwitchButton /></el-icon>退出登录
+              </el-dropdown-item>
+            </el-dropdown-menu>
           </template>
-        </a-dropdown>
+        </el-dropdown>
       </div>
-    </a-layout-header>
-    <a-layout-content style="overflow: auto">
+    </header>
+    <main class="app-content">
       <router-view />
-    </a-layout-content>
-  </a-layout>
+    </main>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import {
-  FileTextOutlined, ScheduleOutlined, SettingOutlined,
-  UserOutlined, LogoutOutlined, IdcardOutlined,
-} from '@ant-design/icons-vue';
 import { authApi, projectApi } from '../api';
 import { useAppStore } from '../stores/app';
 
@@ -65,8 +68,8 @@ const store = useAppStore();
 
 const activeKey = computed(() => {
   const p = route.path;
-  if (p.startsWith('/cases')) return '/cases';
-  if (p.startsWith('/test-plans')) return '/test-plans';
+  if (p.startsWith('/cases') || p === '/recycle-bin') return '/cases';
+  if (p.startsWith('/test-plans') || p.startsWith('/test-plan')) return '/test-plans';
   if (p.startsWith('/settings')) return '/settings';
   return '/cases';
 });
@@ -76,9 +79,9 @@ function handleProjectChange(val: string) {
   if (proj) store.setCurrentProject(proj);
 }
 
-function handleUserMenu({ key }: { key: string }) {
-  if (key === 'profile') { router.push('/profile'); return; }
-  if (key === 'logout') { store.logout(); router.push('/login'); }
+function handleUserMenu(command: string) {
+  if (command === 'profile') { router.push('/profile'); return; }
+  if (command === 'logout') { store.logout(); router.push('/login'); }
 }
 
 onMounted(async () => {
@@ -94,12 +97,28 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.top-header {
+.app-layout { display: flex; flex-direction: column; height: 100vh; background: #f0f2f5; }
+
+.app-header {
   display: flex; align-items: center; justify-content: space-between;
-  background: #fff; border-bottom: 1px solid #f0f0f0; padding: 0 24px;
-  position: sticky; top: 0; z-index: 100; height: 56px; line-height: 56px;
+  background: #fff;
+  padding: 0 24px;
+  height: 56px;
+  flex-shrink: 0;
+  position: sticky; top: 0; z-index: 100;
+  /* 用阴影代替下边框，避免和菜单active指示器叠加 */
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
-.header-left { display: flex; align-items: center; flex: 1; }
-.header-right { display: flex; align-items: center; }
-.logo { display: flex; align-items: center; cursor: pointer; }
+.header-left { display: flex; align-items: center; flex: 1; min-width: 0; }
+.header-right { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+
+.logo { display: flex; align-items: center; gap: 8px; cursor: pointer; margin-right: 8px; flex-shrink: 0; padding: 0 4px; }
+.logo-text { font-size: 17px; font-weight: 700; color: #1677ff; letter-spacing: -0.3px; }
+
+.user-dropdown { cursor: pointer; }
+.user-trigger { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; transition: background 0.2s; }
+.user-trigger:hover { background: #f5f7fa; }
+.user-name { font-size: 14px; color: #1f2329; font-weight: 500; }
+
+.app-content { flex: 1; overflow: hidden; }
 </style>

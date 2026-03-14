@@ -22,6 +22,9 @@ export const userApi = {
   update: (id: string, data: any): R<User> => request.put(`/users/${id}`, data),
   toggleStatus: (id: string): R<void> => request.put(`/users/${id}/status`),
   listAll: (): R<User[]> => request.get('/users/all'),
+  getUserProjects: (id: string): R<string[]> => request.get(`/users/${id}/projects`),
+  updateUserProjects: (id: string, projectIds: string[]): R<void> => request.put(`/users/${id}/projects`, projectIds),
+  updateDisplayName: (id: string, displayName: string): R<User> => request.put(`/users/${id}`, { displayName }),
 };
 
 export const projectApi = {

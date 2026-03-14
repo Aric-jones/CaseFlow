@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
+    "@element-plus/icons-vue": "^2.3.2",
     "ant-design-vue": "^4.2.3",
     "axios": "^1.7.2",
     "dayjs": "^1.11.11",
+    "element-plus": "^2.13.5",
     "pinia": "^2.1.7",
     "simple-mind-map": "^0.12.1",
     "vue": "^3.4.27",

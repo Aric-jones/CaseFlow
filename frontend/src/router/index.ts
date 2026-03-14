@@ -24,6 +24,7 @@ const router = createRouter({
     { path: '/test-plan/create', component: () => import('../views/TestPlanForm.vue') },
     { path: '/test-plan/:planId/edit', component: () => import('../views/TestPlanForm.vue') },
     { path: '/test-plan/:planId/execute', component: () => import('../views/TestPlanExecution.vue') },
+    { path: '/test', component: () => import('../views/settings/test.vue') },
   ],
 });
 
