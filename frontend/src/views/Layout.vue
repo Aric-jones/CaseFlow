@@ -117,8 +117,8 @@ onMounted(async () => {
 
 .user-dropdown { cursor: pointer; }
 .user-trigger { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; transition: background 0.2s; }
-.user-trigger:hover { background: #f5f7fa; }
 .user-name { font-size: 14px; color: #1f2329; font-weight: 500; }
 
 .app-content { flex: 1; overflow: hidden; }
+
 </style>

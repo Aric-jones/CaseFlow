@@ -113,5 +113,6 @@ async function changePassword() {
 .page-header { margin-bottom: 16px; }
 .page-header h2 { font-size: 18px; font-weight: 600; color: #1f2329; margin: 0; }
 .profile-card { border-radius: 10px !important; }
-:deep(.profile-desc-label) { width: 120px !important; }
+:deep(.profile-desc-label) { width: 50px !important; }
+:deep(.el-descriptions) { width: 500px !important; }
 </style>

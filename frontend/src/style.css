@@ -54,9 +54,6 @@ html, body, #app { height: 100%; font-family: -apple-system, BlinkMacSystemFont,
 }
 /* 子菜单图标颜色 */
 .el-menu--horizontal.top-menu .el-icon { color: inherit !important; }
-/* 子菜单弹出层圆角 */
-.el-menu--popup { border-radius: 8px !important; overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.1) !important; }
-.el-menu--popup .el-menu-item { font-size: 14px; }
 
 /* —— 表格 —— */
 .el-table {
