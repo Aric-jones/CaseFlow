@@ -187,7 +187,7 @@
     <!-- 评审人弹窗 -->
     <a-modal v-model:open="showReviewModal" title="选择评审人" @ok="submitReview">
       <a-select mode="multiple" style="width: 100%" v-model:value="selectedReviewers" placeholder="选择评审人"
-        :options="users.filter((u: any) => u.id !== store.user?.id).map((u: any) => ({ value: u.id, label: u.displayName }))" />
+        :options="users.map((u: any) => ({ value: u.id, label: u.displayName }))" />
     </a-modal>
 
     <!-- 退出确认弹窗 -->
@@ -814,13 +814,21 @@ function copySelectedNodes() {
   message.success(`已复制 ${nodeClipboard.length} 个节点`);
 }
 
-/** 将剪贴板节点粘贴为当前节点的子节点（每次深拷贝保证独立） */
+/** 为粘贴的子树中每个节点生成全新唯一ID，防止多次粘贴产生重复 */
+function assignFreshIds(node: ClipNode) {
+  const freshId = generateNodeId();
+  if (node.data._raw) node.data._raw.id = freshId;
+  node.data.uid = freshId;
+  node.children.forEach(assignFreshIds);
+}
+
+/** 将剪贴板节点粘贴为当前节点的子节点（每次深拷贝+全新ID保证独立） */
 function pasteNodes() {
   if (!nodeClipboard.length) { message.warning('剪贴板为空'); return; }
   const target = activeNodeInstance.value;
   if (!target) { message.warning('请先选中目标节点'); return; }
-  // 每次粘贴前深拷贝，防止库修改 appointData/appointChildren 对象导致多次粘贴时出现连线
   const copies: ClipNode[] = JSON.parse(JSON.stringify(nodeClipboard));
+  copies.forEach(assignFreshIds);
   for (const clip of copies) {
     mindMapInstance.execCommand('INSERT_CHILD_NODE', false, [target], clip.data, clip.children);
   }
@@ -846,10 +854,11 @@ async function loadData() {
   const mmData = serverTree.length
     ? nodeToMM(serverTree[0])
     : { data: { text: caseSet.value?.name || '新用例集' }, children: [] };
+  snapshotStabilized = false;
+  initialLoadDone = false;
   if (mindMapInstance) mindMapInstance.setData(mmData);
   caseCount.value = serverTree.length > 0 ? countValid(serverTree[0]) : 0;
   nextTick(() => {
-    savedTreeSnapshot = computeTreeHash();
     hasUnsavedChanges.value = false;
     initialLoadDone = true;
   });
@@ -1146,12 +1155,13 @@ async function resolveConflictUseServer() {
   dataVersion.value = conflictServerVersion.value;
   const serverTree = conflictServerTree.value;
   if (serverTree.length) {
+    snapshotStabilized = false;
     const mmData = nodeToMM(serverTree[0]);
     if (mindMapInstance) mindMapInstance.setData(mmData);
     caseCount.value = countValid(serverTree[0]);
   }
   await deleteLocalDraft(caseSetId);
-  savedTreeSnapshot = computeTreeHash();
+  nextTick(() => { savedTreeSnapshot = computeTreeHash(); });
   hasUnsavedChanges.value = false;
   showConflictDialog.value = false;
   message.success('已使用云端版本');
@@ -1202,9 +1212,9 @@ function openNodeDiff() {
   const allIds = new Set([...localMap.keys(), ...serverMap.keys()]);
   const diffs: DiffNode[] = [];
 
-  for (const id of allIds) {
-    const local = localMap.get(id);
-    const server = serverMap.get(id);
+  for (const nid of allIds) {
+    const local = localMap.get(nid);
+    const server = serverMap.get(nid);
     const lt = local?.text ?? '';
     const st = server?.text ?? '';
     const lnt = local?.nodeType ?? null;
@@ -1214,12 +1224,16 @@ function openNodeDiff() {
     const lps = propsToStr(lp);
     const sps = propsToStr(sp);
 
-    if (lt !== st || lnt !== snt || lps !== sps) {
+    const onlyLocal = local && !server;
+    const onlyServer = !local && server;
+    const contentDiff = lt !== st || lnt !== snt || lps !== sps;
+
+    if (onlyLocal || onlyServer || contentDiff) {
       diffs.push({
-        nodeId: id,
+        nodeId: nid,
         localText: lt, localType: lnt, localProps: lp, localPropsStr: lps,
         serverText: st, serverType: snt, serverProps: sp, serverPropsStr: sps,
-        choice: null,
+        choice: onlyLocal ? 'local' : onlyServer ? 'server' : null,
       });
     }
   }
@@ -1237,25 +1251,57 @@ function diffChooseAllServer() {
   for (const d of diffNodes.value) d.choice = 'server';
 }
 
-async function applyDiffMerge() {
-  const mergedTree = JSON.parse(JSON.stringify(conflictLocalTree.value)) as MindNodeData[];
-  const serverMap = flattenTreeNodes(conflictServerTree.value);
+function buildMergedTree(
+  localNodes: MindNodeData[],
+  serverNodes: MindNodeData[],
+  choiceMap: Map<string, 'local' | 'server' | null>,
+  localMap: Map<string, MindNodeData>,
+  serverMap: Map<string, MindNodeData>,
+): MindNodeData[] {
+  const localIds = localNodes.map(n => n.id!);
+  const serverIds = serverNodes.map(n => n.id!);
+  const localIdSet = new Set(localIds);
+  const serverIdSet = new Set(serverIds);
 
-  function applyChoices(nodes: MindNodeData[]) {
-    for (const node of nodes) {
-      const diff = diffNodes.value.find(d => d.nodeId === node.id);
-      if (diff && diff.choice === 'server') {
-        const serverNode = serverMap.get(node.id!);
-        if (serverNode) {
-          node.text = serverNode.text;
-          node.nodeType = serverNode.nodeType;
-          node.properties = serverNode.properties;
-        }
+  const result: MindNodeData[] = [];
+  const processed = new Set<string>();
+
+  for (const lc of localNodes) {
+    const nid = lc.id!;
+    processed.add(nid);
+    if (serverIdSet.has(nid)) {
+      const sc = serverMap.get(nid)!;
+      const choice = choiceMap.get(nid);
+      const merged = JSON.parse(JSON.stringify(choice === 'server' ? sc : lc)) as MindNodeData;
+      merged.children = buildMergedTree(lc.children || [], sc.children || [], choiceMap, localMap, serverMap);
+      result.push(merged);
+    } else {
+      const choice = choiceMap.get(nid);
+      if (choice !== 'server') {
+        result.push(JSON.parse(JSON.stringify(lc)));
       }
-      if (node.children?.length) applyChoices(node.children);
     }
   }
-  applyChoices(mergedTree);
+
+  for (const sc of serverNodes) {
+    const nid = sc.id!;
+    if (!processed.has(nid)) {
+      const choice = choiceMap.get(nid);
+      if (choice !== 'local') {
+        result.push(JSON.parse(JSON.stringify(sc)));
+      }
+    }
+  }
+
+  return result;
+}
+
+async function applyDiffMerge() {
+  const choiceMap = new Map<string, 'local' | 'server' | null>();
+  for (const d of diffNodes.value) choiceMap.set(d.nodeId, d.choice);
+  const localMap = flattenTreeNodes(conflictLocalTree.value);
+  const serverMap = flattenTreeNodes(conflictServerTree.value);
+  const mergedTree = buildMergedTree(conflictLocalTree.value, conflictServerTree.value, choiceMap, localMap, serverMap);
 
   saving.value = true;
   try {
@@ -1270,11 +1316,12 @@ async function applyDiffMerge() {
     caseCount.value = resData.caseCount ?? 0;
 
     if (mergedTree.length) {
+      snapshotStabilized = false;
       const mmData = nodeToMM(mergedTree[0]);
       if (mindMapInstance) mindMapInstance.setData(mmData);
     }
     await deleteLocalDraft(caseSetId);
-    savedTreeSnapshot = computeTreeHash();
+    nextTick(() => { savedTreeSnapshot = computeTreeHash(); });
     hasUnsavedChanges.value = false;
     showNodeDiffDialog.value = false;
     message.success('合并完成，已同步到云端');
@@ -1293,8 +1340,8 @@ watch(panelTab, (tab) => {
 const hasUnsavedChanges = ref(false);
 let savedTreeSnapshot = '';
 let initialLoadDone = false;
+let snapshotStabilized = false;
 
-/** 计算当前树的 JSON 哈希，用于检测未保存更改 */
 function computeTreeHash(): string {
   try {
     const tree = getFullTree();
@@ -1304,6 +1351,11 @@ function computeTreeHash(): string {
 function markDirty() {
   if (!initialLoadDone) return;
   const current = computeTreeHash();
+  if (!snapshotStabilized) {
+    savedTreeSnapshot = current;
+    snapshotStabilized = true;
+    return;
+  }
   hasUnsavedChanges.value = current !== savedTreeSnapshot;
 }
 function onBeforeUnload(e: BeforeUnloadEvent) {
@@ -1514,7 +1566,7 @@ onUnmounted(() => {
 .conflict-merge .conflict-card-title { color: #52c41a; }
 
 /* 差异对比 */
-.diff-progress { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.diff-progress { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap;padding-left: 3px; }
 .diff-dot {
   width: 16px; height: 16px; border-radius: 50%; background: #e4e7ed; cursor: pointer;
   transition: all .2s; border: 2px solid transparent;

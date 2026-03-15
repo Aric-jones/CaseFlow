@@ -33,6 +33,7 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
     private final CommentMapper commentMapper;
     private final CaseHistoryMapper caseHistoryMapper;
     private final TestPlanCaseMapper testPlanCaseMapper;
+    private final UserMapper userMapper;
     private final DirectoryService directoryService;
     private final MindNodeService mindNodeService;
     private final CustomAttributeService customAttributeService;
@@ -88,6 +89,8 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
             for (String rid : reviewerIds) {
                 if (!existingIds.contains(rid)) {
                     ReviewAssignment ra = new ReviewAssignment(); ra.setCaseSetId(id); ra.setReviewerId(rid); ra.setStatus("PENDING");
+                    User reviewer = userMapper.selectById(rid);
+                    ra.setReviewerName(reviewer != null ? reviewer.getDisplayName() : rid);
                     reviewAssignmentMapper.insert(ra);
                 }
             }

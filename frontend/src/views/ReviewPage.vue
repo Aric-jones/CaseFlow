@@ -140,7 +140,11 @@ const currentMark = computed(() => {
   const m = selectedNodeRaw.value?.properties?.mark;
   return (m && m !== 'NONE') ? m : 'NONE';
 });
-function getUserName(uid: string) { return users.value.find(u => u.id === uid)?.displayName || uid; }
+function getUserName(uid: string) {
+  const reviewer = reviewers.value.find(r => r.reviewerId === uid);
+  if (reviewer?.reviewerName) return reviewer.reviewerName;
+  return users.value.find(u => u.id === uid)?.displayName || uid;
+}
 function nodeTypeElType(t: string): any { return ({ TITLE: 'primary', PRECONDITION: 'info', STEP: 'success', EXPECTED: 'warning' } as any)[t] || ''; }
 function revElType(s: string): any { return ({ PENDING: 'info', APPROVED: 'success', REJECTED: 'danger', NEED_MODIFY: 'warning' } as any)[s] || 'info'; }
 

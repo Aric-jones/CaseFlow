@@ -83,6 +83,7 @@ export interface ReviewAssignment {
   id: string;
   caseSetId: string;
   reviewerId: string;
+  reviewerName?: string;
   status: string;
   createdAt: string;
 }
