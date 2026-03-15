@@ -46,11 +46,11 @@
         <el-tab-pane label="菜单管理" name="menus">
           <div class="tab-toolbar">
             <el-button type="primary" :icon="Plus" @click="openMenuForm()">新增菜单</el-button>
-            <el-button :icon="Sort" @click="menuExpandAll = !menuExpandAll">
+            <el-button :icon="Sort" @click="toggleMenuExpand">
               {{ menuExpandAll ? '折叠全部' : '展开全部' }}
             </el-button>
           </div>
-          <el-table :data="menuTree" v-loading="menusLoading" row-key="id" border
+          <el-table ref="menuTableRef" :data="menuTree" v-loading="menusLoading" row-key="id" border
             :default-expand-all="menuExpandAll"
             :tree-props="{ children: 'children' }" style="width:100%">
             <el-table-column label="菜单名称" prop="menuName" min-width="200" />
@@ -220,6 +220,7 @@ const menuTree = ref<any[]>([]);
 const usersWithRoles = ref<any[]>([]);
 const menuMap = ref<Record<string, any>>({});
 const menuExpandAll = ref(true);
+const menuTableRef = ref<any>(null);
 
 const roleMenuTreeRef = ref<any>(null);
 
@@ -233,6 +234,19 @@ function buildMenuTree(list: any[]): any[] {
   }
   return roots;
 }
+
+const toggleMenuExpand = () => {
+  // 切换状态标识
+  menuExpandAll.value = !menuExpandAll.value;
+  // 获取表格实例并调用对应方法
+  if (menuTableRef.value) {
+    if (menuExpandAll.value) {
+      menuTableRef.value.expandAll(); // 展开全部
+    } else {
+      menuTableRef.value.collapseAll(); // 折叠全部
+    }
+  }
+};
 
 const menuSelectTree = computed(() => {
   function toSelect(nodes: any[]): any[] {

@@ -19,7 +19,6 @@
             @click="handleLogin">登 录</el-button>
         </el-form-item>
       </el-form>
-      <p class="hint">默认账号: admin / wps123456</p>
     </el-card>
   </div>
 </template>
@@ -61,7 +60,7 @@ async function handleLogin() {
 <style scoped>
 .login-bg {
   height: 100vh; display: flex; justify-content: center; align-items: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #3889fa 0%, #086efd 100%);
 }
 .login-card { width: 420px; border-radius: 12px; }
 .login-title { text-align: center; margin-bottom: 32px; }
