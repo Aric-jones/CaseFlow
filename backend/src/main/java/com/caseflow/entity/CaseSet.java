@@ -15,6 +15,7 @@ public class CaseSet {
     private String status;
     private String requirementLink;
     private Integer caseCount;
+    private Integer dataVersion;
     @TableField(fill = FieldFill.INSERT)
     private String createdBy;
     @TableField(fill = FieldFill.INSERT)

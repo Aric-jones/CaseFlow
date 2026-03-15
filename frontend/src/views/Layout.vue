@@ -21,6 +21,7 @@
             <el-menu-item index="/settings/members">成员管理</el-menu-item>
             <el-menu-item index="/settings/attributes">用例属性管理</el-menu-item>
             <el-menu-item index="/settings/projects">项目空间管理</el-menu-item>
+            <el-menu-item v-if="store.user?.role === 'SUPER_ADMIN'" index="/settings/rbac">权限管理</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </div>

@@ -102,14 +102,8 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
             upsertRecursive(caseSetId, nodes, null, existingIds);
         }
 
-        // 5. 用有效用例规则（含必填属性校验）计算用例数并回写
-        int validCount = countValidCases(caseSetId);
-        CaseSet cs = caseSetMapper.selectById(caseSetId);
-        if (cs != null) {
-            cs.setCaseCount(validCount);
-            caseSetMapper.updateById(cs);
-        }
-        return validCount;
+        // 5. 计算有效用例数
+        return countValidCases(caseSetId);
     }
 
     /** 递归收集 DTO 树中所有节点 ID */

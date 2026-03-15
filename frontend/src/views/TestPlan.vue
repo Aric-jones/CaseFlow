@@ -36,8 +36,8 @@
         </el-tree>
         <div v-if="addingDir" class="inline-add">
           <input class="node-input" v-model="newDirName"
-            @keyup.enter="confirmAdd" @blur="confirmAdd"
-            @keyup.escape="addingDir = false" placeholder="输入名称回车保存" autofocus />
+                 @keyup.enter="confirmAdd" @blur="confirmAdd"
+                 @keyup.escape="addingDir = false" placeholder="输入名称回车保存" autofocus />
         </div>
       </div>
       <div v-if="!siderCollapsed" class="sidebar-footer" @click="$router.push('/test-plan-recycle-bin')">

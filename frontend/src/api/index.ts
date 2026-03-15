@@ -77,10 +77,10 @@ export const caseSetApi = {
 };
 
 export const mindNodeApi = {
-  tree: (caseSetId: string): R<MindNodeData[]> =>
+  tree: (caseSetId: string): R<{ tree: MindNodeData[]; version: number }> =>
     request.get('/mind-nodes/tree', { params: { caseSetId } }),
-  batchSave: (caseSetId: string, nodes: MindNodeData[]): R<void> =>
-    request.post('/mind-nodes/batch-save', nodes, { params: { caseSetId } }),
+  batchSave: (caseSetId: string, nodes: MindNodeData[], clientVersion?: number): R<any> =>
+    request.post('/mind-nodes/batch-save', nodes, { params: { caseSetId, clientVersion } }),
   create: (node: any): R<MindNodeData> => request.post('/mind-nodes', node),
   update: (id: string, node: any): R<MindNodeData> => request.put(`/mind-nodes/${id}`, node),
   delete: (id: string): R<void> => request.delete(`/mind-nodes/${id}`),
@@ -138,6 +138,22 @@ export const customAttributeApi = {
   create: (data: any): R<CustomAttribute> => request.post('/custom-attributes', data),
   update: (id: string, data: any): R<CustomAttribute> => request.put(`/custom-attributes/${id}`, data),
   delete: (id: string): R<void> => request.delete(`/custom-attributes/${id}`),
+};
+
+export const rbacApi = {
+  getRoles: (): R<any[]> => request.get('/rbac/roles'),
+  createRole: (data: any): R<any> => request.post('/rbac/roles', data),
+  updateRole: (id: string, data: any): R<void> => request.put(`/rbac/roles/${id}`, data),
+  deleteRole: (id: string): R<void> => request.delete(`/rbac/roles/${id}`),
+  getMenus: (): R<any[]> => request.get('/rbac/menus'),
+  createMenu: (data: any): R<any> => request.post('/rbac/menus', data),
+  updateMenu: (id: string, data: any): R<void> => request.put(`/rbac/menus/${id}`, data),
+  deleteMenu: (id: string): R<void> => request.delete(`/rbac/menus/${id}`),
+  updateRoleMenus: (roleId: string, menuIds: string[]): R<void> =>
+    request.put(`/rbac/roles/${roleId}/menus`, menuIds),
+  getUsersWithRoles: (): R<any[]> => request.get('/rbac/users'),
+  updateUserRoles: (userId: string, roleIds: string[]): R<void> =>
+    request.put(`/rbac/users/${userId}/roles`, roleIds),
 };
 
 export const recycleBinApi = {

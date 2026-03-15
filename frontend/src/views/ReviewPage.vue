@@ -192,7 +192,7 @@ onMounted(async () => {
   await nextTick();
   mindMapInstance = new MindMap({
     el: mindMapContainer.value!,
-    data: treeRes.data.length ? nodeToMM(treeRes.data[0]) : { data: { text: '空' }, children: [] },
+    data: (treeRes.data as any).tree?.length ? nodeToMM((treeRes.data as any).tree[0]) : { data: { text: '空' }, children: [] },
     theme: 'classic4', layout: 'logicalStructure', readonly: true, mousewheelAction: 'zoom',
     enableFreeDrag: false, useLeftKeySelectionRightKeyDrag: true,
     themeConfig: { second: { marginX: 80, marginY: 60 }, node: { marginX: 50, marginY: 50 } },

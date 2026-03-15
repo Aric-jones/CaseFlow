@@ -20,6 +20,8 @@
         <a-input v-else v-model:value="caseSetNameInput" size="small" style="width:200px;font-weight:600"
           @pressEnter="saveCaseSetName" @blur="saveCaseSetName" @keyup.escape="editingCaseSetName = false" autofocus />
         <span style="color: #999; font-size: 12px">({{ caseCount }}条用例)</span>
+        <a v-if="caseSet?.requirementLink" :href="caseSet.requirementLink" target="_blank"
+          style="color:#1677ff;font-size:12px;text-decoration:none;margin-left:4px" @click.stop>关联需求</a>
       </a-space>
       <a-space>
         <a-tooltip title="添加子节点(Tab)"><a-button type="text" @click="execCmd('INSERT_CHILD_NODE')"><PlusOutlined /></a-button></a-tooltip>
@@ -32,7 +34,8 @@
         <a-tooltip title="查找替换"><a-button type="text" @click="toggleSearch"><SearchOutlined /></a-button></a-tooltip>
         <a-tooltip title="规范检查"><a-button type="text" @click="openValidation"><ToolOutlined /></a-button></a-tooltip>
         <a-tooltip title="评论"><a-button type="text" @click="openComments"><CommentOutlined /></a-button></a-tooltip>
-        <a-button type="primary" :loading="saving" @click="handleSave"><SaveOutlined /> 保存</a-button>
+        <span v-if="hasUnsavedChanges" style="color:#e6a23c;font-size:11px;margin-right:4px">本地已保存</span>
+        <a-button type="primary" :loading="saving" @click="handleSave"><SaveOutlined /> 同步云端</a-button>
         <a-tooltip title="历史版本"><a-button type="text" @click="openHistory"><HistoryOutlined /></a-button></a-tooltip>
       </a-space>
     </div>
@@ -196,6 +199,80 @@
         <a-button type="primary" @click="handleExitSave">保存退出</a-button>
       </div>
     </a-modal>
+
+    <!-- 版本冲突解决弹窗 -->
+    <a-modal v-model:open="showConflictDialog" title="版本冲突" :closable="false" :footer="null" :maskClosable="false" width="640px">
+      <div style="padding: 8px 0">
+        <a-alert type="warning" show-icon style="margin-bottom:16px">
+          <template #message>
+            <span>云端已有更新的版本 (v{{ conflictServerVersion }})，您的本地版本 (v{{ dataVersion }}) 已过期。请选择如何处理：</span>
+          </template>
+        </a-alert>
+        <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap">
+          <div class="conflict-card conflict-local" @click="resolveConflictUseLocal">
+            <div class="conflict-card-title">使用本地版本</div>
+            <div class="conflict-card-desc">丢弃云端更改，使用您当前编辑的内容覆盖云端。</div>
+          </div>
+          <div class="conflict-card conflict-server" @click="resolveConflictUseServer">
+            <div class="conflict-card-title">使用云端版本</div>
+            <div class="conflict-card-desc">丢弃本地更改，使用云端最新版本的内容。</div>
+          </div>
+          <div class="conflict-card conflict-merge" @click="openNodeDiff" style="flex-basis:100%">
+            <div class="conflict-card-title">逐节点对比合并</div>
+            <div class="conflict-card-desc">逐个对比有差异的节点，选择保留本地或云端内容，合并后上传。</div>
+          </div>
+        </div>
+      </div>
+    </a-modal>
+
+    <!-- 逐节点对比弹窗 -->
+    <a-modal v-model:open="showNodeDiffDialog" title="节点差异对比" :closable="true" :footer="null"
+      :maskClosable="false" width="900px" :bodyStyle="{ maxHeight: '70vh', overflow: 'auto' }">
+      <div v-if="diffNodes.length === 0" style="text-align:center;padding:40px;color:#52c41a">
+        <CheckCircleOutlined style="font-size:32px" />
+        <p style="margin-top:8px">没有发现差异节点</p>
+      </div>
+      <template v-else>
+        <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+          <span style="color:#666;font-size:13px">共 <b>{{ diffNodes.length }}</b> 个差异节点，当前第 <b>{{ diffCurrentIdx + 1 }}</b> 个</span>
+          <a-space>
+            <a-button size="small" @click="diffChooseAllLocal">全部使用本地</a-button>
+            <a-button size="small" @click="diffChooseAllServer">全部使用云端</a-button>
+          </a-space>
+        </div>
+        <div class="diff-progress">
+          <div v-for="(d, i) in diffNodes" :key="d.nodeId" class="diff-dot"
+            :class="{ active: i === diffCurrentIdx, chosen: d.choice !== null, local: d.choice === 'local', server: d.choice === 'server' }"
+            @click="diffCurrentIdx = i" :title="d.localText || d.serverText || '节点'">
+          </div>
+        </div>
+        <div v-if="diffNodes[diffCurrentIdx]" class="diff-panel">
+          <div class="diff-col" :class="{ selected: diffNodes[diffCurrentIdx].choice === 'local' }"
+            @click="diffNodes[diffCurrentIdx].choice = 'local'">
+            <div class="diff-col-header local">本地版本</div>
+            <div class="diff-col-body">
+              <div class="diff-field"><span class="diff-label">文本：</span>{{ diffNodes[diffCurrentIdx].localText || '(空)' }}</div>
+              <div class="diff-field"><span class="diff-label">类型：</span>{{ ntLabelFn(diffNodes[diffCurrentIdx].localType) }}</div>
+              <div v-if="diffNodes[diffCurrentIdx].localPropsStr" class="diff-field"><span class="diff-label">属性：</span>{{ diffNodes[diffCurrentIdx].localPropsStr }}</div>
+            </div>
+          </div>
+          <div class="diff-col" :class="{ selected: diffNodes[diffCurrentIdx].choice === 'server' }"
+            @click="diffNodes[diffCurrentIdx].choice = 'server'">
+            <div class="diff-col-header server">云端版本</div>
+            <div class="diff-col-body">
+              <div class="diff-field"><span class="diff-label">文本：</span>{{ diffNodes[diffCurrentIdx].serverText || '(空)' }}</div>
+              <div class="diff-field"><span class="diff-label">类型：</span>{{ ntLabelFn(diffNodes[diffCurrentIdx].serverType) }}</div>
+              <div v-if="diffNodes[diffCurrentIdx].serverPropsStr" class="diff-field"><span class="diff-label">属性：</span>{{ diffNodes[diffCurrentIdx].serverPropsStr }}</div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:16px">
+          <a-button :disabled="diffCurrentIdx <= 0" @click="diffCurrentIdx--">上一个</a-button>
+          <a-button v-if="diffCurrentIdx < diffNodes.length - 1" type="primary" @click="diffCurrentIdx++">下一个</a-button>
+          <a-button v-else type="primary" :disabled="!allDiffChosen" :loading="saving" @click="applyDiffMerge">完成合并并上传</a-button>
+        </div>
+      </template>
+    </a-modal>
   </a-layout>
 </template>
 
@@ -216,6 +293,7 @@ import { caseSetApi, mindNodeApi, commentApi, caseHistoryApi, userApi, customAtt
 import { useAppStore } from '../stores/app';
 import type { CaseSet, MindNodeData, CaseHistory, User, CustomAttribute } from '../types';
 import { NODE_TYPE_LABEL, addAllCustomLabels, setupMouseOverrides } from '../composables/useMindMap';
+import { saveLocalDraft, getLocalDraft, deleteLocalDraft } from '../composables/useLocalMindMap';
 import CommentPanel from '../components/CommentPanel.vue';
 
 MindMap.usePlugin(Select);
@@ -287,9 +365,15 @@ const projectAttributes = ref<CustomAttribute[]>([]);
 const showReviewModal = ref(false);
 const selectedReviewers = ref<string[]>([]);
 
-let autoSaveTimer: ReturnType<typeof setInterval> | null = null;
+let localSaveTimer: ReturnType<typeof setInterval> | null = null;
 let historyTimer: ReturnType<typeof setInterval> | null = null;
 let cleanupMouseOverrides: (() => void) | null = null;
+const dataVersion = ref(0);
+const showConflictDialog = ref(false);
+const conflictServerTree = ref<MindNodeData[]>([]);
+const conflictLocalTree = ref<MindNodeData[]>([]);
+const conflictServerVersion = ref(0);
+const showLocalDraftPrompt = ref(false);
 
 function onKeyboardCopyPaste(e: KeyboardEvent) {
   if (!e.ctrlKey || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -570,44 +654,35 @@ function syncToNode(checkAutoChain = false) {
 }
 
 /**
- * 选中 TITLE 类型后，检查是否存在连续父子链：
- * - titleNode 有且仅有 1 个直接子节点 B
- * - B 有且仅有 1 个直接子节点 C
- * - C 有且仅有 1 个直接子节点 D（D 没有子节点）
- * - B、C、D 都没有 nodeType
- * 满足以上条件才自动赋予 B=PRECONDITION / C=STEP / D=EXPECTED
+ * 设置节点为 TITLE 后，自动级联赋值子节点类型（强制覆盖已有类型）：
+ * - 第1层子节点 → PRECONDITION
+ * - 第2层子节点 → STEP
+ * - 第3层子节点 → EXPECTED
+ * 如果某层没有子节点则停止
  */
 function autoAssignCaseChain(titleNode: any) {
-  const b = titleNode.children?.[0];
-  if (!b || titleNode.children.length !== 1) return;
-  const c = b.children?.[0];
-  if (!c || b.children.length !== 1) return;
-  const d = c.children?.[0];
-  if (!d || c.children.length !== 1) return;
-  // D 必须是叶节点
-  if (d.children && d.children.length > 0) return;
+  const typeChain = ['PRECONDITION', 'STEP', 'EXPECTED'];
 
-  // B、C、D 都不能有 nodeType
-  const hasType = (node: any) => {
-    const t = node.nodeData?.data?._raw?.nodeType;
-    return t !== null && t !== undefined && t !== '';
-  };
-  if (hasType(b) || hasType(c) || hasType(d)) return;
-
-  const targets = [b, c, d];
-  const types = ['PRECONDITION', 'STEP', 'EXPECTED'];
-  for (let i = 0; i < 3; i++) {
-    const node = targets[i];
-    if (!node.nodeData) node.nodeData = {};
-    if (!node.nodeData.data) node.nodeData.data = {};
-    let raw = node.nodeData.data._raw;
-    if (!raw) {
-      raw = { text: node.nodeData.data.text || '', nodeType: null, properties: {} };
-      node.nodeData.data._raw = raw;
+  function assignLevel(nodes: any[], depth: number) {
+    if (depth >= typeChain.length || !nodes || !nodes.length) return;
+    for (const node of nodes) {
+      if (!node.nodeData) node.nodeData = {};
+      if (!node.nodeData.data) node.nodeData.data = {};
+      let raw = node.nodeData.data._raw;
+      if (!raw) {
+        raw = { text: node.nodeData.data.text || '', nodeType: null, properties: {} };
+        node.nodeData.data._raw = raw;
+      }
+      raw.nodeType = typeChain[depth];
+      if (node.children?.length) {
+        assignLevel(node.children, depth + 1);
+      }
     }
-    raw.nodeType = types[i];
   }
-  // 赋值后刷新标签显示
+
+  if (titleNode.children?.length) {
+    assignLevel(titleNode.children, 0);
+  }
   markDirty();
   requestAnimationFrame(refreshLabels);
 }
@@ -762,11 +837,34 @@ function pasteNodes() {
 async function loadData() {
   const [csRes, treeRes] = await Promise.all([caseSetApi.get(caseSetId), mindNodeApi.tree(caseSetId)]);
   caseSet.value = csRes.data;
-  const mmData = treeRes.data.length
-    ? nodeToMM(treeRes.data[0])
+  const serverData = treeRes.data as any;
+  const serverTree: MindNodeData[] = serverData.tree || [];
+  const serverVer: number = serverData.version || 0;
+  dataVersion.value = serverVer;
+
+  const localDraft = await getLocalDraft(caseSetId);
+  if (localDraft && localDraft.version === serverVer && localDraft.tree?.length) {
+    const mmData = nodeToMM(localDraft.tree[0]);
+    if (mindMapInstance) mindMapInstance.setData(mmData);
+    caseCount.value = countValid(localDraft.tree[0]);
+    nextTick(() => {
+      savedTreeSnapshot = computeTreeHash();
+      const current = computeTreeHash();
+      hasUnsavedChanges.value = JSON.stringify(localDraft.tree) !== JSON.stringify(serverTree);
+      initialLoadDone = true;
+    });
+    return;
+  }
+
+  if (localDraft && localDraft.version < serverVer && localDraft.tree?.length) {
+    await deleteLocalDraft(caseSetId);
+  }
+
+  const mmData = serverTree.length
+    ? nodeToMM(serverTree[0])
     : { data: { text: caseSet.value?.name || '新用例集' }, children: [] };
   if (mindMapInstance) mindMapInstance.setData(mmData);
-  caseCount.value = treeRes.data.length > 0 ? countValid(treeRes.data[0]) : 0;
+  caseCount.value = serverTree.length > 0 ? countValid(serverTree[0]) : 0;
   nextTick(() => {
     savedTreeSnapshot = computeTreeHash();
     hasUnsavedChanges.value = false;
@@ -782,19 +880,34 @@ async function handleSave() {
   saving.value = true;
   try {
     const tree = getFullTree();
-    const res = await mindNodeApi.batchSave(caseSetId, tree);
-    caseCount.value = typeof res.data === 'number' ? res.data : (tree.length > 0 ? countValid(tree[0]) : 0);
+    const res = await mindNodeApi.batchSave(caseSetId, tree, dataVersion.value);
+    const resData = res.data as any;
+
+    if (resData?.conflict) {
+      conflictServerTree.value = resData.serverTree;
+      conflictLocalTree.value = tree;
+      conflictServerVersion.value = resData.serverVersion;
+      showConflictDialog.value = true;
+      saving.value = false;
+      return;
+    }
+
+    dataVersion.value = resData.version;
+    caseCount.value = resData.caseCount ?? (tree.length > 0 ? countValid(tree[0]) : 0);
     await caseHistoryApi.save(caseSetId);
+    await deleteLocalDraft(caseSetId);
     savedTreeSnapshot = computeTreeHash();
     hasUnsavedChanges.value = false;
-    message.success('保存成功');
+    message.success('已同步到云端');
   } catch { /* handled */ } finally { saving.value = false; }
 }
 
-async function autoSave() {
+async function autoSaveLocal() {
   try {
     const tree = getFullTree();
-    if (tree.length > 0) await mindNodeApi.batchSave(caseSetId, tree);
+    if (tree.length > 0) {
+      await saveLocalDraft(caseSetId, tree, dataVersion.value);
+    }
   } catch { /* silent */ }
 }
 
@@ -1006,6 +1119,182 @@ async function restoreVersion(id: string) {
 }
 
 // =============================================
+// 冲突解决
+// =============================================
+
+function flattenNodes(tree: MindNodeData[], prefix = ''): Map<string, MindNodeData> {
+  const map = new Map<string, MindNodeData>();
+  function walk(nodes: MindNodeData[], pathPrefix: string) {
+    for (const node of nodes) {
+      const key = node.id || pathPrefix + '/' + node.text;
+      map.set(key, node);
+      if (node.children?.length) walk(node.children, key);
+    }
+  }
+  walk(tree, prefix);
+  return map;
+}
+
+async function resolveConflictUseLocal() {
+  saving.value = true;
+  try {
+    const tree = conflictLocalTree.value;
+    const res = await mindNodeApi.batchSave(caseSetId, tree);
+    const resData = res.data as any;
+    if (resData?.conflict) {
+      message.error('仍有冲突，请刷新页面后重试');
+      saving.value = false;
+      return;
+    }
+    dataVersion.value = resData.version;
+    caseCount.value = resData.caseCount ?? 0;
+    await deleteLocalDraft(caseSetId);
+    savedTreeSnapshot = computeTreeHash();
+    hasUnsavedChanges.value = false;
+    showConflictDialog.value = false;
+    message.success('已使用本地版本覆盖云端');
+  } catch { /* */ } finally { saving.value = false; }
+}
+
+async function resolveConflictUseServer() {
+  dataVersion.value = conflictServerVersion.value;
+  const serverTree = conflictServerTree.value;
+  if (serverTree.length) {
+    const mmData = nodeToMM(serverTree[0]);
+    if (mindMapInstance) mindMapInstance.setData(mmData);
+    caseCount.value = countValid(serverTree[0]);
+  }
+  await deleteLocalDraft(caseSetId);
+  savedTreeSnapshot = computeTreeHash();
+  hasUnsavedChanges.value = false;
+  showConflictDialog.value = false;
+  message.success('已使用云端版本');
+}
+
+// =============================================
+// 逐节点差异对比合并
+// =============================================
+
+interface DiffNode {
+  nodeId: string;
+  localText: string; localType: string | null; localProps: Record<string, any>;
+  serverText: string; serverType: string | null; serverProps: Record<string, any>;
+  localPropsStr: string; serverPropsStr: string;
+  choice: 'local' | 'server' | null;
+}
+const showNodeDiffDialog = ref(false);
+const diffNodes = ref<DiffNode[]>([]);
+const diffCurrentIdx = ref(0);
+const allDiffChosen = computed(() => diffNodes.value.every(d => d.choice !== null));
+
+function ntLabelFn(t: string | null) {
+  if (!t) return '(未设置)';
+  return ({ TITLE: '用例标题', PRECONDITION: '前置条件', STEP: '步骤', EXPECTED: '预期结果' } as any)[t] || t;
+}
+
+function flattenTreeNodes(tree: MindNodeData[]): Map<string, MindNodeData> {
+  const map = new Map<string, MindNodeData>();
+  function walk(nodes: MindNodeData[]) {
+    for (const n of nodes) {
+      if (n.id) map.set(n.id, n);
+      if (n.children?.length) walk(n.children);
+    }
+  }
+  walk(tree);
+  return map;
+}
+
+function propsToStr(props: Record<string, any> | undefined): string {
+  if (!props || !Object.keys(props).length) return '';
+  return Object.entries(props).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('; ');
+}
+
+function openNodeDiff() {
+  const localMap = flattenTreeNodes(conflictLocalTree.value);
+  const serverMap = flattenTreeNodes(conflictServerTree.value);
+  const allIds = new Set([...localMap.keys(), ...serverMap.keys()]);
+  const diffs: DiffNode[] = [];
+
+  for (const id of allIds) {
+    const local = localMap.get(id);
+    const server = serverMap.get(id);
+    const lt = local?.text ?? '';
+    const st = server?.text ?? '';
+    const lnt = local?.nodeType ?? null;
+    const snt = server?.nodeType ?? null;
+    const lp = local?.properties ?? {};
+    const sp = server?.properties ?? {};
+    const lps = propsToStr(lp);
+    const sps = propsToStr(sp);
+
+    if (lt !== st || lnt !== snt || lps !== sps) {
+      diffs.push({
+        nodeId: id,
+        localText: lt, localType: lnt, localProps: lp, localPropsStr: lps,
+        serverText: st, serverType: snt, serverProps: sp, serverPropsStr: sps,
+        choice: null,
+      });
+    }
+  }
+
+  diffNodes.value = diffs;
+  diffCurrentIdx.value = 0;
+  showConflictDialog.value = false;
+  showNodeDiffDialog.value = true;
+}
+
+function diffChooseAllLocal() {
+  for (const d of diffNodes.value) d.choice = 'local';
+}
+function diffChooseAllServer() {
+  for (const d of diffNodes.value) d.choice = 'server';
+}
+
+async function applyDiffMerge() {
+  const mergedTree = JSON.parse(JSON.stringify(conflictServerTree.value)) as MindNodeData[];
+  const localMap = flattenTreeNodes(conflictLocalTree.value);
+
+  function applyChoices(nodes: MindNodeData[]) {
+    for (const node of nodes) {
+      const diff = diffNodes.value.find(d => d.nodeId === node.id);
+      if (diff && diff.choice === 'local') {
+        const localNode = localMap.get(node.id!);
+        if (localNode) {
+          node.text = localNode.text;
+          node.nodeType = localNode.nodeType;
+          node.properties = localNode.properties;
+        }
+      }
+      if (node.children?.length) applyChoices(node.children);
+    }
+  }
+  applyChoices(mergedTree);
+
+  saving.value = true;
+  try {
+    const res = await mindNodeApi.batchSave(caseSetId, mergedTree);
+    const resData = res.data as any;
+    if (resData?.conflict) {
+      message.error('仍有冲突，请刷新后重试');
+      saving.value = false;
+      return;
+    }
+    dataVersion.value = resData.version;
+    caseCount.value = resData.caseCount ?? 0;
+
+    if (mergedTree.length) {
+      const mmData = nodeToMM(mergedTree[0]);
+      if (mindMapInstance) mindMapInstance.setData(mmData);
+    }
+    await deleteLocalDraft(caseSetId);
+    savedTreeSnapshot = computeTreeHash();
+    hasUnsavedChanges.value = false;
+    showNodeDiffDialog.value = false;
+    message.success('合并完成，已同步到云端');
+  } catch { /* */ } finally { saving.value = false; }
+}
+
+// =============================================
 // 评论tab自动加载 & 退出保存提示
 // =============================================
 
@@ -1078,15 +1367,16 @@ onMounted(async () => {
   initMindMap();
   cleanupMouseOverrides = setupMouseOverrides(mindMapContainer.value!, () => mindMapInstance);
   await loadData();
-  autoSaveTimer = setInterval(autoSave, 10000);
+  localSaveTimer = setInterval(autoSaveLocal, 5000);
   historyTimer = setInterval(() => caseHistoryApi.save(caseSetId).catch(() => {}), 15 * 60 * 1000);
   window.addEventListener('beforeunload', onBeforeUnload);
   window.addEventListener('keydown', onKeyboardCopyPaste);
 });
 
 onUnmounted(() => {
-  if (autoSaveTimer) clearInterval(autoSaveTimer);
+  if (localSaveTimer) clearInterval(localSaveTimer);
   if (historyTimer) clearInterval(historyTimer);
+  autoSaveLocal();
   if (mindMapInstance) { mindMapInstance.destroy(); mindMapInstance = null; }
   cleanupMouseOverrides?.();
   window.removeEventListener('beforeunload', onBeforeUnload);
@@ -1207,6 +1497,44 @@ onUnmounted(() => {
 .cmt-reply { margin-top: 6px; }
 .cmt-reply-box { padding-left: 36px; margin-top: 6px; }
 .cmt-input-area { margin-top: 8px; border-top: 1px solid #f0f0f0; padding-top: 8px; flex-shrink: 0; }
+
+/* 冲突解决卡片 */
+.conflict-card {
+  flex: 1; border: 2px solid #f0f0f0; border-radius: 8px; padding: 16px;
+  cursor: pointer; transition: all .2s;
+}
+.conflict-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.conflict-card-title { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+.conflict-card-desc { color: #666; font-size: 13px; }
+.conflict-local { border-color: #f56c6c; }
+.conflict-local .conflict-card-title { color: #f56c6c; }
+.conflict-server { border-color: #1677ff; }
+.conflict-server .conflict-card-title { color: #1677ff; }
+.conflict-merge { border-color: #52c41a; }
+.conflict-merge .conflict-card-title { color: #52c41a; }
+
+/* 差异对比 */
+.diff-progress { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.diff-dot {
+  width: 16px; height: 16px; border-radius: 50%; background: #e4e7ed; cursor: pointer;
+  transition: all .2s; border: 2px solid transparent;
+}
+.diff-dot.active { border-color: #1677ff; transform: scale(1.3); }
+.diff-dot.chosen.local { background: #f56c6c; }
+.diff-dot.chosen.server { background: #1677ff; }
+.diff-panel { display: flex; gap: 12px; }
+.diff-col {
+  flex: 1; border: 2px solid #e4e7ed; border-radius: 8px; overflow: hidden;
+  cursor: pointer; transition: all .2s;
+}
+.diff-col:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.diff-col.selected { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,0.15); }
+.diff-col-header { padding: 8px 12px; font-weight: 600; font-size: 13px; color: #fff; }
+.diff-col-header.local { background: #f56c6c; }
+.diff-col-header.server { background: #1677ff; }
+.diff-col-body { padding: 12px; }
+.diff-field { font-size: 13px; color: #333; margin-bottom: 6px; line-height: 1.6; word-break: break-all; }
+.diff-label { color: #909399; font-size: 12px; }
 </style>
 
 <style>

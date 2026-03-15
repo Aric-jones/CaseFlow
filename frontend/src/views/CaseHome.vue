@@ -14,13 +14,13 @@
           <p>暂无目录</p>
           <el-button type="primary" link @click="startAddRoot">创建根目录</el-button>
         </div>
-        <el-tree v-else ref="treeRef" :data="treeData" node-key="id"
+        <el-tree v-else ref="treeRef" :data="treeDataWithNew" node-key="id"
           :highlight-current="true" :current-node-key="selectedDir || undefined"
           default-expand-all :expand-on-click-node="false"
-          @node-click="(d: any) => onSelectDir(d.id)"
-          @node-contextmenu="(e: MouseEvent, d: any) => showCtx(e, d.id)">
+          @node-click="(d: any) => { if (!d._isNew) onSelectDir(d.id); }"
+          @node-contextmenu="(e: MouseEvent, d: any) => { if (!d._isNew) showCtx(e, d.id); }">
           <template #default="{ data }">
-            <div class="tree-node">
+            <div class="tree-node" v-if="!data._isNew">
               <el-icon size="13" color="#909399" style="flex-shrink:0"><Folder /></el-icon>
               <span v-if="editingDirId !== data.id" class="node-label">{{ data.label }}</span>
               <input v-else class="node-input" :value="editingDirName"
@@ -32,13 +32,14 @@
                 <el-icon><Plus /></el-icon>
               </el-button>
             </div>
+            <div class="tree-node" v-else>
+              <el-icon size="13" color="#1677ff" style="flex-shrink:0"><FolderAdd /></el-icon>
+              <input class="node-input" v-model="newDirName"
+                @keyup.enter="confirmAdd" @blur="confirmAdd"
+                @keyup.escape="cancelAdd" @click.stop placeholder="输入名称回车保存" autofocus />
+            </div>
           </template>
         </el-tree>
-        <div v-if="addingDir" class="inline-add">
-          <input class="node-input" v-model="newDirName"
-            @keyup.enter="confirmAdd" @blur="confirmAdd"
-            @keyup.escape="addingDir = false" placeholder="输入名称回车保存" autofocus />
-        </div>
       </div>
       <div v-if="!siderCollapsed" class="sidebar-footer" @click="$router.push('/recycle-bin')">
         <el-icon color="#909399"><Delete /></el-icon>
@@ -76,6 +77,13 @@
           <el-table-column label="状态" min-width="100">
             <template #default="{ row }">
               <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="关联需求" min-width="120" show-overflow-tooltip>
+            <template #default="{ row }">
+              <a v-if="row.requirementLink" :href="row.requirementLink" target="_blank"
+                class="tbl-link" @click.stop>关联需求</a>
+              <span v-else style="color:#c0c4cc">-</span>
             </template>
           </el-table-column>
           <el-table-column label="创建人" prop="createdByName" min-width="90" show-overflow-tooltip />
@@ -223,6 +231,25 @@ function dirToSelectTree(list: DirectoryNode[]): any[] {
 const treeData = computed(() => dirToTree(dirs.value));
 const dirSelectData = computed(() => dirToSelectTree(dirs.value));
 
+const treeDataWithNew = computed(() => {
+  const base = JSON.parse(JSON.stringify(treeData.value));
+  if (!addingDir.value) return base;
+  const newNode = { id: '__new__', label: '', _isNew: true, children: [] };
+  if (!addParentId.value) {
+    base.push(newNode);
+  } else {
+    function inject(nodes: any[]): boolean {
+      for (const n of nodes) {
+        if (n.id === addParentId.value) { n.children.push(newNode); return true; }
+        if (n.children?.length && inject(n.children)) return true;
+      }
+      return false;
+    }
+    inject(base);
+  }
+  return base;
+});
+
 function flatDirs(list: DirectoryNode[]): DirectoryNode[] {
   const r: DirectoryNode[] = [];
   for (const d of list) { r.push(d); if (d.children?.length) r.push(...flatDirs(d.children)); }
@@ -260,6 +287,7 @@ async function confirmAdd() {
   await directoryApi.create(name, addParentId.value, store.currentProject.id, 'CASE');
   loadDirs();
 }
+function cancelAdd() { addingDir.value = false; newDirName.value = ''; }
 function startAddSibling(id: string) {
   ctxMenu.value.visible = false;
   const dir = flatDirs(dirs.value).find(d => d.id === id);
@@ -364,7 +392,7 @@ function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 19) : 
 .node-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: #1f2329; }
 .add-child-btn { opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
 .tree-node:hover .add-child-btn { opacity: 1; }
-.node-input { border: 1px solid #409eff; border-radius: 4px; padding: 2px 6px; font-size: 13px; flex: 1; outline: none; }
+.node-input { border: 1px solid #409eff; border-radius: 4px; padding: 2px 6px; font-size: 13px; flex: 1; outline: none; width: 40px;}
 .inline-add { padding: 4px 12px; }
 
 /* 主内容 */

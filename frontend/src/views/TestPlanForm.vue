@@ -27,14 +27,14 @@
             </div>
             <!-- 已选用例集表格 -->
             <el-table v-if="selectedSets.length" :data="selectedSets" size="small" border style="width:100%">
-              <el-table-column label="用例集名称" prop="name" show-overflow-tooltip min-width="160" />
-              <el-table-column label="总用例数" prop="caseCount" width="90" />
-              <el-table-column label="已筛选" width="80">
+              <el-table-column label="用例集名称" prop="name" show-overflow-tooltip min-width="200" />
+              <el-table-column label="总用例数" prop="caseCount" min-width="90" />
+              <el-table-column label="已筛选" min-width="80">
                 <template #default="{ row }">
                   <span>{{ getFilteredCount(row.id) }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="180" :resizable="false">
+              <el-table-column label="操作" min-width="180" :resizable="false">
                 <template #default="{ row }">
                   <el-button text type="primary" size="small" :icon="Filter" @click="openFilter(row)">筛选用例</el-button>
                   <el-button text type="danger" size="small" :icon="Delete" @click="removeSet(row.id)">删除</el-button>

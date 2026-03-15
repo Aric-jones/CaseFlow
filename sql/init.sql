@@ -86,6 +86,7 @@ CREATE TABLE case_sets (
                                   NOT NULL DEFAULT 'WRITING'          COMMENT '状态: 编写中/待评审/无需评审/审核通过',
     requirement_link VARCHAR(500) DEFAULT ''                          COMMENT '关联需求链接',
     case_count      INT           NOT NULL DEFAULT 0                  COMMENT '用例数量(统计缓存)',
+    data_version    INT           NOT NULL DEFAULT 0                  COMMENT '数据版本号(乐观锁)',
     created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人编号',
     created_by_name VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '创建人',
     updated_by      VARCHAR(32)   DEFAULT NULL                        COMMENT '修改人编号',
