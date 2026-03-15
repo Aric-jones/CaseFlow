@@ -2,6 +2,7 @@ package com.caseflow.controller;
 
 import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
+import cn.dev33.satoken.stp.StpUtil;
 import com.caseflow.entity.TestPlan;
 import com.caseflow.entity.TestPlanCase;
 import com.caseflow.entity.User;
@@ -27,7 +28,8 @@ public class TestPlanController {
             @RequestParam(required = false) String directoryId,
             @RequestParam(defaultValue = "false") boolean onlyMine,
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
-        Page<TestPlan> planPage = testPlanService.listPlans(projectId, keyword, page, size);
+        String executorId = onlyMine ? CurrentUserUtil.getCurrentUserId() : null;
+        Page<TestPlan> planPage = testPlanService.listPlans(projectId, keyword, page, size, executorId);
         List<String> planIds = planPage.getRecords().stream().map(TestPlan::getId).collect(Collectors.toList());
         if (planIds.isEmpty()) return Result.ok(planPage);
 

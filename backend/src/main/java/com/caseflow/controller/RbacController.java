@@ -1,6 +1,6 @@
 package com.caseflow.controller;
 
-import cn.dev33.satoken.stp.StpUtil;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.caseflow.common.Result;
 import com.caseflow.entity.*;
@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/rbac")
 @RequiredArgsConstructor
+@SaCheckPermission("settings:*")
 public class RbacController {
     private final SysRoleMapper roleMapper;
     private final SysMenuMapper menuMapper;
@@ -24,7 +25,6 @@ public class RbacController {
 
     @GetMapping("/roles")
     public Result<?> listRoles() {
-        StpUtil.checkPermission("settings:*");
         List<SysRole> roles = roleMapper.selectList(
                 new LambdaQueryWrapper<SysRole>().orderByAsc(SysRole::getSortOrder));
         List<Map<String, Object>> result = new ArrayList<>();
@@ -34,6 +34,8 @@ public class RbacController {
             m.put("roleCode", r.getRoleCode());
             m.put("roleName", r.getRoleName());
             m.put("description", r.getDescription());
+            m.put("sortOrder", r.getSortOrder());
+            m.put("createdAt", r.getCreatedAt());
             List<String> menuIds = roleMenuMapper.selectList(
                     new LambdaQueryWrapper<SysRoleMenu>().eq(SysRoleMenu::getRoleId, r.getId()))
                     .stream().map(SysRoleMenu::getMenuId).collect(Collectors.toList());
@@ -48,14 +50,14 @@ public class RbacController {
 
     @PostMapping("/roles")
     public Result<?> createRole(@RequestBody SysRole role) {
-        StpUtil.checkPermission("settings:*");
+
         roleMapper.insert(role);
         return Result.ok(role);
     }
 
     @PutMapping("/roles/{roleId}")
     public Result<?> updateRole(@PathVariable String roleId, @RequestBody SysRole role) {
-        StpUtil.checkPermission("settings:*");
+
         role.setId(roleId);
         roleMapper.updateById(role);
         return Result.ok();
@@ -64,7 +66,7 @@ public class RbacController {
     @Transactional
     @DeleteMapping("/roles/{roleId}")
     public Result<?> deleteRole(@PathVariable String roleId) {
-        StpUtil.checkPermission("settings:*");
+
         long cnt = userRoleMapper.selectCount(
                 new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getRoleId, roleId));
         if (cnt > 0) return Result.error("该角色下还有用户，无法删除");
@@ -75,21 +77,21 @@ public class RbacController {
 
     @GetMapping("/menus")
     public Result<?> listMenus() {
-        StpUtil.checkPermission("settings:*");
+
         return Result.ok(menuMapper.selectList(
                 new LambdaQueryWrapper<SysMenu>().orderByAsc(SysMenu::getSortOrder)));
     }
 
     @PostMapping("/menus")
     public Result<?> createMenu(@RequestBody SysMenu menu) {
-        StpUtil.checkPermission("settings:*");
+
         menuMapper.insert(menu);
         return Result.ok(menu);
     }
 
     @PutMapping("/menus/{menuId}")
     public Result<?> updateMenu(@PathVariable String menuId, @RequestBody SysMenu menu) {
-        StpUtil.checkPermission("settings:*");
+
         menu.setId(menuId);
         menuMapper.updateById(menu);
         return Result.ok();
@@ -98,7 +100,7 @@ public class RbacController {
     @Transactional
     @DeleteMapping("/menus/{menuId}")
     public Result<?> deleteMenu(@PathVariable String menuId) {
-        StpUtil.checkPermission("settings:*");
+
         long childCnt = menuMapper.selectCount(
                 new LambdaQueryWrapper<SysMenu>().eq(SysMenu::getParentId, menuId));
         if (childCnt > 0) return Result.error("存在子菜单，无法删除");
@@ -110,7 +112,7 @@ public class RbacController {
     @Transactional
     @PutMapping("/roles/{roleId}/menus")
     public Result<?> updateRoleMenus(@PathVariable String roleId, @RequestBody List<String> menuIds) {
-        StpUtil.checkPermission("settings:*");
+
         roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>().eq(SysRoleMenu::getRoleId, roleId));
         if (menuIds != null) {
             for (String mid : menuIds) {
@@ -125,7 +127,7 @@ public class RbacController {
 
     @GetMapping("/users")
     public Result<?> listUsersWithRoles() {
-        StpUtil.checkPermission("settings:*");
+
         List<User> users = userMapper.selectList(null);
         List<SysUserRole> allUr = userRoleMapper.selectList(null);
         Map<String, List<String>> userRoleMap = allUr.stream()
@@ -154,7 +156,7 @@ public class RbacController {
     @Transactional
     @PutMapping("/users/{userId}/roles")
     public Result<?> updateUserRoles(@PathVariable String userId, @RequestBody List<String> roleIds) {
-        StpUtil.checkPermission("settings:*");
+
         userRoleMapper.delete(new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getUserId, userId));
         if (roleIds != null) {
             for (String rid : roleIds) {

@@ -1,5 +1,6 @@
 package com.caseflow.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.caseflow.common.CurrentUserUtil;
@@ -37,11 +38,11 @@ public class UserController {
         return Result.ok(userService.list());
     }
 
+    @SaCheckPermission("settings:*")
     @SuppressWarnings("unchecked")
     @Transactional
     @PostMapping
     public Result<?> create(@RequestBody Map<String, Object> body) {
-        StpUtil.checkPermission("settings:*");
         String username = (String) body.get("username");
         if (username == null || username.isBlank()) return Result.error("用户名不能为空");
         User user = new User();

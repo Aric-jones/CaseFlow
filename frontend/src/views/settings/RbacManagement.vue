@@ -235,18 +235,17 @@ function buildMenuTree(list: any[]): any[] {
   return roots;
 }
 
-const toggleMenuExpand = () => {
-  // 切换状态标识
+function toggleMenuExpand() {
   menuExpandAll.value = !menuExpandAll.value;
-  // 获取表格实例并调用对应方法
-  if (menuTableRef.value) {
-    if (menuExpandAll.value) {
-      menuTableRef.value.expandAll(); // 展开全部
-    } else {
-      menuTableRef.value.collapseAll(); // 折叠全部
+  const expand = menuExpandAll.value;
+  function walkRows(rows: any[]) {
+    for (const row of rows) {
+      menuTableRef.value?.toggleRowExpansion(row, expand);
+      if (row.children?.length) walkRows(row.children);
     }
   }
-};
+  if (menuTableRef.value) walkRows(menuTree.value);
+}
 
 const menuSelectTree = computed(() => {
   function toSelect(nodes: any[]): any[] {

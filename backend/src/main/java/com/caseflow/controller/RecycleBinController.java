@@ -37,11 +37,16 @@ public class RecycleBinController {
 
     /**
      * 恢复回收站记录（自动判断类型）
+     * 仅删除人或管理员/超管可操作
      */
     @PostMapping("/{id}/restore")
     public Result<?> restore(@PathVariable String id) {
         RecycleBin rb = recycleBinMapper.selectById(id);
         if (rb == null) throw new BusinessException("记录不存在");
+        String currentUserId = CurrentUserUtil.getCurrentUserId();
+        boolean isDeleter = rb.getDeletedBy() != null && rb.getDeletedBy().equals(currentUserId);
+        boolean hasRole = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
+        if (!isDeleter && !hasRole) throw new BusinessException("仅删除人或管理员可以恢复");
         if ("TEST_PLAN".equals(rb.getItemType())) {
             testPlanService.restorePlan(id);
         } else {

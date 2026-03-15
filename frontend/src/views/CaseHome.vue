@@ -93,7 +93,7 @@
           <el-table-column label="操作" min-width="150">
             <template #default="{ row }">
               <el-button text type="primary" size="small" @click="$router.push(`/review/${row.id}`)">评审</el-button>
-              <el-button text type="primary" size="small" @click="$router.push(`/mind-map/${row.id}`)">编辑</el-button>
+              <el-button text type="primary" size="small" @click="openEditCase(row)">编辑</el-button>
               <el-dropdown trigger="click" @command="(k: string) => handleCaseAction(k, row)">
                 <el-button text size="small" style="padding:0 4px">
                   <el-icon><MoreFilled /></el-icon>
@@ -179,6 +179,27 @@
       <template #footer>
         <el-button @click="showCopy = false">取消</el-button>
         <el-button type="primary" @click="confirmCopy">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑用例集 -->
+    <el-dialog v-model="editCaseDlg.visible" title="编辑用例集" width="480px">
+      <el-form label-width="80px">
+        <el-form-item label="名称" required>
+          <el-input v-model="editCaseDlg.name" />
+        </el-form-item>
+        <el-form-item label="关联需求">
+          <el-input v-model="editCaseDlg.requirementLink" placeholder="需求链接（可选）" />
+        </el-form-item>
+        <el-form-item label="所属目录">
+          <el-tree-select v-model="editCaseDlg.directoryId" :data="dirSelectData"
+            :render-after-expand="false" default-expand-all check-strictly
+            clearable placeholder="选择目录" style="width:100%" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editCaseDlg.visible = false">取消</el-button>
+        <el-button type="primary" :loading="editCaseDlg.saving" @click="saveEditCase">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -321,6 +342,24 @@ async function createCase() {
   const res = await caseSetApi.create({ name: newCaseName.value, directoryId: targetDir, projectId: store.currentProject.id, requirementLink: newCaseLink.value });
   showCreateCase.value = false;
   router.push(`/mind-map/${res.data.id}`);
+}
+
+const editCaseDlg = ref({ visible: false, saving: false, id: '', name: '', requirementLink: '', directoryId: '' });
+function openEditCase(row: CaseSet) {
+  editCaseDlg.value = { visible: true, saving: false, id: row.id, name: row.name, requirementLink: (row as any).requirementLink || '', directoryId: row.directoryId };
+}
+async function saveEditCase() {
+  const d = editCaseDlg.value;
+  if (!d.name.trim()) { ElMessage.error('名称不能为空'); return; }
+  d.saving = true;
+  try {
+    await caseSetApi.rename(d.id, d.name.trim());
+    await caseSetApi.updateRequirement(d.id, d.requirementLink);
+    if (d.directoryId) await caseSetApi.move(d.id, d.directoryId);
+    ElMessage.success('更新成功');
+    d.visible = false;
+    loadCases();
+  } finally { d.saving = false; }
 }
 
 async function handleCaseAction(key: string, record: CaseSet) {
