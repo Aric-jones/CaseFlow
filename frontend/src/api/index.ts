@@ -46,7 +46,7 @@ export const directoryApi = {
   tree: (projectId: string, dirType: string): R<DirectoryNode[]> =>
     request.get('/directories/tree', { params: { projectId, dirType } }),
   create: (name: string, parentId: string | null, projectId: string, dirType: string): R<DirectoryNode> =>
-    request.post('/directories', null, { params: { name, parentId, projectId, dirType } }),
+    request.post('/directories', null, { params: { name, ...(parentId ? { parentId } : {}), projectId, dirType } }),
   rename: (id: string, name: string): R<void> =>
     request.put(`/directories/${id}/rename`, null, { params: { name } }),
   move: (id: string, newParentId: string): R<void> =>

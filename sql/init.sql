@@ -82,8 +82,8 @@ CREATE TABLE case_sets (
     name            VARCHAR(255)  NOT NULL                            COMMENT '用例集名称',
     directory_id    VARCHAR(32)   NOT NULL                            COMMENT '所属目录ID',
     project_id      VARCHAR(32)   NOT NULL                            COMMENT '所属项目ID',
-    status          ENUM('WRITING','PENDING_REVIEW','NO_REVIEW')
-                                  NOT NULL DEFAULT 'WRITING'          COMMENT '状态: 编写中/待评审/无需评审',
+    status          ENUM('WRITING','PENDING_REVIEW','NO_REVIEW','APPROVED')
+                                  NOT NULL DEFAULT 'WRITING'          COMMENT '状态: 编写中/待评审/无需评审/审核通过',
     requirement_link VARCHAR(500) DEFAULT ''                          COMMENT '关联需求链接',
     case_count      INT           NOT NULL DEFAULT 0                  COMMENT '用例数量(统计缓存)',
     created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人编号',
@@ -179,6 +179,7 @@ CREATE TABLE test_plans (
     project_id      VARCHAR(32)   NOT NULL                            COMMENT '所属项目ID',
     status          ENUM('NOT_STARTED','IN_PROGRESS','COMPLETED')
                                   NOT NULL DEFAULT 'NOT_STARTED'      COMMENT '状态: 未开始/进行中/已完成',
+    executor_id     VARCHAR(32)   DEFAULT NULL                        COMMENT '执行人用户ID',
     created_by      VARCHAR(32)   NOT NULL                            COMMENT '创建人编号',
     created_by_name VARCHAR(100)  NOT NULL DEFAULT ''                 COMMENT '创建人',
     updated_by      VARCHAR(32)   DEFAULT NULL                        COMMENT '修改人编号',

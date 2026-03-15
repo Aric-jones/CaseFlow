@@ -16,7 +16,7 @@
               clearable placeholder="选择目录（可选）" style="width:100%" />
           </el-form-item>
           <el-form-item label="分配执行人">
-            <el-select v-model="form.executorIds" multiple placeholder="选择执行人" style="width:100%">
+            <el-select v-model="form.executorId" placeholder="选择执行人" clearable style="width:100%">
               <el-option v-for="u in allUsers" :key="u.id" :label="u.displayName" :value="u.id" />
             </el-select>
           </el-form-item>
@@ -162,7 +162,7 @@ const store = useAppStore();
 const isEdit = computed(() => !!route.params.planId);
 const planId = computed(() => route.params.planId as string);
 
-const form = ref({ name: '', directoryId: undefined as string | undefined, executorIds: [] as string[] });
+const form = ref({ name: '', directoryId: undefined as string | undefined, executorId: undefined as string | undefined });
 const selectedSets = ref<CaseSet[]>([]);
 const allUsers = ref<User[]>([]);
 const dirTree = ref<any[]>([]);
@@ -188,7 +188,7 @@ onMounted(async () => {
     ]);
     form.value.name = planRes.data.name;
     form.value.directoryId = planRes.data.directoryId || undefined;
-    form.value.executorIds = execRes.data.map((e: any) => e.userId);
+    form.value.executorId = execRes.data.length ? execRes.data[0].userId : undefined;
     if (csIdsRes.data.length) {
       const csRes = await caseSetApi.list({ projectId: store.currentProject.id, size: 1000 });
       const idSet = new Set(csIdsRes.data);

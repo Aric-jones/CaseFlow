@@ -13,6 +13,7 @@ public class TestPlan {
     private String directoryId;
     private String projectId;
     private String status;
+    private String executorId;
     @TableField(fill = FieldFill.INSERT)
     private String createdBy;
     @TableField(fill = FieldFill.INSERT)

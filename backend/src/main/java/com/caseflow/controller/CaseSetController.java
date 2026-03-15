@@ -1,5 +1,7 @@
 package com.caseflow.controller;
 
+import cn.dev33.satoken.stp.StpUtil;
+import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
 import com.caseflow.dto.CaseSetDTO;
 import com.caseflow.service.CaseSetService;
@@ -31,7 +33,15 @@ public class CaseSetController {
     }
     @PutMapping("/{id}/move") public Result<?> move(@PathVariable String id, @RequestParam String targetDirectoryId) { caseSetService.moveCaseSet(id, targetDirectoryId); return Result.ok(); }
     @PostMapping("/{id}/copy") public Result<?> copy(@PathVariable String id, @RequestParam String targetDirectoryId) { return Result.ok(caseSetService.copyCaseSet(id, targetDirectoryId)); }
-    @DeleteMapping("/{id}") public Result<?> delete(@PathVariable String id) { caseSetService.deleteCaseSet(id); return Result.ok(); }
+    @DeleteMapping("/{id}") public Result<?> delete(@PathVariable String id) {
+        var cs = caseSetService.getById(id);
+        if (cs == null) return Result.error("用例集不存在");
+        String currentUserId = CurrentUserUtil.getCurrentUserId();
+        boolean isCreator = cs.getCreatedBy() != null && cs.getCreatedBy().equals(currentUserId);
+        boolean hasRole = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
+        if (!isCreator && !hasRole) return Result.error("仅创建人或管理员可以删除");
+        caseSetService.deleteCaseSet(id); return Result.ok();
+    }
     @GetMapping("/{id}/validate") public Result<?> validate(@PathVariable String id) { return Result.ok(caseSetService.validateCaseSet(id)); }
     @PutMapping("/{id}/rename") public Result<?> rename(@PathVariable String id, @RequestParam String name) {
         if (name == null || name.isBlank()) return Result.error("名称不能为空");

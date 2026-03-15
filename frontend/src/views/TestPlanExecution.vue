@@ -27,11 +27,7 @@
     <!-- 搜索栏 -->
     <div class="exec-filter">
       <span class="filter-label">用例名称</span>
-      <el-input v-model="filterKeyword" placeholder="搜索" clearable style="width:180px" @input="rebuildTree" />
-      <span class="filter-label">执行人</span>
-      <el-select v-model="filterExecutor" placeholder="全部执行人" clearable style="width:140px" @change="rebuildTree">
-        <el-option v-for="o in executorOptions" :key="o.value" :label="o.label" :value="o.value" />
-      </el-select>
+      <el-input v-model="filterKeyword" placeholder="搜索" clearable style="width:200px" @input="rebuildTree" />
       <span class="filter-label">执行结果</span>
       <el-select v-model="filterResult" placeholder="全部结果" clearable style="width:140px" @change="rebuildTree">
         <el-option v-for="o in resultOpts" :key="o.value" :label="o.label" :value="o.value" />
@@ -52,23 +48,16 @@
               <span :class="{ 'font-bold': row._isGroup }">{{ row._text }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="执行人" width="150">
+          <el-table-column label="执行人" width="120">
             <template #default="{ row }">
-              <el-select v-if="row._isLeaf" :model-value="row._executorId || undefined"
-                placeholder="未分配" clearable filterable size="small" style="width:100%"
-                @click.stop @change="(v: any) => onExecutorChange(row._caseId, v)">
-                <el-option v-for="o in executorOptions" :key="o.value" :label="o.label" :value="o.value" />
-              </el-select>
+              <span v-if="row._isLeaf" class="executor-text">{{ row._executorName || '未分配' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="执行结果" width="120">
+          <el-table-column label="执行结果" width="110">
             <template #default="{ row }">
-              <el-select v-if="row._isLeaf" :model-value="row._result || 'PENDING'"
-                size="small" style="width:100%"
-                :class="'res-sel res-' + (row._result || 'PENDING').toLowerCase()"
-                @click.stop @change="(v: any) => onResultChange(row._caseId, v, row)">
-                <el-option v-for="o in resultOpts" :key="o.value" :label="o.label" :value="o.value" />
-              </el-select>
+              <span v-if="row._isLeaf" :class="'result-text result-' + (row._result || 'PENDING').toLowerCase()">
+                {{ resLabel(row._result) }}
+              </span>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="80" :resizable="false">
@@ -222,7 +211,6 @@ const selectedCase = ref<any>(null);
 const showReport = ref(false);
 const refreshing = ref(false);
 const filterKeyword = ref('');
-const filterExecutor = ref<string | undefined>();
 const filterResult = ref<string | undefined>();
 const reasonModal = ref({ visible: false, action: '', text: '' });
 const planExecutors = ref<{ userId: string; displayName: string }[]>([]);
@@ -284,27 +272,6 @@ const filteredProps = computed(() => {
   }).map(([k, v]) => ({ key: k, val: v }));
 });
 
-async function onExecutorChange(caseId: string, executorId: string | null) {
-  if (!caseId) return;
-  await testPlanApi.updateCaseExecutor(caseId, executorId || null);
-  const c = cases.value.find((x: any) => x.id === caseId);
-  if (c) { c.executorId = executorId || null; c.executorName = planExecutors.value.find(e => e.userId === executorId)?.displayName || ''; }
-  rebuildTree();
-}
-
-async function onResultChange(caseId: string, result: string, _record: any) {
-  if (!caseId) return;
-  if (result === 'FAIL' || result === 'SKIP') {
-    selectedCase.value = cases.value.find((x: any) => x.id === caseId) || null;
-    reasonModal.value = { visible: true, action: result, text: '' };
-    return;
-  }
-  await testPlanApi.executeCase(caseId, result);
-  const c = cases.value.find((x: any) => x.id === caseId);
-  if (c) { c.result = result; c.executedAt = new Date().toISOString(); }
-  rebuildTree();
-  if (selectedCase.value?.id === caseId) selectedCase.value = { ...selectedCase.value, result };
-}
 
 function resLabel(r: string) { return ({ PASS: '通过', FAIL: '不通过', SKIP: '跳过' } as any)[r] || '待执行'; }
 function resType(r: string): any { return ({ PASS: 'success', FAIL: 'danger', SKIP: 'warning' } as any)[r] || 'info'; }
@@ -339,7 +306,6 @@ function rebuildTree() {
     const kw = filterKeyword.value.toLowerCase();
     filtered = filtered.filter((c: any) => (c.pathSnapshot || []).some((n: any) => (n.text || '').toLowerCase().includes(kw)));
   }
-  if (filterExecutor.value) filtered = filtered.filter((c: any) => c.executorId === filterExecutor.value);
   if (filterResult.value) filtered = filtered.filter((c: any) => c.result === filterResult.value);
 
   const byCsId = new Map<string, any[]>();
@@ -357,7 +323,7 @@ function rebuildTree() {
 }
 
 function mergePaths(csList: any[], csId: string): any[] {
-  interface TN { _key: string; _text: string; _nodeType: string | null; _isLeaf?: boolean; _caseId?: string; _result?: string; _executorId?: string; children?: TN[]; _childMap?: Map<string, TN>; }
+  interface TN { _key: string; _text: string; _nodeType: string | null; _isLeaf?: boolean; _caseId?: string; _result?: string; _executorId?: string; _executorName?: string; children?: TN[]; _childMap?: Map<string, TN>; }
   const vr: TN = { _key: 'vr', _text: '', _nodeType: null, _childMap: new Map() };
   for (const c of csList) {
     const path: any[] = c.pathSnapshot || [];
@@ -371,9 +337,9 @@ function mergePaths(csList: any[], csId: string): any[] {
       let child = cur._childMap.get(nodeId);
       if (!child) {
         child = { _key: `p-${csId}-${nodeId}`, _text: node.text || '', _nodeType: node.nodeType || null };
-        if (isLast) { child._isLeaf = true; child._caseId = c.id; child._result = c.result; child._executorId = c.executorId; }
+        if (isLast) { child._isLeaf = true; child._caseId = c.id; child._result = c.result; child._executorId = c.executorId; child._executorName = c.executorName; }
         cur._childMap.set(nodeId, child);
-      } else if (isLast) { child._isLeaf = true; child._caseId = c.id; child._result = c.result; child._executorId = c.executorId; }
+      } else if (isLast) { child._isLeaf = true; child._caseId = c.id; child._result = c.result; child._executorId = c.executorId; child._executorName = c.executorName; }
       cur = child;
     }
   }
@@ -454,11 +420,14 @@ onMounted(loadData);
 :deep(.selected-row) td { background:#ecf5ff !important; }
 :deep(.group-row) td { background:#fafafa !important; font-weight:600; }
 
-/* 执行结果下拉框颜色 */
-:deep(.res-sel.res-pending .el-input__wrapper) { color:#606266; }
-:deep(.res-sel.res-pass .el-input__inner) { color:#52c41a; font-weight:500; }
-:deep(.res-sel.res-fail .el-input__inner) { color:#f56c6c; font-weight:500; }
-:deep(.res-sel.res-skip .el-input__inner) { color:#e6a23c; font-weight:500; }
+/* 执行人文本 */
+.executor-text { font-size:13px; color:#606266; }
+/* 执行结果文本颜色 */
+.result-text { font-size:13px; font-weight:600; }
+.result-text.result-pending { color:#909399; }
+.result-text.result-pass { color:#52c41a; }
+.result-text.result-fail { color:#f56c6c; }
+.result-text.result-skip { color:#e6a23c; }
 
 /* 详情面板 */
 .detail-header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid #e4e7ed; font-weight:600; }

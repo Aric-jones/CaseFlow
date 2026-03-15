@@ -73,7 +73,7 @@
           </el-table-column>
           <el-table-column label="执行人" min-width="120" show-overflow-tooltip>
             <template #default="{ row }">
-              <span v-if="row.executorNames?.length">{{ row.executorNames.join('、') }}</span>
+              <span v-if="row.executorName">{{ row.executorName }}</span>
               <span v-else style="color:#c0c4cc;font-size:12px">未分配</span>
             </template>
           </el-table-column>

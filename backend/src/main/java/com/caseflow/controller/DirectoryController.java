@@ -23,7 +23,9 @@ public class DirectoryController {
     @GetMapping("/tree") public Result<?> tree(@RequestParam String projectId, @RequestParam String dirType) { return Result.ok(directoryService.getTree(projectId, dirType)); }
     @PostMapping public Result<?> create(@RequestParam String name, @RequestParam(required = false) String parentId, @RequestParam String projectId, @RequestParam String dirType) {
         if (name == null || name.isBlank()) return Result.error("目录名称不能为空");
-        Directory d = new Directory(); d.setName(name); d.setParentId(parentId); d.setProjectId(projectId); d.setDirType(dirType); d.setSortOrder(0);
+        Directory d = new Directory(); d.setName(name);
+        d.setParentId(parentId == null || parentId.isBlank() || "null".equals(parentId) ? null : parentId);
+        d.setProjectId(projectId); d.setDirType(dirType); d.setSortOrder(0);
         directoryService.save(d); return Result.ok(d);
     }
     @PutMapping("/{id}/rename") public Result<?> rename(@PathVariable String id, @RequestParam String name) {

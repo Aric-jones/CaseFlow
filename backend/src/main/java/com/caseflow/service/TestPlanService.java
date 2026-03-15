@@ -21,7 +21,7 @@ public interface TestPlanService extends IService<TestPlan> {
 
     void removeCase(String caseId);
 
-    void updatePlan(String id, String name, String directoryId, List<String> executorIds, List<String> caseSetIds);
+    void updatePlan(String id, String name, String directoryId, String executorId, List<String> caseSetIds);
 
     /**
      * 从用例集中提取有效用例路径（满足 TITLE→PRE→STEP→EXPECTED 规则 + 必填属性校验），

@@ -29,7 +29,13 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-caseflow:
-  jwt:
-    secret: CaseFlowSecretKeyForJWTTokenGeneration2024VeryLongSecretKey
-    expiration: 86400000
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  timeout: 86400
+  active-timeout: -1
+  is-concurrent: true
+  is-share: true
+  token-style: uuid
+  is-log: false
+  is-read-cookie: false

@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 import java.util.List;
 
@@ -20,7 +20,8 @@ public class DataInitializer implements ApplicationRunner {
     private final ProjectMemberMapper projectMemberMapper;
     private final DirectoryMapper directoryMapper;
     private final CustomAttributeMapper customAttributeMapper;
-    private final PasswordEncoder passwordEncoder;
+    private final SysUserRoleMapper sysUserRoleMapper;
+    private static final BCryptPasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
 
     @Override
     public void run(ApplicationArguments args) {
@@ -30,31 +31,34 @@ public class DataInitializer implements ApplicationRunner {
         }
         log.info("开始初始化默认数据...");
 
-        // 1. Admin user
         User admin = new User();
         admin.setUsername("admin");
         admin.setDisplayName("管理员");
-        admin.setPassword(passwordEncoder.encode("wps123456"));
+        admin.setPassword(PASSWORD_ENCODER.encode("wps123456"));
         admin.setRole("SUPER_ADMIN");
         admin.setIdentity("TEST");
         admin.setStatus(1);
         userMapper.insert(admin);
+
+        // 关联 RBAC 角色
+        SysUserRole sur = new SysUserRole();
+        sur.setUserId(admin.getId());
+        sur.setRoleId("role_super_admin");
+        sysUserRoleMapper.insert(sur);
+
         log.info("默认管理员创建完成: admin / wps123456");
 
-        // 2. Default project
         Project project = new Project();
         project.setName("WPS会议");
         project.setDescription("WPS会议测试项目");
         project.setCreatedBy(admin.getId());
         projectMapper.insert(project);
 
-        // 3. Add admin to project
         ProjectMember pm = new ProjectMember();
         pm.setProjectId(project.getId());
         pm.setUserId(admin.getId());
         projectMemberMapper.insert(pm);
 
-        // 4. Default case directory
         Directory caseDir = new Directory();
         caseDir.setName("所有用例");
         caseDir.setProjectId(project.getId());
@@ -62,7 +66,6 @@ public class DataInitializer implements ApplicationRunner {
         caseDir.setSortOrder(0);
         directoryMapper.insert(caseDir);
 
-        // 5. Default custom attributes
         createAttribute(project.getId(), "优先级", List.of("P0","P1","P2","P3"), false, true, "EXPECTED", "TILE", 0);
         createAttribute(project.getId(), "标记", List.of("无","待完成","待确认","待修改"), false, false, null, "DROPDOWN", 1);
         createAttribute(project.getId(), "标签", List.of("冒烟","回归","集成"), true, false, null, "DROPDOWN", 2);

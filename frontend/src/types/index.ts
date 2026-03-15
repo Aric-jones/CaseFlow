@@ -93,6 +93,7 @@ export interface TestPlan {
   directoryId: string;
   projectId: string;
   status: string;
+  executorId: string | null;
   createdBy: string;
   createdByName: string;
   updatedBy: string;

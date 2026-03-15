@@ -1,6 +1,8 @@
 package com.caseflow.controller;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.caseflow.common.BusinessException;
+import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
 import com.caseflow.entity.RecycleBin;
 import com.caseflow.mapper.RecycleBinMapper;
@@ -50,11 +52,16 @@ public class RecycleBinController {
 
     /**
      * 彻底删除回收站记录（自动判断类型）
+     * 仅删除人（deletedBy）或管理员/超管可操作
      */
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable String id) {
         RecycleBin rb = recycleBinMapper.selectById(id);
         if (rb == null) throw new BusinessException("记录不存在");
+        String currentUserId = CurrentUserUtil.getCurrentUserId();
+        boolean isDeleter = rb.getDeletedBy() != null && rb.getDeletedBy().equals(currentUserId);
+        boolean hasRole = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
+        if (!isDeleter && !hasRole) throw new BusinessException("仅删除人或管理员可以彻底删除");
         if ("TEST_PLAN".equals(rb.getItemType())) {
             testPlanService.permanentDelete(id);
         } else {

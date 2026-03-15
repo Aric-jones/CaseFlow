@@ -153,12 +153,8 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
 
     @Override
     public void addCasesFromSets(String planId, List<String> caseSetIds) {
-        // 查询计划关联的执行人，用于轮询分配
-        List<String> executorIds = executorMapper.selectList(
-                new LambdaQueryWrapper<TestPlanExecutor>().eq(TestPlanExecutor::getPlanId, planId))
-                .stream().map(TestPlanExecutor::getUserId).collect(Collectors.toList());
-
-        int execIdx = 0;
+        TestPlan plan = getById(planId);
+        String executorId = plan != null ? plan.getExecutorId() : null;
 
         for (String csId : caseSetIds) {
             CaseSet cs = caseSetMapper.selectById(csId);
@@ -180,10 +176,7 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
                 tc.setCaseSetId(csId);
                 tc.setPathSnapshot(path);
                 tc.setResult("PENDING");
-                if (!executorIds.isEmpty()) {
-                    tc.setExecutorId(executorIds.get(execIdx % executorIds.size()));
-                    execIdx++;
-                }
+                tc.setExecutorId(executorId);
                 caseMapper.insert(tc);
             }
         }
@@ -207,10 +200,8 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
     @Override
     public void addCasesFromSetsWithFilters(String planId, List<String> caseSetIds,
                                             Map<String, Map<String, List<String>>> filters) {
-        List<String> executorIds = executorMapper.selectList(
-                new LambdaQueryWrapper<TestPlanExecutor>().eq(TestPlanExecutor::getPlanId, planId))
-                .stream().map(TestPlanExecutor::getUserId).collect(Collectors.toList());
-        int execIdx = 0;
+        TestPlan plan = getById(planId);
+        String executorId = plan != null ? plan.getExecutorId() : null;
         for (String csId : caseSetIds) {
             Map<String, List<String>> csFilter = filters != null ? filters.getOrDefault(csId, null) : null;
             List<List<Map<String, Object>>> paths = previewValidPaths(csId, csFilter);
@@ -222,10 +213,7 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
                 tc.setCaseSetId(csId);
                 tc.setPathSnapshot(path);
                 tc.setResult("PENDING");
-                if (!executorIds.isEmpty()) {
-                    tc.setExecutorId(executorIds.get(execIdx % executorIds.size()));
-                    execIdx++;
-                }
+                tc.setExecutorId(executorId);
                 caseMapper.insert(tc);
             }
         }
@@ -418,19 +406,20 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
     }
 
     @Override @Transactional
-    public void updatePlan(String id, String name, String directoryId, List<String> executorIds, List<String> caseSetIds) {
+    public void updatePlan(String id, String name, String directoryId, String executorId, List<String> caseSetIds) {
         TestPlan plan = getById(id);
         if (plan == null) throw new BusinessException("测试计划不存在");
         if (StringUtils.hasText(name)) plan.setName(name);
         if (directoryId != null) plan.setDirectoryId(directoryId);
+        plan.setExecutorId(executorId);
         updateById(plan);
-        if (executorIds != null) {
-            executorMapper.delete(new LambdaQueryWrapper<TestPlanExecutor>().eq(TestPlanExecutor::getPlanId, id));
-            for (String uid : executorIds) {
-                TestPlanExecutor e = new TestPlanExecutor();
-                e.setPlanId(id);
-                e.setUserId(uid);
-                executorMapper.insert(e);
+        // 同步所有用例的执行人
+        if (executorId != null) {
+            List<TestPlanCase> planCases = caseMapper.selectList(
+                    new LambdaQueryWrapper<TestPlanCase>().eq(TestPlanCase::getPlanId, id));
+            for (TestPlanCase tc : planCases) {
+                tc.setExecutorId(executorId);
+                caseMapper.updateById(tc);
             }
         }
         if (caseSetIds != null) {
