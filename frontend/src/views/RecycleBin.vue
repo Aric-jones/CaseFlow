@@ -9,7 +9,7 @@
         <el-table-column label="用例集名称" min-width="300" show-overflow-tooltip>
           <template #default="{ row }">{{ row.itemName || row.caseSetName || '-' }}</template>
         </el-table-column>
-        <el-table-column label="删除人" prop="deletedByName" min-width="100" show-overflow-tooltip />
+        <el-table-column label="创建人" prop="createdByName" min-width="100" show-overflow-tooltip />
         <el-table-column label="删除时间" min-width="170">
           <template #default="{ row }">{{ fmtTime(row.deletedAt) }}</template>
         </el-table-column>

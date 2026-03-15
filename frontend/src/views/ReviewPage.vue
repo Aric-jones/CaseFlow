@@ -249,7 +249,10 @@ async function updateReview(rid: string, status: string) {
   const data = res.data as any;
   if (data?.reviewers) reviewers.value = data.reviewers;
   else reviewers.value = (await reviewApi.list(id)).data;
-  if (data?.allApproved) { ElMessage.success('全部审核通过！'); caseSet.value = (await caseSetApi.get(id)).data; }
+  if (data?.caseSetStatus && caseSet.value) {
+    caseSet.value.status = data.caseSetStatus;
+  }
+  if (data?.allApproved) { ElMessage.success('全部审核通过！'); }
   else ElMessage.success('评审状态已更新');
 }
 </script>

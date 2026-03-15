@@ -34,7 +34,7 @@
         <a-tooltip title="查找替换"><a-button type="text" @click="toggleSearch"><SearchOutlined /></a-button></a-tooltip>
         <a-tooltip title="规范检查"><a-button type="text" @click="openValidation"><ToolOutlined /></a-button></a-tooltip>
         <a-tooltip title="评论"><a-button type="text" @click="openComments"><CommentOutlined /></a-button></a-tooltip>
-        <span v-if="hasUnsavedChanges" style="color:#e6a23c;font-size:11px;margin-right:4px">本地已保存</span>
+        <span v-if="hasUnsavedChanges" style="color:#e6a23c;font-size:11px;margin-right:4px">有未保存的更改</span>
         <a-button type="primary" :loading="saving" @click="handleSave"><SaveOutlined /> 同步云端</a-button>
         <a-tooltip title="历史版本"><a-button type="text" @click="openHistory"><HistoryOutlined /></a-button></a-tooltip>
       </a-space>
@@ -289,11 +289,11 @@ import {
 import MindMap from 'simple-mind-map';
 import Select from 'simple-mind-map/src/plugins/Select';
 import Drag from 'simple-mind-map/src/plugins/Drag';
-import { caseSetApi, mindNodeApi, commentApi, caseHistoryApi, userApi, customAttributeApi } from '../api';
+import { caseSetApi, mindNodeApi, commentApi, caseHistoryApi, userApi, customAttributeApi, reviewApi } from '../api';
 import { useAppStore } from '../stores/app';
 import type { CaseSet, MindNodeData, CaseHistory, User, CustomAttribute } from '../types';
 import { NODE_TYPE_LABEL, addAllCustomLabels, setupMouseOverrides } from '../composables/useMindMap';
-import { saveLocalDraft, getLocalDraft, deleteLocalDraft } from '../composables/useLocalMindMap';
+import { deleteLocalDraft } from '../composables/useLocalMindMap';
 import CommentPanel from '../components/CommentPanel.vue';
 
 MindMap.usePlugin(Select);
@@ -365,7 +365,6 @@ const projectAttributes = ref<CustomAttribute[]>([]);
 const showReviewModal = ref(false);
 const selectedReviewers = ref<string[]>([]);
 
-let localSaveTimer: ReturnType<typeof setInterval> | null = null;
 let historyTimer: ReturnType<typeof setInterval> | null = null;
 let cleanupMouseOverrides: (() => void) | null = null;
 const dataVersion = ref(0);
@@ -373,7 +372,7 @@ const showConflictDialog = ref(false);
 const conflictServerTree = ref<MindNodeData[]>([]);
 const conflictLocalTree = ref<MindNodeData[]>([]);
 const conflictServerVersion = ref(0);
-const showLocalDraftPrompt = ref(false);
+
 
 function onKeyboardCopyPaste(e: KeyboardEvent) {
   if (!e.ctrlKey || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -842,23 +841,7 @@ async function loadData() {
   const serverVer: number = serverData.version || 0;
   dataVersion.value = serverVer;
 
-  const localDraft = await getLocalDraft(caseSetId);
-  if (localDraft && localDraft.version === serverVer && localDraft.tree?.length) {
-    const mmData = nodeToMM(localDraft.tree[0]);
-    if (mindMapInstance) mindMapInstance.setData(mmData);
-    caseCount.value = countValid(localDraft.tree[0]);
-    nextTick(() => {
-      savedTreeSnapshot = computeTreeHash();
-      const current = computeTreeHash();
-      hasUnsavedChanges.value = JSON.stringify(localDraft.tree) !== JSON.stringify(serverTree);
-      initialLoadDone = true;
-    });
-    return;
-  }
-
-  if (localDraft && localDraft.version < serverVer && localDraft.tree?.length) {
-    await deleteLocalDraft(caseSetId);
-  }
+  await deleteLocalDraft(caseSetId).catch(() => {});
 
   const mmData = serverTree.length
     ? nodeToMM(serverTree[0])
@@ -900,15 +883,6 @@ async function handleSave() {
     hasUnsavedChanges.value = false;
     message.success('已同步到云端');
   } catch { /* handled */ } finally { saving.value = false; }
-}
-
-async function autoSaveLocal() {
-  try {
-    const tree = getFullTree();
-    if (tree.length > 0) {
-      await saveLocalDraft(caseSetId, tree, dataVersion.value);
-    }
-  } catch { /* silent */ }
 }
 
 // =============================================
@@ -1073,8 +1047,19 @@ function navigateToError(idx: number) {
 
 async function handleStatusChange(status: string) {
   if (status === 'PENDING_REVIEW') {
-    // 每次打开都重新拉取，避免数据过期/为空
+    try {
+      const valRes = await caseSetApi.validate(caseSetId);
+      const valData = valRes.data as any;
+      if (!valData.valid) {
+        message.error(`用例集不符合规范，共 ${valData.errorCount} 条错误，请先修正`);
+        return;
+      }
+    } catch { message.error('验证失败'); return; }
     try { users.value = (await userApi.listAll()).data; } catch { /* */ }
+    try {
+      const revRes = await reviewApi.list(caseSetId);
+      selectedReviewers.value = (revRes.data || []).map((r: any) => r.reviewerId);
+    } catch { selectedReviewers.value = []; }
     showReviewModal.value = true;
     return;
   }
@@ -1153,6 +1138,7 @@ async function resolveConflictUseLocal() {
     hasUnsavedChanges.value = false;
     showConflictDialog.value = false;
     message.success('已使用本地版本覆盖云端');
+    navigateAfterSave();
   } catch { /* */ } finally { saving.value = false; }
 }
 
@@ -1169,6 +1155,7 @@ async function resolveConflictUseServer() {
   hasUnsavedChanges.value = false;
   showConflictDialog.value = false;
   message.success('已使用云端版本');
+  navigateAfterSave();
 }
 
 // =============================================
@@ -1251,18 +1238,18 @@ function diffChooseAllServer() {
 }
 
 async function applyDiffMerge() {
-  const mergedTree = JSON.parse(JSON.stringify(conflictServerTree.value)) as MindNodeData[];
-  const localMap = flattenTreeNodes(conflictLocalTree.value);
+  const mergedTree = JSON.parse(JSON.stringify(conflictLocalTree.value)) as MindNodeData[];
+  const serverMap = flattenTreeNodes(conflictServerTree.value);
 
   function applyChoices(nodes: MindNodeData[]) {
     for (const node of nodes) {
       const diff = diffNodes.value.find(d => d.nodeId === node.id);
-      if (diff && diff.choice === 'local') {
-        const localNode = localMap.get(node.id!);
-        if (localNode) {
-          node.text = localNode.text;
-          node.nodeType = localNode.nodeType;
-          node.properties = localNode.properties;
+      if (diff && diff.choice === 'server') {
+        const serverNode = serverMap.get(node.id!);
+        if (serverNode) {
+          node.text = serverNode.text;
+          node.nodeType = serverNode.nodeType;
+          node.properties = serverNode.properties;
         }
       }
       if (node.children?.length) applyChoices(node.children);
@@ -1291,6 +1278,7 @@ async function applyDiffMerge() {
     hasUnsavedChanges.value = false;
     showNodeDiffDialog.value = false;
     message.success('合并完成，已同步到云端');
+    navigateAfterSave();
   } catch { /* */ } finally { saving.value = false; }
 }
 
@@ -1333,7 +1321,22 @@ onBeforeRouteLeave((to) => {
 });
 function handleExitCancel() { showExitConfirm.value = false; pendingRoute.value = ''; }
 function handleExitDiscard() { hasUnsavedChanges.value = false; showExitConfirm.value = false; router.push(pendingRoute.value); }
-async function handleExitSave() { await handleSave(); hasUnsavedChanges.value = false; showExitConfirm.value = false; router.push(pendingRoute.value); }
+async function handleExitSave() {
+  showExitConfirm.value = false;
+  await handleSave();
+  if (!showConflictDialog.value && !showNodeDiffDialog.value) {
+    hasUnsavedChanges.value = false;
+    router.push(pendingRoute.value);
+  }
+}
+function navigateAfterSave() {
+  if (pendingRoute.value) {
+    hasUnsavedChanges.value = false;
+    const target = pendingRoute.value;
+    pendingRoute.value = '';
+    router.push(target);
+  }
+}
 
 // =============================================
 // 评论导航到节点
@@ -1367,16 +1370,13 @@ onMounted(async () => {
   initMindMap();
   cleanupMouseOverrides = setupMouseOverrides(mindMapContainer.value!, () => mindMapInstance);
   await loadData();
-  localSaveTimer = setInterval(autoSaveLocal, 5000);
   historyTimer = setInterval(() => caseHistoryApi.save(caseSetId).catch(() => {}), 15 * 60 * 1000);
   window.addEventListener('beforeunload', onBeforeUnload);
   window.addEventListener('keydown', onKeyboardCopyPaste);
 });
 
 onUnmounted(() => {
-  if (localSaveTimer) clearInterval(localSaveTimer);
   if (historyTimer) clearInterval(historyTimer);
-  autoSaveLocal();
   if (mindMapInstance) { mindMapInstance.destroy(); mindMapInstance = null; }
   cleanupMouseOverrides?.();
   window.removeEventListener('beforeunload', onBeforeUnload);

@@ -19,6 +19,8 @@ public class RecycleBin {
     private String projectId;
     /** 原目录ID，用于恢复 */
     private String originalDirectoryId;
+    private String createdBy;
+    private String createdByName;
     private String deletedBy;
     private String deletedByName;
     private LocalDateTime deletedAt;

@@ -449,6 +449,8 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
         rb.setItemName(plan.getName());
         rb.setProjectId(plan.getProjectId());
         rb.setOriginalDirectoryId(plan.getDirectoryId());
+        rb.setCreatedBy(plan.getCreatedBy());
+        rb.setCreatedByName(plan.getCreatedByName());
         rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
         rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
         recycleBinMapper.insert(rb);

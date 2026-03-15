@@ -73,10 +73,23 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
             ValidationResult r = validateCaseSet(id);
             if (!r.isValid()) throw new BusinessException("用例集不符合规范，共" + r.getErrorCount() + "条错误");
             if (reviewerIds == null || reviewerIds.isEmpty()) throw new BusinessException("请选择评审人");
-            reviewAssignmentMapper.delete(new LambdaQueryWrapper<ReviewAssignment>().eq(ReviewAssignment::getCaseSetId, id));
+
+            List<ReviewAssignment> existing = reviewAssignmentMapper.selectList(
+                    new LambdaQueryWrapper<ReviewAssignment>().eq(ReviewAssignment::getCaseSetId, id));
+            Set<String> existingIds = new HashSet<>();
+            for (ReviewAssignment ra : existing) existingIds.add(ra.getReviewerId());
+            Set<String> newIds = new HashSet<>(reviewerIds);
+
+            for (ReviewAssignment ra : existing) {
+                if (!newIds.contains(ra.getReviewerId())) {
+                    reviewAssignmentMapper.deleteById(ra.getId());
+                }
+            }
             for (String rid : reviewerIds) {
-                ReviewAssignment ra = new ReviewAssignment(); ra.setCaseSetId(id); ra.setReviewerId(rid); ra.setStatus("PENDING");
-                reviewAssignmentMapper.insert(ra);
+                if (!existingIds.contains(rid)) {
+                    ReviewAssignment ra = new ReviewAssignment(); ra.setCaseSetId(id); ra.setReviewerId(rid); ra.setStatus("PENDING");
+                    reviewAssignmentMapper.insert(ra);
+                }
             }
         }
         if ("NO_REVIEW".equals(status) || "WRITING".equals(status)) {
@@ -129,6 +142,8 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
         rb.setItemName(cs.getName());
         rb.setProjectId(cs.getProjectId());
         rb.setOriginalDirectoryId(cs.getDirectoryId());
+        rb.setCreatedBy(cs.getCreatedBy());
+        rb.setCreatedByName(cs.getCreatedByName());
         rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
         rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
         recycleBinMapper.insert(rb);

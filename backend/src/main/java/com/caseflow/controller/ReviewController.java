@@ -33,15 +33,23 @@ public class ReviewController {
         List<ReviewAssignment> all = reviewService.lambdaQuery()
                 .eq(ReviewAssignment::getCaseSetId, ra.getCaseSetId()).list();
         boolean allApproved = !all.isEmpty() && all.stream().allMatch(r -> "APPROVED".equals(r.getStatus()));
+
+        CaseSet cs = caseSetService.getById(ra.getCaseSetId());
         if (allApproved) {
-            CaseSet cs = caseSetService.getById(ra.getCaseSetId());
-            if (cs != null && "PENDING_REVIEW".equals(cs.getStatus())) {
+            if (cs != null && ("PENDING_REVIEW".equals(cs.getStatus()) || "APPROVED".equals(cs.getStatus()))) {
                 cs.setStatus("APPROVED");
                 caseSetService.updateById(cs);
             }
+        } else {
+            if (cs != null && "APPROVED".equals(cs.getStatus())) {
+                cs.setStatus("PENDING_REVIEW");
+                caseSetService.updateById(cs);
+            }
         }
+
         Map<String, Object> result = new HashMap<>();
         result.put("allApproved", allApproved);
+        result.put("caseSetStatus", cs != null ? cs.getStatus() : null);
         result.put("reviewers", all);
         return Result.ok(result);
     }
