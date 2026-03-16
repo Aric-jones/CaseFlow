@@ -20,11 +20,14 @@ public class MindNodeController {
 
     @GetMapping("/tree")
     public Result<?> tree(@RequestParam String caseSetId) {
+        long start = System.currentTimeMillis();
         CaseSet cs = caseSetMapper.selectById(caseSetId);
         List<MindNodeDTO> tree = mindNodeService.getTree(caseSetId);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tree", tree);
         result.put("version", cs != null ? (cs.getDataVersion() != null ? cs.getDataVersion() : 0) : 0);
+        //输出
+        System.out.println("tree time: " + (System.currentTimeMillis() - start)+"ms");
         return Result.ok(result);
     }
 

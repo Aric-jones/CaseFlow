@@ -423,6 +423,7 @@ const selectedReviewers = ref<string[]>([]);
 
 let historyTimer: ReturnType<typeof setInterval> | null = null;
 let cleanupMouseOverrides: (() => void) | null = null;
+let dataChangeTimer: ReturnType<typeof setTimeout> | null = null;
 const dataVersion = ref(0);
 const showConflictDialog = ref(false);
 const conflictServerTree = ref<MindNodeData[]>([]);
@@ -510,7 +511,7 @@ function applyToDescendants(attr: CustomAttribute, value: any) {
   }
   walk(activeNodeInstance.value);
   markDirty();
-  requestAnimationFrame(refreshLabels);
+  scheduleRefreshLabels();
   message.success(`已为 ${count} 个子孙节点设置「${attr.name}」`);
 }
 
@@ -668,7 +669,16 @@ function countValid(node: MindNodeData): number {
 // 自定义节点标签 (SVG foreignObject) → 见 composables/useMindMap.ts
 // =============================================
 
-/** 刷新全部节点的类型/属性/评论标签 */
+/** 刷新全部节点的类型/属性/评论标签（合并高频调用） */
+let refreshScheduled = false;
+function scheduleRefreshLabels() {
+  if (refreshScheduled) return;
+  refreshScheduled = true;
+  requestAnimationFrame(() => {
+    addAllCustomLabels(mindMapInstance);
+    refreshScheduled = false;
+  });
+}
 function refreshLabels() {
   addAllCustomLabels(mindMapInstance);
 }
@@ -780,7 +790,7 @@ function syncToNode(checkAutoChain = false) {
   }
 
   markDirty();
-  requestAnimationFrame(refreshLabels);
+  scheduleRefreshLabels();
 }
 
 /**
@@ -814,7 +824,7 @@ function autoAssignCaseChain(titleNode: any) {
     assignLevel(titleNode.children, 0);
   }
   markDirty();
-  requestAnimationFrame(refreshLabels);
+  scheduleRefreshLabels();
 }
 
 // =============================================
@@ -887,16 +897,20 @@ function initMindMap() {
     }
   });
 
-  // 数据变化 → 更新计数 + 标记脏
+  // 数据变化 → debounce 更新计数 + 标记脏（避免高频触发时重复全树遍历）
   mindMapInstance.on('data_change', () => {
-    const tree = getFullTree();
-    if (tree.length > 0) caseCount.value = countValid(tree[0]);
-    markDirty();
+    if (dataChangeTimer) clearTimeout(dataChangeTimer);
+    dataChangeTimer = window.setTimeout(() => {
+      const tree = getFullTree();
+      if (tree.length > 0) caseCount.value = countValid(tree[0]);
+      markDirty();
+      dataChangeTimer = null;
+    }, 300);
   });
 
-  // 渲染完成 → 注入自定义标签
+  // 渲染完成 → 注入自定义标签（合并多次调用）
   mindMapInstance.on('node_tree_render_end', () => {
-    requestAnimationFrame(refreshLabels);
+    scheduleRefreshLabels();
   });
 
   // 缩放变化 → 更新百分比显示
@@ -979,7 +993,7 @@ function pasteNodes() {
     mindMapInstance.execCommand('INSERT_CHILD_NODE', false, [target], clip.data, clip.children);
   }
   markDirty();
-  requestAnimationFrame(refreshLabels);
+  scheduleRefreshLabels();
   message.success(`已粘贴 ${copies.length} 个节点`);
 }
 
@@ -1000,12 +1014,11 @@ async function loadData() {
   const mmData = serverTree.length
     ? nodeToMM(serverTree[0])
     : { data: { text: caseSet.value?.name || '新用例集' }, children: [] };
-  snapshotStabilized = false;
   initialLoadDone = false;
   if (mindMapInstance) mindMapInstance.setData(mmData);
   caseCount.value = serverTree.length > 0 ? countValid(serverTree[0]) : 0;
   nextTick(() => {
-    hasUnsavedChanges.value = false;
+    markClean();
     initialLoadDone = true;
   });
 }
@@ -1034,8 +1047,7 @@ async function handleSave() {
     caseCount.value = resData.caseCount ?? (tree.length > 0 ? countValid(tree[0]) : 0);
     await caseHistoryApi.save(caseSetId);
     await deleteLocalDraft(caseSetId);
-    savedTreeSnapshot = computeTreeHash();
-    hasUnsavedChanges.value = false;
+    markClean();
     message.success('已同步到云端');
   } catch { /* handled */ } finally { saving.value = false; }
 }
@@ -1244,7 +1256,7 @@ function onCommentCountChanged(nodeId: string, count: number) {
     if (r && r.id === nodeId) r.commentCount = count;
     (n.children || []).forEach(walkUpdate);
   })(mindMapInstance.renderer.root);
-  requestAnimationFrame(refreshLabels);
+  scheduleRefreshLabels();
 }
 
 // =============================================
@@ -1289,8 +1301,7 @@ async function resolveConflictUseLocal() {
     dataVersion.value = resData.version;
     caseCount.value = resData.caseCount ?? 0;
     await deleteLocalDraft(caseSetId);
-    savedTreeSnapshot = computeTreeHash();
-    hasUnsavedChanges.value = false;
+    markClean();
     showConflictDialog.value = false;
     message.success('已使用本地版本覆盖云端');
     navigateAfterSave();
@@ -1301,14 +1312,12 @@ async function resolveConflictUseServer() {
   dataVersion.value = conflictServerVersion.value;
   const serverTree = conflictServerTree.value;
   if (serverTree.length) {
-    snapshotStabilized = false;
     const mmData = nodeToMM(serverTree[0]);
     if (mindMapInstance) mindMapInstance.setData(mmData);
     caseCount.value = countValid(serverTree[0]);
   }
   await deleteLocalDraft(caseSetId);
-  nextTick(() => { savedTreeSnapshot = computeTreeHash(); });
-  hasUnsavedChanges.value = false;
+  nextTick(() => { markClean(); });
   showConflictDialog.value = false;
   message.success('已使用云端版本');
   navigateAfterSave();
@@ -1462,13 +1471,11 @@ async function applyDiffMerge() {
     caseCount.value = resData.caseCount ?? 0;
 
     if (mergedTree.length) {
-      snapshotStabilized = false;
       const mmData = nodeToMM(mergedTree[0]);
       if (mindMapInstance) mindMapInstance.setData(mmData);
     }
     await deleteLocalDraft(caseSetId);
-    nextTick(() => { savedTreeSnapshot = computeTreeHash(); });
-    hasUnsavedChanges.value = false;
+    nextTick(() => { markClean(); });
     showNodeDiffDialog.value = false;
     message.success('合并完成，已同步到云端');
     navigateAfterSave();
@@ -1484,25 +1491,18 @@ watch(panelTab, (tab) => {
 });
 
 const hasUnsavedChanges = ref(false);
-let savedTreeSnapshot = '';
 let initialLoadDone = false;
-let snapshotStabilized = false;
+let changeCounter = 0;
+let savedChangeCounter = 0;
 
-function computeTreeHash(): string {
-  try {
-    const tree = getFullTree();
-    return JSON.stringify(tree);
-  } catch { return ''; }
-}
 function markDirty() {
   if (!initialLoadDone) return;
-  const current = computeTreeHash();
-  if (!snapshotStabilized) {
-    savedTreeSnapshot = current;
-    snapshotStabilized = true;
-    return;
-  }
-  hasUnsavedChanges.value = current !== savedTreeSnapshot;
+  changeCounter++;
+  hasUnsavedChanges.value = changeCounter !== savedChangeCounter;
+}
+function markClean() {
+  savedChangeCounter = changeCounter;
+  hasUnsavedChanges.value = false;
 }
 function onBeforeUnload(e: BeforeUnloadEvent) {
   if (hasUnsavedChanges.value) { e.preventDefault(); e.returnValue = ''; }
@@ -1583,6 +1583,7 @@ function onResize() {
 
 onUnmounted(() => {
   if (historyTimer) clearInterval(historyTimer);
+  if (dataChangeTimer) clearTimeout(dataChangeTimer);
   if (mindMapInstance) { mindMapInstance.destroy(); mindMapInstance = null; }
   cleanupMouseOverrides?.();
   window.removeEventListener('beforeunload', onBeforeUnload);

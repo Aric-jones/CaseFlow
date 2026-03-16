@@ -82,16 +82,22 @@ function makeFO(x: number, y: number, width: number, height: number): SVGForeign
   return fo;
 }
 
-export function addNodeLabels(node: any) {
+export function addNodeLabels(node: any, forceRefresh = false) {
   const groupEl = getGroupEl(node);
   if (!groupEl) return;
-  groupEl.querySelectorAll('.mm-extra-label').forEach(el => el.remove());
 
   const raw = node.nodeData?.data?._raw;
   if (!raw) return;
 
   const w = node.width || 120;
   const h = node.height || 30;
+
+  const propStr = raw.properties ? JSON.stringify(raw.properties) : '';
+  const fp = `${raw.nodeType}|${raw.commentCount || 0}|${propStr}|${w}|${h}`;
+  if (!forceRefresh && (groupEl as any).__labelFp === fp) return;
+  (groupEl as any).__labelFp = fp;
+
+  groupEl.querySelectorAll('.mm-extra-label').forEach(el => el.remove());
 
   // 类型标签 → 节点框正上方
   if (raw.nodeType && NODE_TYPE_LABEL[raw.nodeType]) {
