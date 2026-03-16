@@ -11,6 +11,17 @@ spring:
     multipart:
       max-file-size: 20MB
       max-request-size: 20MB
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      database: 1
+      password:
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai

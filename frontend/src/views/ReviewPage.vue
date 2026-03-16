@@ -8,6 +8,8 @@
         <strong>{{ caseSet?.name }}</strong>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
+        <el-tooltip content="全部展开"><el-button text @click="mindMapInstance?.execCommand('EXPAND_ALL')"><el-icon><Expand /></el-icon></el-button></el-tooltip>
+        <el-tooltip content="全部折叠"><el-button text @click="mindMapInstance?.execCommand('UNEXPAND_ALL')"><el-icon><Fold /></el-icon></el-button></el-tooltip>
         <el-button text v-if="myReview" @click="openReviewPanel">
           <el-icon><CircleCheck /></el-icon> 评审结果
         </el-button>

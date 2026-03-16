@@ -31,6 +31,9 @@
         <a-tooltip title="复制选中节点(Ctrl+C)"><a-button type="text" @click="copySelectedNodes"><CopyOutlined /></a-button></a-tooltip>
         <a-tooltip title="粘贴到当前节点(Ctrl+V)"><a-button type="text" @click="pasteNodes"><SnippetsOutlined /></a-button></a-tooltip>
         <a-divider type="vertical" />
+        <a-tooltip title="全部展开"><a-button type="text" @click="execCmd('EXPAND_ALL')"><NodeExpandOutlined /></a-button></a-tooltip>
+        <a-tooltip title="全部折叠"><a-button type="text" @click="execCmd('UNEXPAND_ALL')"><NodeCollapseOutlined /></a-button></a-tooltip>
+        <a-divider type="vertical" />
         <a-tooltip title="查找替换"><a-button type="text" @click="toggleSearch"><SearchOutlined /></a-button></a-tooltip>
         <a-tooltip title="规范检查"><a-button type="text" @click="openValidation"><ToolOutlined /></a-button></a-tooltip>
         <a-tooltip title="评论"><a-button type="text" @click="openComments"><CommentOutlined /></a-button></a-tooltip>
@@ -149,6 +152,26 @@
                     @change="(v: any) => { if (editForm) { editForm.properties[attr.name] = v; syncToNode(); } }"
                     allow-clear :options="attr.options.map((o: string) => ({ value: o, label: o }))" style="width: 100%" />
                 </div>
+              </template>
+
+              <!-- 子孙节点可设置的属性 -->
+              <template v-if="descendantAttrs.length">
+                <a-divider style="margin: 8px 0" />
+                <div style="color: #722ed1; font-weight: 600; font-size: 12px; margin-bottom: 4px">批量设置子孙属性</div>
+                <div style="color: #999; font-size: 11px; margin-bottom: 8px">选择后将应用到所有符合类型的子孙节点</div>
+                <template v-for="dattr in descendantAttrs" :key="dattr.id">
+                  <div class="prop-field">
+                    <label>{{ dattr.name }} <span style="color:#722ed1;font-size:10px">({{ dattr.nodeTypeLimit }})</span></label>
+                    <a-select v-if="dattr.multiSelect" mode="multiple" :value="[]"
+                      @change="(v: any) => applyToDescendants(dattr, v)"
+                      :options="dattr.options.map((o: string) => ({ value: o, label: o }))" style="width: 100%"
+                      placeholder="选择后批量设置" />
+                    <a-select v-else :value="undefined"
+                      @change="(v: any) => applyToDescendants(dattr, v)"
+                      allow-clear :options="dattr.options.map((o: string) => ({ value: o, label: o }))" style="width: 100%"
+                      placeholder="选择后批量设置" />
+                  </div>
+                </template>
               </template>
             </template>
             <div v-else class="empty-hint">选择节点查看属性</div>
@@ -309,6 +332,7 @@ import {
   ToolOutlined, CommentOutlined, CheckCircleOutlined,
   PlusOutlined, PlusSquareOutlined, DeleteOutlined, CloseOutlined,
   CopyOutlined, SnippetsOutlined,
+  NodeExpandOutlined, NodeCollapseOutlined,
 } from '@ant-design/icons-vue';
 import MindMap from 'simple-mind-map';
 import Select from 'simple-mind-map/src/plugins/Select';
@@ -432,6 +456,7 @@ const nodeTypeOptions = [
   { value: 'STEP', label: '步骤' },
   { value: 'EXPECTED', label: '预期结果' },
 ];
+/** 当前节点可直接设置的属性 */
 const filteredEditAttrs = computed(() => {
   if (!editForm.value) return [];
   const nt = editForm.value.nodeType;
@@ -442,6 +467,52 @@ const filteredEditAttrs = computed(() => {
     return a.nodeTypeLimit.split(',').includes(nt);
   });
 });
+
+/** 当前节点不能设置、但子孙节点可以设置的属性 */
+const descendantAttrs = computed(() => {
+  if (!editForm.value || !activeNodeInstance.value) return [];
+  const nt = editForm.value.nodeType;
+  const directIds = new Set(filteredEditAttrs.value.map(a => a.id));
+  return projectAttributes.value.filter(a => {
+    if (a.name === '标记') return false;
+    if (directIds.has(a.id)) return false;
+    if (!a.nodeTypeLimit) return false;
+    const allowed = a.nodeTypeLimit.split(',');
+    return hasDescendantWithType(activeNodeInstance.value, allowed);
+  });
+});
+
+/** 检查节点的子孙中是否有指定类型的节点 */
+function hasDescendantWithType(node: any, types: string[]): boolean {
+  for (const child of (node.children || [])) {
+    const r = child.nodeData?.data?._raw;
+    if (r?.nodeType && types.includes(r.nodeType)) return true;
+    if (hasDescendantWithType(child, types)) return true;
+  }
+  return false;
+}
+
+/** 批量为子孙中符合条件的节点设置属性 */
+function applyToDescendants(attr: CustomAttribute, value: any) {
+  if (!activeNodeInstance.value || !mindMapInstance) return;
+  const allowed = attr.nodeTypeLimit ? attr.nodeTypeLimit.split(',') : [];
+  let count = 0;
+  function walk(node: any) {
+    for (const child of (node.children || [])) {
+      const r = child.nodeData?.data?._raw;
+      if (r?.nodeType && allowed.includes(r.nodeType)) {
+        if (!r.properties) r.properties = {};
+        r.properties[attr.name] = value;
+        count++;
+      }
+      walk(child);
+    }
+  }
+  walk(activeNodeInstance.value);
+  markDirty();
+  requestAnimationFrame(refreshLabels);
+  message.success(`已为 ${count} 个子孙节点设置「${attr.name}」`);
+}
 
 // 侧边栏使用 absolute 定位覆盖，不改变导图尺寸，不需要 resize
 
