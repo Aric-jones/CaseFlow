@@ -9,7 +9,7 @@
         <el-menu mode="horizontal" :default-active="activeKey" class="top-menu"
           :ellipsis="false" @select="(key: string) => $router.push(key)">
           <el-menu-item index="/cases">
-            <el-icon><Document /></el-icon><span>用例首页</span>
+            <el-icon><Document /></el-icon><span>用例管理</span>
           </el-menu-item>
           <el-menu-item index="/test-plans">
             <el-icon><Calendar /></el-icon><span>测试计划</span>

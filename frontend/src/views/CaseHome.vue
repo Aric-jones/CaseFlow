@@ -451,7 +451,7 @@ function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 19) : 
 .toolbar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
 
 /* 表格链接 */
-.tbl-link { color: #1677ff; cursor: pointer; transition: color 0.2s; }
+.tbl-link { color: #1677ff; cursor: pointer; transition: color 0.2s; text-decoration: none;}
 .tbl-link:hover { color: #4096ff; }
 
 /* 分页 */

@@ -98,8 +98,9 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
         }
 
         // 4. 差量写入（已存在 → update，新节点 → insert）
+        Set<String> insertedIds = new HashSet<>();
         if (nodes != null && !nodes.isEmpty()) {
-            upsertRecursive(caseSetId, nodes, null, existingIds);
+            upsertRecursive(caseSetId, nodes, null, existingIds, insertedIds);
         }
 
         // 5. 计算有效用例数
@@ -114,8 +115,8 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
         }
     }
 
-    /** 递归 upsert：已存在的节点 update，新节点 insert */
-    private void upsertRecursive(String caseSetId, List<MindNodeDTO> nodes, String parentId, Set<String> existingIds) {
+    /** 递归 upsert：已存在的节点 update，新节点 insert；insertedIds 防止同次请求中重复ID */
+    private void upsertRecursive(String caseSetId, List<MindNodeDTO> nodes, String parentId, Set<String> existingIds, Set<String> insertedIds) {
         for (int i = 0; i < nodes.size(); i++) {
             MindNodeDTO dto = nodes.get(i);
             MindNode node = new MindNode();
@@ -131,14 +132,15 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
             node.setIsRoot(dto.getIsRoot() != null ? dto.getIsRoot() : (parentId == null ? 1 : 0));
             node.setProperties(dto.getProperties());
 
-            if (nodeId != null && existingIds.contains(nodeId)) {
+            if (nodeId != null && (existingIds.contains(nodeId) || insertedIds.contains(nodeId))) {
                 baseMapper.updateById(node);
             } else {
                 baseMapper.insert(node);
             }
+            if (nodeId != null) insertedIds.add(nodeId);
 
             if (dto.getChildren() != null && !dto.getChildren().isEmpty()) {
-                upsertRecursive(caseSetId, dto.getChildren(), node.getId(), existingIds);
+                upsertRecursive(caseSetId, dto.getChildren(), node.getId(), existingIds, insertedIds);
             }
         }
     }

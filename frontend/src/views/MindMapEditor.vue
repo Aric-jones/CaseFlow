@@ -376,8 +376,8 @@ const conflictServerVersion = ref(0);
 
 function onKeyboardCopyPaste(e: KeyboardEvent) {
   if (!e.ctrlKey || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-  if (e.key === 'c') { e.preventDefault(); copySelectedNodes(); }
-  if (e.key === 'v') { e.preventDefault(); pasteNodes(); }
+  if (e.key === 'c') { e.preventDefault(); e.stopPropagation(); copySelectedNodes(); }
+  if (e.key === 'v') { e.preventDefault(); e.stopPropagation(); pasteNodes(); }
 }
 
 // === 状态计算 ===
@@ -1424,7 +1424,7 @@ onMounted(async () => {
   await loadData();
   historyTimer = setInterval(() => caseHistoryApi.save(caseSetId).catch(() => {}), 15 * 60 * 1000);
   window.addEventListener('beforeunload', onBeforeUnload);
-  window.addEventListener('keydown', onKeyboardCopyPaste);
+  window.addEventListener('keydown', onKeyboardCopyPaste, true);
 });
 
 onUnmounted(() => {
@@ -1432,7 +1432,7 @@ onUnmounted(() => {
   if (mindMapInstance) { mindMapInstance.destroy(); mindMapInstance = null; }
   cleanupMouseOverrides?.();
   window.removeEventListener('beforeunload', onBeforeUnload);
-  window.removeEventListener('keydown', onKeyboardCopyPaste);
+  window.removeEventListener('keydown', onKeyboardCopyPaste, true);
 });
 </script>
 
