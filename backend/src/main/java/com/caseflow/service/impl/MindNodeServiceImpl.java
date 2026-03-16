@@ -1,6 +1,7 @@
 package com.caseflow.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.caseflow.common.BusinessException;
 import com.caseflow.dto.MindNodeDTO;
@@ -160,6 +161,8 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
             MindNode node = new MindNode();
             if (dto.getId() != null && !dto.getId().isEmpty()) {
                 node.setId(dto.getId());
+            } else {
+                node.setId(IdWorker.getIdStr());
             }
             node.setCaseSetId(caseSetId);
             node.setParentId(parentId);
