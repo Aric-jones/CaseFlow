@@ -5,6 +5,7 @@ import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
 import com.caseflow.dto.CaseSetDTO;
 import com.caseflow.service.CaseSetService;
+import com.caseflow.service.MindMapExcelService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -13,6 +14,7 @@ import java.util.List;
 @RestController @RequestMapping("/api/case-sets") @RequiredArgsConstructor
 public class CaseSetController {
     private final CaseSetService caseSetService;
+    private final MindMapExcelService mindMapExcelService;
 
     @GetMapping public Result<?> list(@RequestParam(required = false) String directoryId, @RequestParam(required = false) String projectId,
             @RequestParam(required = false) String keyword, @RequestParam(required = false) String status,
@@ -55,6 +57,7 @@ public class CaseSetController {
         cs.setRequirementLink(link); caseSetService.updateById(cs); return Result.ok();
     }
     @PostMapping("/import") public Result<?> importExcel(@RequestParam("file") MultipartFile file, @RequestParam String directoryId, @RequestParam String projectId) {
-        caseSetService.importFromExcel(file, directoryId, projectId); return Result.ok();
+        String csId = mindMapExcelService.importAsNewCaseSet(file, directoryId, projectId);
+        return Result.ok(csId);
     }
 }

@@ -37,6 +37,9 @@
         <a-tooltip title="查找替换"><a-button type="text" @click="toggleSearch"><SearchOutlined /></a-button></a-tooltip>
         <a-tooltip title="规范检查"><a-button type="text" @click="openValidation"><ToolOutlined /></a-button></a-tooltip>
         <a-tooltip title="评论"><a-button type="text" @click="openComments"><CommentOutlined /></a-button></a-tooltip>
+        <a-tooltip title="导出Excel"><a-button type="text" :loading="locks.exportExcel" @click="handleExportExcel"><DownloadOutlined /></a-button></a-tooltip>
+        <a-tooltip title="导入Excel"><a-button type="text" @click="triggerImportExcel"><UploadOutlined /></a-button></a-tooltip>
+        <input ref="importFileInput" type="file" accept=".xlsx,.xls" style="display:none" @change="handleImportExcel" />
         <span v-if="hasUnsavedChanges" style="color:#e6a23c;font-size:11px;margin-right:4px">有未保存的更改</span>
         <a-button type="primary" :loading="saving" :disabled="saving || mindMapLoading" @click="handleSave"><SaveOutlined /> 同步云端</a-button>
         <a-tooltip title="历史版本"><a-button type="text" @click="openHistory"><HistoryOutlined /></a-button></a-tooltip>
@@ -339,6 +342,7 @@ import {
   PlusOutlined, PlusSquareOutlined, DeleteOutlined, CloseOutlined,
   CopyOutlined, SnippetsOutlined,
   NodeExpandOutlined, NodeCollapseOutlined,
+  DownloadOutlined, UploadOutlined,
 } from '@ant-design/icons-vue';
 import MindMap from 'simple-mind-map';
 import Select from 'simple-mind-map/src/plugins/Select';
@@ -348,6 +352,7 @@ import { caseSetApi, mindNodeApi, commentApi, caseHistoryApi, userApi, customAtt
 import { useAppStore } from '../stores/app';
 import type { CaseSet, MindNodeData, CaseHistory, User, CustomAttribute } from '../types';
 import { NODE_TYPE_LABEL, addAllCustomLabels, setupMouseOverrides } from '../composables/useMindMap';
+import { useGuard } from '../composables/useGuard';
 import { deleteLocalDraft } from '../composables/useLocalMindMap';
 import CommentPanel from '../components/CommentPanel.vue';
 
@@ -368,7 +373,9 @@ const caseSet = ref<CaseSet | null>(null);
 const caseCount = ref(0);
 const saving = ref(false);
 const mindMapLoading = ref(true);
-const actionLock = ref(false); // 通用操作锁，防止按钮连点
+const actionLock = ref(false);
+const { locks, run } = useGuard();
+const importFileInput = ref<HTMLInputElement | null>(null);
 
 // === 缩放 & 滚动条 ===
 const zoomLevel = ref(100);
@@ -565,6 +572,40 @@ function openHistory() {
 
 function closePanel() {
   rightPanelOpen.value = false;
+}
+
+async function handleExportExcel() {
+  await run('exportExcel', async () => {
+    try {
+      const res = await mindNodeApi.exportExcel(caseSetId);
+      const blob = new Blob([res as any], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${caseSet.value?.name || '用例集'}.xlsx`; a.click();
+      URL.revokeObjectURL(url);
+      message.success('导出成功');
+    } catch { message.error('导出失败，请确保有有效用例'); }
+  });
+}
+
+function triggerImportExcel() {
+  importFileInput.value?.click();
+}
+
+async function handleImportExcel(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  input.value = '';
+  await run('importExcel', async () => {
+    try {
+      await mindNodeApi.importExcel(file, caseSetId);
+      message.success('导入成功，正在刷新...');
+      mindMapLoading.value = true;
+      initialLoadDone = false;
+      await loadData();
+    } catch { message.error('导入失败'); }
+  });
 }
 
 // =============================================

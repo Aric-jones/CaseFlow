@@ -100,6 +100,7 @@
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
+                    <el-dropdown-item command="export"><el-icon><Download /></el-icon>导出Excel</el-dropdown-item>
                     <el-dropdown-item command="copy"><el-icon><DocumentCopy /></el-icon>复制</el-dropdown-item>
                     <el-dropdown-item command="move"><el-icon><Sort /></el-icon>移动</el-dropdown-item>
                     <el-dropdown-item command="delete" style="color:#f56c6c">
@@ -154,7 +155,9 @@
     <!-- 导入 -->
     <el-dialog v-model="showImport" title="导入用例" width="480px">
       <p style="color:#909399;margin-bottom:16px;font-size:13px">
-        请上传 Excel (.xlsx)，表头须含：用例标题、前置条件、步骤、预期结果
+        请上传 Excel (.xlsx)，表头须含：用例标题。<br />
+        可选列：所属模块、前置条件、步骤、预期结果，以及项目自定义属性列。<br />
+        支持合并单元格，相同模块/标题的行会自动合并为树结构。
       </p>
       <el-upload drag accept=".xlsx" :limit="1" :before-upload="handleImport" action="">
         <el-icon size="40" color="#1677ff"><Upload /></el-icon>
@@ -210,8 +213,8 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useGuard } from '../composables/useGuard';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Search, Upload, Plus } from '@element-plus/icons-vue';
-import { directoryApi, caseSetApi } from '../api';
+import { Search, Upload, Plus, Download } from '@element-plus/icons-vue';
+import { directoryApi, caseSetApi, mindNodeApi } from '../api';
 import { useAppStore } from '../stores/app';
 import type { DirectoryNode, CaseSet, PageResult } from '../types';
 
@@ -376,6 +379,19 @@ async function saveEditCase() {
 }
 
 async function handleCaseAction(key: string, record: CaseSet) {
+  if (key === 'export') {
+    await run('exportExcel', async () => {
+      try {
+        const res = await mindNodeApi.exportExcel(record.id);
+        const blob = new Blob([res as any], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `${record.name}.xlsx`; a.click();
+        URL.revokeObjectURL(url);
+        ElMessage.success('导出成功');
+      } catch { ElMessage.error('导出失败'); }
+    });
+  }
   if (key === 'copy') { copyingId.value = record.id; copyTarget.value = record.directoryId; showCopy.value = true; }
   if (key === 'move') { movingId.value = record.id; showMove.value = true; }
   if (key === 'delete') {

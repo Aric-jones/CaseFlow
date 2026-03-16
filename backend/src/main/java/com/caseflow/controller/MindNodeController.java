@@ -5,10 +5,13 @@ import com.caseflow.dto.MindNodeDTO;
 import com.caseflow.entity.CaseSet;
 import com.caseflow.entity.MindNode;
 import com.caseflow.mapper.CaseSetMapper;
+import com.caseflow.service.MindMapExcelService;
 import com.caseflow.service.MindNodeService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,6 +22,7 @@ import java.util.Map;
 public class MindNodeController {
     private final MindNodeService mindNodeService;
     private final CaseSetMapper caseSetMapper;
+    private final MindMapExcelService mindMapExcelService;
 
     @GetMapping("/tree")
     public Result<?> tree(@RequestParam String caseSetId) {
@@ -91,4 +95,25 @@ public class MindNodeController {
 
     @GetMapping("/count")
     public Result<?> count(@RequestParam String caseSetId) { return Result.ok(mindNodeService.countValidCases(caseSetId)); }
+
+    @GetMapping("/export-excel")
+    public void exportExcel(@RequestParam String caseSetId, HttpServletResponse response) {
+        CaseSet cs = caseSetMapper.selectById(caseSetId);
+        String fileName = cs != null ? cs.getName() : "用例集";
+        try {
+            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            response.setHeader("Content-Disposition",
+                    "attachment; filename=" + java.net.URLEncoder.encode(fileName + ".xlsx", "UTF-8"));
+            mindMapExcelService.exportToExcel(caseSetId, response.getOutputStream());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @PostMapping("/import-excel")
+    public Result<?> importExcel(@RequestParam("file") MultipartFile file,
+                                 @RequestParam String caseSetId) {
+        mindMapExcelService.importFromExcel(file, caseSetId);
+        return Result.ok();
+    }
 }

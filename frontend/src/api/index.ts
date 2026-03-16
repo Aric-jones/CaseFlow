@@ -85,6 +85,12 @@ export const mindNodeApi = {
   update: (id: string, node: any): R<MindNodeData> => request.put(`/mind-nodes/${id}`, node),
   delete: (id: string): R<void> => request.delete(`/mind-nodes/${id}`),
   countCases: (caseSetId: string): R<number> => request.get('/mind-nodes/count', { params: { caseSetId } }),
+  exportExcel: (caseSetId: string) =>
+    request.get('/mind-nodes/export-excel', { params: { caseSetId }, responseType: 'blob' }),
+  importExcel: (file: File, caseSetId: string): R<void> => {
+    const fd = new FormData(); fd.append('file', file);
+    return request.post('/mind-nodes/import-excel', fd, { params: { caseSetId } });
+  },
 };
 
 export const commentApi = {
