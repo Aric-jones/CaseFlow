@@ -161,7 +161,7 @@
                 <div style="color: #999; font-size: 11px; margin-bottom: 8px">选择后将应用到所有符合类型的子孙节点</div>
                 <template v-for="dattr in descendantAttrs" :key="dattr.id">
                   <div class="prop-field">
-                    <label>{{ dattr.name }} <span style="color:#722ed1;font-size:10px">({{ dattr.nodeTypeLimit }})</span></label>
+                    <label>{{ dattr.name }} <span style="color:#722ed1;font-size:10px">({{ (dattr.nodeTypeLimit || '').split(',').map((t: string) => NODE_TYPE_LABEL[t] || t).join('、') }})</span></label>
                     <a-select v-if="dattr.multiSelect" mode="multiple" :value="[]"
                       @change="(v: any) => applyToDescendants(dattr, v)"
                       :options="dattr.options.map((o: string) => ({ value: o, label: o }))" style="width: 100%"
@@ -744,6 +744,20 @@ function syncToNode(checkAutoChain = false) {
   // SET_NODE_TEXT 之后, 确保 _raw 仍然存在（可能被重建的 data 对象覆盖）
   if (!node.nodeData.data._raw) {
     node.nodeData.data._raw = prevRaw;
+  }
+
+  // 节点类型变化 → 清空不再适用的动态属性
+  if (checkAutoChain && form.nodeType !== prevRaw.nodeType) {
+    const newNt = form.nodeType;
+    for (const attr of projectAttributes.value) {
+      if (attr.name === '标记') continue;
+      if (attr.nodeTypeLimit) {
+        const allowed = attr.nodeTypeLimit.split(',');
+        if (!newNt || !allowed.includes(newNt)) {
+          delete form.properties[attr.name];
+        }
+      }
+    }
   }
 
   // 构建干净的 properties

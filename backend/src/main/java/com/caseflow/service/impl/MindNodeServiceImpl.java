@@ -45,16 +45,28 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
         if (root == null && !all.isEmpty())
             root = all.stream().filter(n -> n.getParentId() == null).findFirst().orElse(all.get(0));
         if (root == null) return List.of();
-        return List.of(buildNode(root, childrenMap));
+
+        // 一次性批量查询所有节点的未解决评论数，消除 N+1
+        Map<String, Integer> commentCountMap = new HashMap<>();
+        Map<String, Map<String, Object>> raw = commentMapper.countUnresolvedByCaseSet(caseSetId);
+        if (raw != null) {
+            for (Map.Entry<String, Map<String, Object>> entry : raw.entrySet()) {
+                Object cnt = entry.getValue().get("cnt");
+                commentCountMap.put(entry.getKey(), cnt instanceof Number ? ((Number) cnt).intValue() : 0);
+            }
+        }
+
+        return List.of(buildNode(root, childrenMap, commentCountMap));
     }
 
-    private MindNodeDTO buildNode(MindNode node, Map<String, List<MindNode>> childrenMap) {
+    private MindNodeDTO buildNode(MindNode node, Map<String, List<MindNode>> childrenMap,
+                                  Map<String, Integer> commentCountMap) {
         MindNodeDTO dto = toDTO(node);
         List<MindNode> children = childrenMap.getOrDefault(node.getId(), List.of());
         List<MindNodeDTO> childDtos = new ArrayList<>();
-        for (MindNode child : children) childDtos.add(buildNode(child, childrenMap));
+        for (MindNode child : children) childDtos.add(buildNode(child, childrenMap, commentCountMap));
         dto.setChildren(childDtos);
-        dto.setCommentCount(commentMapper.countUnresolvedByNode(node.getId()));
+        dto.setCommentCount(commentCountMap.getOrDefault(node.getId(), 0));
         return dto;
     }
 
