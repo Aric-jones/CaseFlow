@@ -148,12 +148,13 @@ export function addAllCustomLabels(mindMapInstance: any) {
   })(mindMapInstance.renderer.root);
 }
 
-// ── Ctrl+左键拖拽平移 ───────────────────────────────────────────
+// ── 右键拖拽平移 ───────────────────────────────────────────
 
 /**
  * 在 container 的 capture 阶段拦截鼠标事件：
- * - 中键/右键：阻止冒泡，防止触发库的 isMiddleMousedown/isRightMousedown
- * - Ctrl+左键：阻止冒泡，接管 pan 逻辑，调用 view.translateXY()
+ * - 右键按下：接管 pan 逻辑，调用 view.translateXY()
+ * - 中键：阻止冒泡
+ * - 禁用右键菜单
  *
  * 返回清理函数，需在组件 onUnmounted 调用。
  */
@@ -164,15 +165,18 @@ export function setupMouseOverrides(
   let panActive = false;
   let lastX = 0;
   let lastY = 0;
+  let didPan = false;
 
   const onMousedown = (e: MouseEvent) => {
-    if (e.button === 1 || e.button === 2) {
+    if (e.button === 1) {
       e.stopImmediatePropagation();
       return;
     }
-    if (e.button === 0 && e.ctrlKey) {
+    if (e.button === 2) {
       e.stopImmediatePropagation();
+      e.preventDefault();
       panActive = true;
+      didPan = false;
       lastX = e.clientX;
       lastY = e.clientY;
       container.style.cursor = 'grabbing';
@@ -181,23 +185,50 @@ export function setupMouseOverrides(
 
   const onMousemove = (e: MouseEvent) => {
     if (!panActive) return;
-    getMindMap()?.view?.translateXY(e.clientX - lastX, e.clientY - lastY);
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) didPan = true;
+    getMindMap()?.view?.translateXY(dx, dy);
     lastX = e.clientX;
     lastY = e.clientY;
   };
 
-  const onMouseup = () => {
+  const onMouseup = (e: MouseEvent) => {
     if (!panActive) return;
     panActive = false;
     container.style.cursor = '';
   };
 
+  const onContextmenu = (e: MouseEvent) => {
+    e.preventDefault();
+  };
+
+  const onWheel = (e: WheelEvent) => {
+    const mm = getMindMap();
+    if (!mm?.view) return;
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.deltaY < 0) mm.view.enlarge();
+      else mm.view.narrow();
+    } else if (e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      const step = mm.opt?.mousewheelMoveStep || 100;
+      mm.view.translateXY(e.deltaY > 0 ? -step : step, 0);
+    }
+  };
+
   container.addEventListener('mousedown', onMousedown, { capture: true });
+  container.addEventListener('contextmenu', onContextmenu, { capture: true });
+  container.addEventListener('wheel', onWheel, { capture: true, passive: false });
   window.addEventListener('mousemove', onMousemove);
   window.addEventListener('mouseup', onMouseup);
 
   return () => {
     container.removeEventListener('mousedown', onMousedown, { capture: true });
+    container.removeEventListener('contextmenu', onContextmenu, { capture: true });
+    container.removeEventListener('wheel', onWheel, { capture: true } as any);
     window.removeEventListener('mousemove', onMousemove);
     window.removeEventListener('mouseup', onMouseup);
   };

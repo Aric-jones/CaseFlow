@@ -60,8 +60,32 @@
       <!-- 思维导图区域 -->
       <div class="mm-area">
         <div ref="mindMapContainer" style="width: 100%; height: 100%"></div>
+
+        <!-- 水平滚动条 -->
+        <div ref="hScrollRef" class="mm-scrollbar mm-scrollbar-h"
+          @click="(e: MouseEvent) => mindMapInstance?.scrollbar?.onClick(e, 'horizontal')">
+          <div class="mm-scrollbar-thumb"
+            :style="{ left: scrollbarH.left + '%', width: scrollbarH.width + '%' }"
+            @mousedown.stop="(e: MouseEvent) => mindMapInstance?.scrollbar?.onMousedown(e, 'horizontal')"></div>
+        </div>
+
+        <!-- 垂直滚动条 -->
+        <div ref="vScrollRef" class="mm-scrollbar mm-scrollbar-v"
+          @click="(e: MouseEvent) => mindMapInstance?.scrollbar?.onClick(e, 'vertical')">
+          <div class="mm-scrollbar-thumb"
+            :style="{ top: scrollbarV.top + '%', height: scrollbarV.height + '%' }"
+            @mousedown.stop="(e: MouseEvent) => mindMapInstance?.scrollbar?.onMousedown(e, 'vertical')"></div>
+        </div>
+
+        <!-- 右下角缩放控件 -->
+        <div class="mm-zoom-bar">
+          <button class="mm-zoom-btn" @click="zoomOut" title="缩小">−</button>
+          <span class="mm-zoom-label" @click="zoomReset" title="重置缩放">{{ zoomLevel }}%</span>
+          <button class="mm-zoom-btn" @click="zoomIn" title="放大">+</button>
+        </div>
+
         <div class="tips-bar">
-          左键点选 · 左键拖拽框选 · Ctrl+左键拖拽平移 · 滚轮缩放 · 双击编辑
+          左键点选 · 左键拖拽框选 · 右键拖拽平移 · 滚轮上下滑动 · Ctrl+滚轮缩放 · 双击编辑
         </div>
       </div>
 
@@ -277,7 +301,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -289,6 +313,7 @@ import {
 import MindMap from 'simple-mind-map';
 import Select from 'simple-mind-map/src/plugins/Select';
 import Drag from 'simple-mind-map/src/plugins/Drag';
+import Scrollbar from 'simple-mind-map/src/plugins/Scrollbar';
 import { caseSetApi, mindNodeApi, commentApi, caseHistoryApi, userApi, customAttributeApi, reviewApi } from '../api';
 import { useAppStore } from '../stores/app';
 import type { CaseSet, MindNodeData, CaseHistory, User, CustomAttribute } from '../types';
@@ -298,6 +323,7 @@ import CommentPanel from '../components/CommentPanel.vue';
 
 MindMap.usePlugin(Select);
 MindMap.usePlugin(Drag);
+MindMap.usePlugin(Scrollbar);
 
 const route = useRoute();
 const router = useRouter();
@@ -306,12 +332,18 @@ const caseSetId = String(route.params.caseSetId);
 
 const mindMapContainer = ref<HTMLDivElement | null>(null);
 let mindMapInstance: any = null;
-let initialViewSet = false; // 根节点初始位置只设置一次
 
 // === 基础状态 ===
 const caseSet = ref<CaseSet | null>(null);
 const caseCount = ref(0);
 const saving = ref(false);
+
+// === 缩放 & 滚动条 ===
+const zoomLevel = ref(100);
+const scrollbarH = reactive({ left: 0, width: 100 });
+const scrollbarV = reactive({ top: 0, height: 100 });
+const hScrollRef = ref<HTMLDivElement | null>(null);
+const vScrollRef = ref<HTMLDivElement | null>(null);
 
 // === 右侧面板 ===
 const rightPanelOpen = ref(false);
@@ -375,7 +407,9 @@ const conflictServerVersion = ref(0);
 
 
 function onKeyboardCopyPaste(e: KeyboardEvent) {
-  if (!e.ctrlKey || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  if (!e.ctrlKey) return;
+  const t = e.target as HTMLElement;
+  if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable) return;
   if (e.key === 'c') { e.preventDefault(); e.stopPropagation(); copySelectedNodes(); }
   if (e.key === 'v') { e.preventDefault(); e.stopPropagation(); pasteNodes(); }
 }
@@ -530,8 +564,11 @@ function renderNodeToTree(rNode: any): MindNodeData {
   };
 }
 
-/** 统计有效用例数量（末端为 EXPECTED 类型的分支） */
+/** 统计有效用例数量（末端为 EXPECTED 类型的分支 + 必填属性已填） */
 function countValid(node: MindNodeData): number {
+  const requiredAttrs = projectAttributes.value
+    .filter(a => a.required === 1)
+    .map(a => ({ name: a.name, nodeTypeLimit: a.nodeTypeLimit }));
   let count = 0;
   function walk(n: MindNodeData, path: MindNodeData[]) {
     const p = [...path, n];
@@ -539,7 +576,16 @@ function countValid(node: MindNodeData): number {
       if (p.length >= 5) {
         const len = p.length;
         if (p[len-4].nodeType === 'TITLE' && p[len-3].nodeType === 'PRECONDITION'
-            && p[len-2].nodeType === 'STEP' && p[len-1].nodeType === 'EXPECTED') count++;
+            && p[len-2].nodeType === 'STEP' && p[len-1].nodeType === 'EXPECTED') {
+          const props = p[len-1].properties || {};
+          let valid = true;
+          for (const attr of requiredAttrs) {
+            if (attr.nodeTypeLimit && !attr.nodeTypeLimit.split(',').includes('EXPECTED')) continue;
+            const v = props[attr.name];
+            if (v == null || v === '' || (Array.isArray(v) && v.length === 0)) { valid = false; break; }
+          }
+          if (valid) count++;
+        }
       }
     } else { for (const c of n.children) walk(c, p); }
   }
@@ -690,6 +736,11 @@ function autoAssignCaseChain(titleNode: any) {
 // 初始化思维导图
 // =============================================
 
+// === 缩放控制 ===
+function zoomIn() { mindMapInstance?.view?.enlarge(); }
+function zoomOut() { mindMapInstance?.view?.narrow(); }
+function zoomReset() { mindMapInstance?.view?.reset(); }
+
 /** 初始化 simple-mind-map 实例并绑定事件 */
 function initMindMap() {
   if (!mindMapContainer.value) return;
@@ -699,12 +750,12 @@ function initMindMap() {
     data: { data: { text: '加载中...' }, children: [] },
     theme: 'classic4',
     layout: 'logicalStructure',
-    mousewheelAction: 'zoom',
+    mousewheelAction: 'move',
+    textAutoWrapWidth: 300,
     enableFreeDrag: false,
-    initRootNodePosition: ['center', 'center'],
+    initRootNodePosition: [10, 'center'],
     enableShortcutOnlyWhenMouseInSvg: true,
     useLeftKeySelectionRightKeyDrag: true,
-    // 通过 themeConfig 覆盖各级节点间距，为类型标签(上20px)和属性标签(下24px)留空间
     themeConfig: {
       second: { marginX: 80, marginY: 60 },
       node: { marginX: 50, marginY: 50 },
@@ -758,19 +809,29 @@ function initMindMap() {
     markDirty();
   });
 
-  // 渲染完成 → 注入自定义标签 + 首次定位根节点
+  // 渲染完成 → 注入自定义标签
   mindMapInstance.on('node_tree_render_end', () => {
     requestAnimationFrame(refreshLabels);
-    if (!initialViewSet && mindMapContainer.value) {
-      initialViewSet = true;
-      const W = mindMapContainer.value.clientWidth;
-      const rootW = mindMapInstance.renderer?.root?.width || 0;
-      // 根节点右边缘距容器右侧 100px
-      // 初始时根节点中心在 W/2，向右平移 dx 使右边缘到 W-100
-      // 获取屏幕宽度
-      const screenWidth = window.innerWidth;
-      const dx = 0 - screenWidth/2 + rootW/2;
-      mindMapInstance.view.translateXY(dx, 0);
+  });
+
+  // 缩放变化 → 更新百分比显示
+  mindMapInstance.on('scale', (scale: number) => {
+    zoomLevel.value = Math.round(scale * 100);
+  });
+
+  // 滚动条位置变化
+  mindMapInstance.on('scrollbar_change', (data: any) => {
+    scrollbarH.left = data.horizontal.left;
+    scrollbarH.width = data.horizontal.width;
+    scrollbarV.top = data.vertical.top;
+    scrollbarV.height = data.vertical.height;
+  });
+
+  // 告知 Scrollbar 插件容器尺寸
+  nextTick(() => {
+    if (mindMapContainer.value) {
+      const rect = mindMapContainer.value.getBoundingClientRect();
+      mindMapInstance.scrollbar?.setScrollBarWrapSize(rect.width, rect.height);
     }
   });
 }
@@ -1425,7 +1486,15 @@ onMounted(async () => {
   historyTimer = setInterval(() => caseHistoryApi.save(caseSetId).catch(() => {}), 15 * 60 * 1000);
   window.addEventListener('beforeunload', onBeforeUnload);
   window.addEventListener('keydown', onKeyboardCopyPaste, true);
+  window.addEventListener('resize', onResize);
 });
+
+function onResize() {
+  if (mindMapContainer.value && mindMapInstance?.scrollbar) {
+    const rect = mindMapContainer.value.getBoundingClientRect();
+    mindMapInstance.scrollbar.setScrollBarWrapSize(rect.width, rect.height);
+  }
+}
 
 onUnmounted(() => {
   if (historyTimer) clearInterval(historyTimer);
@@ -1433,6 +1502,7 @@ onUnmounted(() => {
   cleanupMouseOverrides?.();
   window.removeEventListener('beforeunload', onBeforeUnload);
   window.removeEventListener('keydown', onKeyboardCopyPaste, true);
+  window.removeEventListener('resize', onResize);
 });
 </script>
 
@@ -1495,8 +1565,46 @@ onUnmounted(() => {
   display: flex; align-items: center; justify-content: center;
   height: 200px; color: #ccc; font-size: 14px;
 }
+/* 滚动条 */
+.mm-scrollbar { position: absolute; z-index: 50; }
+.mm-scrollbar-h {
+  left: 0; bottom: 0; right: 14px; height: 10px;
+  cursor: pointer;
+}
+.mm-scrollbar-v {
+  right: 0; top: 0; bottom: 14px; width: 10px;
+  cursor: pointer;
+}
+.mm-scrollbar-thumb {
+  position: absolute; border-radius: 5px;
+  background: rgba(0,0,0,0.15); transition: background 0.2s;
+}
+.mm-scrollbar-thumb:hover, .mm-scrollbar-thumb:active { background: rgba(0,0,0,0.35); }
+.mm-scrollbar-h .mm-scrollbar-thumb { height: 100%; min-width: 30px; }
+.mm-scrollbar-v .mm-scrollbar-thumb { width: 100%; min-height: 30px; }
+
+/* 缩放控件 */
+.mm-zoom-bar {
+  position: absolute; right: 16px; bottom: 20px; z-index: 60;
+  display: flex; align-items: center; gap: 2px;
+  background: #fff; border: 1px solid #e4e7ed; border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 2px 4px;
+  user-select: none;
+}
+.mm-zoom-btn {
+  width: 28px; height: 28px; border: none; background: transparent;
+  font-size: 16px; font-weight: 600; cursor: pointer; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center; color: #595959;
+}
+.mm-zoom-btn:hover { background: #f5f5f5; color: #1677ff; }
+.mm-zoom-label {
+  font-size: 12px; min-width: 42px; text-align: center;
+  cursor: pointer; color: #595959; line-height: 28px;
+}
+.mm-zoom-label:hover { color: #1677ff; }
+
 .tips-bar {
-  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
   background: rgba(0,0,0,0.45); color: #fff; font-size: 11px;
   padding: 4px 14px; border-radius: 4px; pointer-events: none; white-space: nowrap;
 }
