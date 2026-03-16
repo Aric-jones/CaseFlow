@@ -148,10 +148,20 @@ export function addNodeLabels(node: any, forceRefresh = false) {
 
 export function addAllCustomLabels(mindMapInstance: any) {
   if (!mindMapInstance?.renderer?.root) return;
+  const t0 = performance.now();
+  let count = 0;
+  let skipped = 0;
   (function walk(n: any) {
+    const before = (getGroupEl(n) as any)?.__labelFp;
     addNodeLabels(n);
+    const after = (getGroupEl(n) as any)?.__labelFp;
+    if (before === after && before !== undefined) skipped++; else count++;
     (n.children || []).forEach(walk);
   })(mindMapInstance.renderer.root);
+  const elapsed = performance.now() - t0;
+  if (elapsed > 20) {
+    console.log(`[perf] addAllCustomLabels ${elapsed.toFixed(0)}ms | updated=${count} skipped=${skipped}`);
+  }
 }
 
 // ── 右键拖拽平移 ───────────────────────────────────────────

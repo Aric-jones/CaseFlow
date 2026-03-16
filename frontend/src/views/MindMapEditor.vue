@@ -24,21 +24,21 @@
           style="color:#1677ff;font-size:12px;text-decoration:none;margin-left:4px" @click.stop>关联需求</a>
       </a-space>
       <a-space>
-        <a-tooltip title="添加子节点(Tab)"><a-button type="text" @click="execCmd('INSERT_CHILD_NODE')"><PlusOutlined /></a-button></a-tooltip>
-        <a-tooltip title="添加同级(Enter)"><a-button type="text" @click="execCmd('INSERT_NODE')"><PlusSquareOutlined /></a-button></a-tooltip>
-        <a-tooltip title="删除(Delete)"><a-button type="text" danger @click="execCmd('REMOVE_NODE')"><DeleteOutlined /></a-button></a-tooltip>
+        <a-tooltip title="添加子节点(Tab)"><a-button type="text" :disabled="mindMapLoading" @click="debouncedExecCmd('INSERT_CHILD_NODE')"><PlusOutlined /></a-button></a-tooltip>
+        <a-tooltip title="添加同级(Enter)"><a-button type="text" :disabled="mindMapLoading" @click="debouncedExecCmd('INSERT_NODE')"><PlusSquareOutlined /></a-button></a-tooltip>
+        <a-tooltip title="删除(Delete)"><a-button type="text" danger :disabled="mindMapLoading" @click="debouncedExecCmd('REMOVE_NODE')"><DeleteOutlined /></a-button></a-tooltip>
         <a-divider type="vertical" />
-        <a-tooltip title="复制选中节点(Ctrl+C)"><a-button type="text" @click="copySelectedNodes"><CopyOutlined /></a-button></a-tooltip>
-        <a-tooltip title="粘贴到当前节点(Ctrl+V)"><a-button type="text" @click="pasteNodes"><SnippetsOutlined /></a-button></a-tooltip>
+        <a-tooltip title="复制选中节点(Ctrl+C)"><a-button type="text" :disabled="mindMapLoading" @click="copySelectedNodes"><CopyOutlined /></a-button></a-tooltip>
+        <a-tooltip title="粘贴到当前节点(Ctrl+V)"><a-button type="text" :disabled="mindMapLoading" @click="pasteNodes"><SnippetsOutlined /></a-button></a-tooltip>
         <a-divider type="vertical" />
-        <a-tooltip title="全部展开"><a-button type="text" @click="execCmd('EXPAND_ALL')"><NodeExpandOutlined /></a-button></a-tooltip>
-        <a-tooltip title="全部折叠"><a-button type="text" @click="execCmd('UNEXPAND_ALL')"><NodeCollapseOutlined /></a-button></a-tooltip>
+        <a-tooltip title="全部展开"><a-button type="text" :disabled="mindMapLoading" @click="debouncedExecCmd('EXPAND_ALL')"><NodeExpandOutlined /></a-button></a-tooltip>
+        <a-tooltip title="全部折叠"><a-button type="text" :disabled="mindMapLoading" @click="debouncedExecCmd('UNEXPAND_ALL')"><NodeCollapseOutlined /></a-button></a-tooltip>
         <a-divider type="vertical" />
         <a-tooltip title="查找替换"><a-button type="text" @click="toggleSearch"><SearchOutlined /></a-button></a-tooltip>
         <a-tooltip title="规范检查"><a-button type="text" @click="openValidation"><ToolOutlined /></a-button></a-tooltip>
         <a-tooltip title="评论"><a-button type="text" @click="openComments"><CommentOutlined /></a-button></a-tooltip>
         <span v-if="hasUnsavedChanges" style="color:#e6a23c;font-size:11px;margin-right:4px">有未保存的更改</span>
-        <a-button type="primary" :loading="saving" @click="handleSave"><SaveOutlined /> 同步云端</a-button>
+        <a-button type="primary" :loading="saving" :disabled="saving || mindMapLoading" @click="handleSave"><SaveOutlined /> 同步云端</a-button>
         <a-tooltip title="历史版本"><a-button type="text" @click="openHistory"><HistoryOutlined /></a-button></a-tooltip>
       </a-space>
     </div>
@@ -63,6 +63,12 @@
       <!-- 思维导图区域 -->
       <div class="mm-area">
         <div ref="mindMapContainer" style="width: 100%; height: 100%"></div>
+
+        <!-- 加载遮罩 -->
+        <div v-if="mindMapLoading" class="mm-loading-overlay">
+          <a-spin size="large" />
+          <span style="margin-top:12px;color:#666;font-size:13px">加载思维导图中…</span>
+        </div>
 
         <!-- 水平滚动条 -->
         <div ref="hScrollRef" class="mm-scrollbar mm-scrollbar-h"
@@ -223,7 +229,7 @@
             <a-list-item-meta :title="`版本 ${item.id.substring(0, 8)}`" :description="item.createdAt" />
             <template #actions>
               <a-popconfirm title="确认恢复?" @confirm="restoreVersion(item.id)">
-                <a-button type="link" size="small">恢复</a-button>
+                <a-button type="link" size="small" :loading="restoringVersion">恢复</a-button>
               </a-popconfirm>
             </template>
           </a-list-item>
@@ -232,7 +238,7 @@
     </a-drawer>
 
     <!-- 评审人弹窗 -->
-    <a-modal v-model:open="showReviewModal" title="选择评审人" @ok="submitReview">
+    <a-modal v-model:open="showReviewModal" title="选择评审人" @ok="submitReview" :confirmLoading="submittingReview">
       <a-select mode="multiple" style="width: 100%" v-model:value="selectedReviewers" placeholder="选择评审人"
         :options="users.map((u: any) => ({ value: u.id, label: u.displayName }))" />
     </a-modal>
@@ -361,6 +367,8 @@ let mindMapInstance: any = null;
 const caseSet = ref<CaseSet | null>(null);
 const caseCount = ref(0);
 const saving = ref(false);
+const mindMapLoading = ref(true);
+const actionLock = ref(false); // 通用操作锁，防止按钮连点
 
 // === 缩放 & 滚动条 ===
 const zoomLevel = ref(100);
@@ -408,11 +416,13 @@ async function saveCaseSetName() {
   editingCaseSetName.value = false;
   const newName = caseSetNameInput.value.trim();
   if (!newName || newName === caseSet.value?.name) return;
-  try {
-    await caseSetApi.rename(caseSetId, newName);
-    if (caseSet.value) caseSet.value.name = newName;
-    message.success('名称已更新');
-  } catch { message.error('更新失败'); }
+  await guardAction(async () => {
+    try {
+      await caseSetApi.rename(caseSetId, newName);
+      if (caseSet.value) caseSet.value.name = newName;
+      message.success('名称已更新');
+    } catch { message.error('更新失败'); }
+  });
 }
 
 // === 用户/属性/评审 ===
@@ -424,6 +434,20 @@ const selectedReviewers = ref<string[]>([]);
 let historyTimer: ReturnType<typeof setInterval> | null = null;
 let cleanupMouseOverrides: (() => void) | null = null;
 let dataChangeTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 通用防重操作包装：执行期间 actionLock=true，防止连点 */
+async function guardAction(fn: () => Promise<void>) {
+  if (actionLock.value) return;
+  actionLock.value = true;
+  try { await fn(); } finally { actionLock.value = false; }
+}
+
+/** 命令防抖：300ms 内重复点击同一命令只执行最后一次 */
+let cmdDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+function debouncedExecCmd(cmd: string) {
+  if (cmdDebounceTimer) clearTimeout(cmdDebounceTimer);
+  cmdDebounceTimer = setTimeout(() => { if (mindMapInstance) mindMapInstance.execCommand(cmd); cmdDebounceTimer = null; }, 120);
+}
 const dataVersion = ref(0);
 const showConflictDialog = ref(false);
 const conflictServerTree = ref<MindNodeData[]>([]);
@@ -457,6 +481,7 @@ const nodeTypeOptions = [
   { value: 'STEP', label: '步骤' },
   { value: 'EXPECTED', label: '预期结果' },
 ];
+/** 当前节点可直接设置的属性 */
 /** 当前节点可直接设置的属性 */
 const filteredEditAttrs = computed(() => {
   if (!editForm.value) return [];
@@ -558,7 +583,15 @@ function nodeToMM(node: MindNodeData): any {
     data: {
       text: node.text,
       uid: nodeId,
-      _raw: { ...node, id: nodeId, children: undefined },
+      _raw: {
+        id: nodeId,
+        text: node.text,
+        nodeType: node.nodeType || null,
+        sortOrder: node.sortOrder || 0,
+        isRoot: node.isRoot,
+        properties: node.properties,
+        commentCount: node.commentCount || 0,
+      },
     },
     children: (node.children || []).map(c => nodeToMM(c)),
   };
@@ -837,12 +870,12 @@ function zoomOut() { mindMapInstance?.view?.narrow(); }
 function zoomReset() { mindMapInstance?.view?.reset(); }
 
 /** 初始化 simple-mind-map 实例并绑定事件 */
-function initMindMap() {
+function initMindMap(initialData?: any) {
   if (!mindMapContainer.value) return;
 
   mindMapInstance = new MindMap({
     el: mindMapContainer.value,
-    data: { data: { text: '加载中...' }, children: [] },
+    data: initialData || { data: { text: '加载中...' }, children: [] },
     theme: 'classic4',
     layout: 'logicalStructure',
     mousewheelAction: 'move',
@@ -851,6 +884,11 @@ function initMindMap() {
     initRootNodePosition: [10, 'center'],
     enableShortcutOnlyWhenMouseInSvg: true,
     useLeftKeySelectionRightKeyDrag: true,
+    enableNodeTransitionMove: false,
+    createNodePrefixContent: false,
+    isShowExpandNum: false,
+    //openPerformance: true,
+    performanceConfig: { time: 250, padding: 200, removeNodeWhenOutCanvas: true },
     themeConfig: {
       second: { marginX: 80, marginY: 60 },
       node: { marginX: 50, marginY: 50 },
@@ -897,8 +935,9 @@ function initMindMap() {
     }
   });
 
-  // 数据变化 → debounce 更新计数 + 标记脏（避免高频触发时重复全树遍历）
+  // 数据变化 → debounce 更新计数 + 标记脏
   mindMapInstance.on('data_change', () => {
+    if (!initialLoadDone) return;
     if (dataChangeTimer) clearTimeout(dataChangeTimer);
     dataChangeTimer = window.setTimeout(() => {
       const tree = getFullTree();
@@ -908,9 +947,20 @@ function initMindMap() {
     }, 300);
   });
 
-  // 渲染完成 → 注入自定义标签（合并多次调用）
+  // 渲染完成 → 注入自定义标签 + 首次渲染后启用脏检测
   mindMapInstance.on('node_tree_render_end', () => {
     scheduleRefreshLabels();
+    if (!initialLoadDone) {
+      console.log(`[perf] first render complete at +${(performance.now() - perfMountStart).toFixed(0)}ms`);
+      mindMapLoading.value = false;
+      // 延迟启用脏检测：让 simple-mind-map 内部后续事件（scrollbar/layout微调）先结束
+      // 这样即使节点少、渲染同步完成，也不会误触 markDirty
+      setTimeout(() => {
+        if (dataChangeTimer) { clearTimeout(dataChangeTimer); dataChangeTimer = null; }
+        initialLoadDone = true;
+        markClean();
+      }, 500);
+    }
   });
 
   // 缩放变化 → 更新百分比显示
@@ -1002,7 +1052,11 @@ function pasteNodes() {
 // =============================================
 
 async function loadData() {
+  mindMapLoading.value = true;
+  const t0 = performance.now();
   const [csRes, treeRes] = await Promise.all([caseSetApi.get(caseSetId), mindNodeApi.tree(caseSetId)]);
+  const t1 = performance.now();
+
   caseSet.value = csRes.data;
   const serverData = treeRes.data as any;
   const serverTree: MindNodeData[] = serverData.tree || [];
@@ -1011,16 +1065,31 @@ async function loadData() {
 
   await deleteLocalDraft(caseSetId).catch(() => {});
 
+  const t2 = performance.now();
   const mmData = serverTree.length
     ? nodeToMM(serverTree[0])
     : { data: { text: caseSet.value?.name || '新用例集' }, children: [] };
+  const t3 = performance.now();
+
   initialLoadDone = false;
   if (mindMapInstance) mindMapInstance.setData(mmData);
+  const t4 = performance.now();
+
   caseCount.value = serverTree.length > 0 ? countValid(serverTree[0]) : 0;
-  nextTick(() => {
-    markClean();
-    initialLoadDone = true;
-  });
+  const t5 = performance.now();
+
+  const jsonSize = JSON.stringify(serverData).length;
+  console.log(
+    `[perf] loadData | API=${(t1-t0).toFixed(0)}ms nodeToMM=${(t3-t2).toFixed(0)}ms ` +
+    `setData=${(t4-t3).toFixed(0)}ms countValid=${(t5-t4).toFixed(0)}ms ` +
+    `total=${(t5-t0).toFixed(0)}ms | nodes=${serverTree.length ? countNodesMM(serverTree[0]) : 0} jsonSize=${(jsonSize/1024).toFixed(1)}KB`
+  );
+}
+
+function countNodesMM(node: MindNodeData): number {
+  let c = 1;
+  if (node.children) for (const ch of node.children) c += countNodesMM(ch);
+  return c;
 }
 
 // =============================================
@@ -1028,10 +1097,15 @@ async function loadData() {
 // =============================================
 
 async function handleSave() {
+  if (saving.value) return;
   saving.value = true;
+  const st0 = performance.now();
   try {
     const tree = getFullTree();
+    const st1 = performance.now();
     const res = await mindNodeApi.batchSave(caseSetId, tree, dataVersion.value);
+    const st2 = performance.now();
+    console.log(`[perf] save | getFullTree=${(st1-st0).toFixed(0)}ms API=${(st2-st1).toFixed(0)}ms`);
     const resData = res.data as any;
 
     if (resData?.conflict) {
@@ -1213,36 +1287,41 @@ function navigateToError(idx: number) {
 // =============================================
 
 async function handleStatusChange(status: string) {
-  if (status === 'PENDING_REVIEW') {
-    try {
-      const valRes = await caseSetApi.validate(caseSetId);
-      const valData = valRes.data as any;
-      if (!valData.valid) {
-        message.error(`用例集不符合规范，共 ${valData.errorCount} 条错误，请先修正`);
-        return;
-      }
-    } catch { message.error('验证失败'); return; }
-    try { users.value = (await userApi.listAll()).data; } catch { /* */ }
-    try {
-      const revRes = await reviewApi.list(caseSetId);
-      selectedReviewers.value = (revRes.data || []).map((r: any) => r.reviewerId);
-    } catch { selectedReviewers.value = []; }
-    showReviewModal.value = true;
-    return;
-  }
-  await caseSetApi.updateStatus(caseSetId, status);
-  if (caseSet.value) caseSet.value.status = status;
-  message.success('状态已更新');
+  await guardAction(async () => {
+    if (status === 'PENDING_REVIEW') {
+      try {
+        const valRes = await caseSetApi.validate(caseSetId);
+        const valData = valRes.data as any;
+        if (!valData.valid) {
+          message.error(`用例集不符合规范，共 ${valData.errorCount} 条错误，请先修正`);
+          return;
+        }
+      } catch { message.error('验证失败'); return; }
+      try { users.value = (await userApi.listAll()).data; } catch { /* */ }
+      try {
+        const revRes = await reviewApi.list(caseSetId);
+        selectedReviewers.value = (revRes.data || []).map((r: any) => r.reviewerId);
+      } catch { selectedReviewers.value = []; }
+      showReviewModal.value = true;
+      return;
+    }
+    await caseSetApi.updateStatus(caseSetId, status);
+    if (caseSet.value) caseSet.value.status = status;
+    message.success('状态已更新');
+  });
 }
 
+const submittingReview = ref(false);
 async function submitReview() {
   if (!selectedReviewers.value.length) { message.error('请选择评审人'); return; }
+  if (submittingReview.value) return;
+  submittingReview.value = true;
   try {
     await caseSetApi.updateStatus(caseSetId, 'PENDING_REVIEW', selectedReviewers.value);
     if (caseSet.value) caseSet.value.status = 'PENDING_REVIEW';
     showReviewModal.value = false;
     message.success('已提交评审');
-  } catch { /* handled */ }
+  } catch { /* handled */ } finally { submittingReview.value = false; }
 }
 
 // =============================================
@@ -1263,11 +1342,16 @@ function onCommentCountChanged(nodeId: string, count: number) {
 // 历史版本
 // =============================================
 
+const restoringVersion = ref(false);
 async function restoreVersion(id: string) {
-  await caseHistoryApi.restore(id);
-  message.success('版本已恢复');
-  loadData();
-  showHistory.value = false;
+  if (restoringVersion.value) return;
+  restoringVersion.value = true;
+  try {
+    await caseHistoryApi.restore(id);
+    message.success('版本已恢复');
+    loadData();
+    showHistory.value = false;
+  } catch { message.error('恢复失败'); } finally { restoringVersion.value = false; }
 }
 
 // =============================================
@@ -1288,6 +1372,7 @@ function flattenNodes(tree: MindNodeData[], prefix = ''): Map<string, MindNodeDa
 }
 
 async function resolveConflictUseLocal() {
+  if (saving.value) return;
   saving.value = true;
   try {
     const tree = conflictLocalTree.value;
@@ -1311,13 +1396,14 @@ async function resolveConflictUseLocal() {
 async function resolveConflictUseServer() {
   dataVersion.value = conflictServerVersion.value;
   const serverTree = conflictServerTree.value;
+  mindMapLoading.value = true;
+  initialLoadDone = false;
   if (serverTree.length) {
     const mmData = nodeToMM(serverTree[0]);
     if (mindMapInstance) mindMapInstance.setData(mmData);
     caseCount.value = countValid(serverTree[0]);
   }
   await deleteLocalDraft(caseSetId);
-  nextTick(() => { markClean(); });
   showConflictDialog.value = false;
   message.success('已使用云端版本');
   navigateAfterSave();
@@ -1471,11 +1557,12 @@ async function applyDiffMerge() {
     caseCount.value = resData.caseCount ?? 0;
 
     if (mergedTree.length) {
+      mindMapLoading.value = true;
+      initialLoadDone = false;
       const mmData = nodeToMM(mergedTree[0]);
       if (mindMapInstance) mindMapInstance.setData(mmData);
     }
     await deleteLocalDraft(caseSetId);
-    nextTick(() => { markClean(); });
     showNodeDiffDialog.value = false;
     message.success('合并完成，已同步到云端');
     navigateAfterSave();
@@ -1494,6 +1581,7 @@ const hasUnsavedChanges = ref(false);
 let initialLoadDone = false;
 let changeCounter = 0;
 let savedChangeCounter = 0;
+let perfMountStart = 0;
 
 function markDirty() {
   if (!initialLoadDone) return;
@@ -1558,16 +1646,49 @@ function navigateToCommentNode(nodeId: string) {
 // =============================================
 
 onMounted(async () => {
-  const [uRes, attrRes] = await Promise.all([
+  const mt0 = performance.now();
+  perfMountStart = mt0;
+
+  // 所有网络请求并行发出，消除串行等待
+  const [uRes, attrRes, csRes, treeRes] = await Promise.all([
     userApi.listAll(),
     store.currentProject ? customAttributeApi.list(store.currentProject.id) : Promise.resolve({ data: [] }),
+    caseSetApi.get(caseSetId),
+    mindNodeApi.tree(caseSetId),
   ]);
+  const mt1 = performance.now();
+
   users.value = uRes.data;
   projectAttributes.value = (attrRes as any).data || [];
+  caseSet.value = csRes.data;
+  const serverData = treeRes.data as any;
+  const serverTree: MindNodeData[] = serverData.tree || [];
+  dataVersion.value = serverData.version || 0;
+
+  await deleteLocalDraft(caseSetId).catch(() => {});
+
+  const mt2 = performance.now();
+  const mmData = serverTree.length
+    ? nodeToMM(serverTree[0])
+    : { data: { text: caseSet.value?.name || '新用例集' }, children: [] };
+  const mt3 = performance.now();
+
   await nextTick();
-  initMindMap();
+  initialLoadDone = false;
+  initMindMap(mmData);
   cleanupMouseOverrides = setupMouseOverrides(mindMapContainer.value!, () => mindMapInstance);
-  await loadData();
+  const mt4 = performance.now();
+
+  caseCount.value = serverTree.length > 0 ? countValid(serverTree[0]) : 0;
+
+  const jsonSize = JSON.stringify(serverData).length;
+  const nodeCount = serverTree.length > 0 ? countNodesMM(serverTree[0]) : 0;
+  console.log(
+    `[perf] onMounted | fetch=${(mt1-mt0).toFixed(0)}ms nodeToMM=${(mt3-mt2).toFixed(0)}ms ` +
+    `initMindMap=${(mt4-mt3).toFixed(0)}ms total=${(mt4-mt0).toFixed(0)}ms ` +
+    `| nodes=${nodeCount} json=${(jsonSize/1024).toFixed(1)}KB`
+  );
+
   historyTimer = setInterval(() => caseHistoryApi.save(caseSetId).catch(() => {}), 15 * 60 * 1000);
   window.addEventListener('beforeunload', onBeforeUnload);
   window.addEventListener('keydown', onKeyboardCopyPaste, true);
@@ -1650,6 +1771,11 @@ onUnmounted(() => {
 .empty-hint {
   display: flex; align-items: center; justify-content: center;
   height: 200px; color: #ccc; font-size: 14px;
+}
+.mm-loading-overlay {
+  position: absolute; inset: 0; z-index: 200;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: rgba(250, 250, 250, 0.85); backdrop-filter: blur(2px);
 }
 /* 滚动条 */
 .mm-scrollbar { position: absolute; z-index: 50; }

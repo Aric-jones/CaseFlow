@@ -37,7 +37,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showModal = false">取消</el-button>
-        <el-button type="primary" @click="save">确定</el-button>
+        <el-button type="primary" :loading="locks.save" @click="save">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -49,19 +49,23 @@ import { ElMessage } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import { projectApi } from '../../api';
 import type { Project } from '../../types';
+import { useGuard } from '../../composables/useGuard';
 
 const projects = ref<Project[]>([]);
 const loading = ref(false);
 const showModal = ref(false);
 const editId = ref<string | null>(null);
 const form = reactive({ name: '', description: '' });
+const { locks, run } = useGuard();
 
 async function load() { loading.value = true; try { projects.value = (await projectApi.listAll()).data; } finally { loading.value = false; } }
 onMounted(load);
 async function save() {
-  if (editId.value) await projectApi.update(editId.value, form.name, form.description);
-  else await projectApi.create(form.name, form.description);
-  ElMessage.success('保存成功'); showModal.value = false; load();
+  await run('save', async () => {
+    if (editId.value) await projectApi.update(editId.value, form.name, form.description);
+    else await projectApi.create(form.name, form.description);
+    ElMessage.success('保存成功'); showModal.value = false; load();
+  });
 }
 function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 19) : ''; }
 

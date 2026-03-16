@@ -13,12 +13,14 @@ import com.caseflow.mapper.CustomAttributeMapper;
 import com.caseflow.mapper.MindNodeMapper;
 import com.caseflow.service.MindNodeService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> implements MindNodeService {
@@ -66,15 +68,14 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
         List<MindNodeDTO> childDtos = new ArrayList<>();
         for (MindNode child : children) childDtos.add(buildNode(child, childrenMap, commentCountMap));
         dto.setChildren(childDtos);
-        dto.setCommentCount(commentCountMap.getOrDefault(node.getId(), 0));
+        int cc = commentCountMap.getOrDefault(node.getId(), 0);
+        if (cc > 0) dto.setCommentCount(cc);
         return dto;
     }
 
     private MindNodeDTO toDTO(MindNode n) {
         MindNodeDTO dto = new MindNodeDTO();
         dto.setId(n.getId());
-        dto.setCaseSetId(n.getCaseSetId());
-        dto.setParentId(n.getParentId());
         dto.setText(n.getText());
         dto.setNodeType(n.getNodeType());
         dto.setSortOrder(n.getSortOrder());
@@ -84,17 +85,23 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
     }
 
     // ═══════════════════════════════════════════════════════
-    //  批量保存：差量 upsert，不再全删全插
+    //  批量保存：差量 upsert，批量操作提升效率
     // ═══════════════════════════════════════════════════════
+
+    private static final int BATCH_SIZE = 500;
 
     @Override
     @Transactional
     public int batchSave(String caseSetId, List<MindNodeDTO> nodes) {
-        // 1. 收集前端传入的所有节点 ID
-        Set<String> incomingIds = new HashSet<>();
-        if (nodes != null) collectNodeIds(nodes, incomingIds);
+        long t0 = System.currentTimeMillis();
 
-        // 2. 查询数据库中该用例集已有的节点 ID
+        // 1. 展平 DTO 树为 MindNode 列表
+        List<MindNode> flatNodes = new ArrayList<>();
+        if (nodes != null && !nodes.isEmpty()) {
+            flattenTree(caseSetId, nodes, null, flatNodes);
+        }
+
+        // 2. 查询数据库中已有节点 ID
         Set<String> existingIds = lambdaQuery()
                 .eq(MindNode::getCaseSetId, caseSetId)
                 .select(MindNode::getId)
@@ -102,39 +109,57 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
                 .map(MindNode::getId)
                 .collect(Collectors.toSet());
 
-        // 3. 删除前端不再包含的旧节点（用户在编辑器中删除的）
+        // 3. 分类：待删除 / 待更新 / 待新增
+        Set<String> incomingIds = new HashSet<>();
+        List<MindNode> toUpdate = new ArrayList<>();
+        List<MindNode> toInsert = new ArrayList<>();
+        for (MindNode node : flatNodes) {
+            String nid = node.getId();
+            if (nid != null) incomingIds.add(nid);
+            if (nid != null && existingIds.contains(nid)) {
+                toUpdate.add(node);
+            } else {
+                toInsert.add(node);
+            }
+        }
+
         Set<String> toDelete = new HashSet<>(existingIds);
         toDelete.removeAll(incomingIds);
+
+        // 4. 批量删除
         if (!toDelete.isEmpty()) {
             baseMapper.deleteBatchIds(new ArrayList<>(toDelete));
         }
 
-        // 4. 差量写入（已存在 → update，新节点 → insert）
-        Set<String> insertedIds = new HashSet<>();
-        if (nodes != null && !nodes.isEmpty()) {
-            upsertRecursive(caseSetId, nodes, null, existingIds, insertedIds);
+        // 5. 批量更新（JDBC batch，配合 rewriteBatchedStatements）
+        if (!toUpdate.isEmpty()) {
+            updateBatchById(toUpdate, BATCH_SIZE);
         }
 
-        // 5. 计算有效用例数
-        return countValidCases(caseSetId);
-    }
-
-    /** 递归收集 DTO 树中所有节点 ID */
-    private void collectNodeIds(List<MindNodeDTO> nodes, Set<String> ids) {
-        for (MindNodeDTO n : nodes) {
-            if (n.getId() != null && !n.getId().isEmpty()) ids.add(n.getId());
-            if (n.getChildren() != null) collectNodeIds(n.getChildren(), ids);
+        // 6. 批量新增
+        if (!toInsert.isEmpty()) {
+            saveBatch(toInsert, BATCH_SIZE);
         }
+
+        long t1 = System.currentTimeMillis();
+
+        // 7. 计算有效用例数
+        int validCount = countValidCases(caseSetId);
+        long t2 = System.currentTimeMillis();
+        log.info("[batchSave] caseSet={} total={} delete={} update={} insert={} | save={}ms count={}ms",
+                caseSetId, flatNodes.size(), toDelete.size(), toUpdate.size(), toInsert.size(),
+                t1 - t0, t2 - t1);
+
+        return validCount;
     }
 
-    /** 递归 upsert：已存在的节点 update，新节点 insert；insertedIds 防止同次请求中重复ID */
-    private void upsertRecursive(String caseSetId, List<MindNodeDTO> nodes, String parentId, Set<String> existingIds, Set<String> insertedIds) {
+    /** 递归展平 DTO 树为 MindNode 实体列表 */
+    private void flattenTree(String caseSetId, List<MindNodeDTO> nodes, String parentId, List<MindNode> result) {
         for (int i = 0; i < nodes.size(); i++) {
             MindNodeDTO dto = nodes.get(i);
             MindNode node = new MindNode();
-            String nodeId = dto.getId();
-            if (nodeId != null && !nodeId.isEmpty()) {
-                node.setId(nodeId);
+            if (dto.getId() != null && !dto.getId().isEmpty()) {
+                node.setId(dto.getId());
             }
             node.setCaseSetId(caseSetId);
             node.setParentId(parentId);
@@ -143,16 +168,9 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
             node.setSortOrder(i);
             node.setIsRoot(dto.getIsRoot() != null ? dto.getIsRoot() : (parentId == null ? 1 : 0));
             node.setProperties(dto.getProperties());
-
-            if (nodeId != null && (existingIds.contains(nodeId) || insertedIds.contains(nodeId))) {
-                baseMapper.updateById(node);
-            } else {
-                baseMapper.insert(node);
-            }
-            if (nodeId != null) insertedIds.add(nodeId);
-
+            result.add(node);
             if (dto.getChildren() != null && !dto.getChildren().isEmpty()) {
-                upsertRecursive(caseSetId, dto.getChildren(), node.getId(), existingIds, insertedIds);
+                flattenTree(caseSetId, dto.getChildren(), node.getId(), result);
             }
         }
     }

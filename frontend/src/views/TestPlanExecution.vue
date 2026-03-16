@@ -134,9 +134,9 @@
             </el-button>
           </div>
           <div class="footer-actions">
-            <el-button class="btn-pass" @click="doExecute('PASS')">通过</el-button>
-            <el-button class="btn-fail" @click="openReasonModal('FAIL')">不通过</el-button>
-            <el-button class="btn-skip" @click="openReasonModal('SKIP')">跳过</el-button>
+            <el-button class="btn-pass" :loading="locks.execute" @click="doExecute('PASS')">通过</el-button>
+            <el-button class="btn-fail" :disabled="locks.execute" @click="openReasonModal('FAIL')">不通过</el-button>
+            <el-button class="btn-skip" :disabled="locks.execute" @click="openReasonModal('SKIP')">跳过</el-button>
           </div>
         </div>
       </div>
@@ -151,7 +151,7 @@
         :placeholder="'请填写' + (reasonModal.action === 'FAIL' ? '不通过' : '跳过') + '原因（必填）'" />
       <template #footer>
         <el-button @click="reasonModal.visible = false">取消</el-button>
-        <el-button type="primary" @click="submitReason">确认</el-button>
+        <el-button type="primary" :loading="locks.submitReason" @click="submitReason">确认</el-button>
       </template>
     </el-dialog>
 
@@ -197,6 +197,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
+import { useGuard } from '../composables/useGuard';
 import { testPlanApi } from '../api';
 import type { TestPlan } from '../types';
 
@@ -213,6 +214,7 @@ const refreshing = ref(false);
 const filterKeyword = ref('');
 const filterResult = ref<string | undefined>();
 const reasonModal = ref({ visible: false, action: '', text: '' });
+const { locks, run } = useGuard();
 const planExecutors = ref<{ userId: string; displayName: string }[]>([]);
 
 const resultOpts = [
@@ -374,14 +376,16 @@ function goToMindMap() { if (selectedCase.value?.caseSetId) router.push(`/mind-m
 async function doExecute(result: string, reasonText?: string) {
   if (!selectedCase.value) return;
   const caseId = selectedCase.value.id;
-  await testPlanApi.executeCase(caseId, result, reasonText);
-  ElMessage.success('已记录');
-  const c = cases.value.find((x: any) => x.id === caseId);
-  if (c) { c.result = result; c.reason = reasonText || null; c.executedAt = new Date().toISOString(); }
-  rebuildTree();
-  selectedCase.value = { ...selectedCase.value, result, reason: reasonText || null };
-  const idx = cases.value.findIndex((x: any) => x.id === caseId);
-  if (idx >= 0 && idx < cases.value.length - 1) selectedCase.value = cases.value[idx + 1];
+  await run('execute', async () => {
+    await testPlanApi.executeCase(caseId, result, reasonText);
+    ElMessage.success('已记录');
+    const c = cases.value.find((x: any) => x.id === caseId);
+    if (c) { c.result = result; c.reason = reasonText || null; c.executedAt = new Date().toISOString(); }
+    rebuildTree();
+    selectedCase.value = { ...selectedCase.value!, result, reason: reasonText || null };
+    const idx = cases.value.findIndex((x: any) => x.id === caseId);
+    if (idx >= 0 && idx < cases.value.length - 1) selectedCase.value = cases.value[idx + 1];
+  });
 }
 
 function openReasonModal(action: string) {
@@ -391,10 +395,14 @@ function openReasonModal(action: string) {
 async function submitReason() {
   if (!reasonModal.value.text.trim()) { ElMessage.error('请填写原因'); return; }
   reasonModal.value.visible = false;
-  await doExecute(reasonModal.value.action, reasonModal.value.text.trim());
+  await run('submitReason', async () => {
+    await doExecute(reasonModal.value.action, reasonModal.value.text.trim());
+  });
 }
 async function removeCase(caseId: string) {
-  await testPlanApi.removeCase(caseId); ElMessage.success('已移除'); await loadData();
+  await run('removeCase', async () => {
+    await testPlanApi.removeCase(caseId); ElMessage.success('已移除'); await loadData();
+  });
 }
 
 onMounted(loadData);

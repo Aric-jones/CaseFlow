@@ -89,7 +89,7 @@
             :auto-size="{ minRows: 1, maxRows: 3 }"
             @pressEnter.exact.prevent="submitReply(c)" />
           <a-space style="margin-top: 4px">
-            <a-button size="small" type="primary" @click="submitReply(c)">发送</a-button>
+            <a-button size="small" type="primary" :loading="locks.submitReply" @click="submitReply(c)">发送</a-button>
             <a-button size="small" @click="cancelReply">取消</a-button>
           </a-space>
         </div>
@@ -100,7 +100,7 @@
     <div v-if="tab === 'node' && nodeId" class="cmt-input-area">
       <a-textarea v-model:value="newComment" placeholder="输入评论，回车发送..."
         :auto-size="{ minRows: 2, maxRows: 4 }" @pressEnter.exact.prevent="addComment" />
-      <a-button type="primary" size="small" style="margin-top: 4px" @click="addComment">发送</a-button>
+      <a-button type="primary" size="small" style="margin-top: 4px" :loading="locks.addComment" @click="addComment">发送</a-button>
     </div>
   </div>
 </template>
@@ -108,6 +108,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { commentApi } from '../api';
+import { useGuard } from '../composables/useGuard';
 
 const props = defineProps<{
   nodeId: string | null;          // 当前选中节点 ID
@@ -131,6 +132,7 @@ const replyContent = ref('');
 const editingId = ref<string | null>(null);
 const editingContent = ref('');
 const editingReplyPrefix = ref<string | null>(null); // 编辑子回复时保留 @mention 前缀
+const { locks, run } = useGuard();
 
 const currentList = computed(() =>
   tab.value === 'node' ? nodeComments.value : allComments.value
@@ -208,23 +210,27 @@ function cancelReply() {
 }
 async function submitReply(parent: any) {
   if (!replyContent.value.trim()) return;
-  const content = replyTarget.value
-    ? `回复 @${replyTarget.value.displayName}: ${replyContent.value.trim()}`
-    : replyContent.value.trim();
-  const nodeId = parent.nodeId || props.nodeId || '';
-  await commentApi.add(nodeId, props.caseSetId, content, parent.id);
-  cancelReply();
-  load();
-  if (nodeId) refreshCount(nodeId);
+  await run('submitReply', async () => {
+    const content = replyTarget.value
+      ? `回复 @${replyTarget.value.displayName}: ${replyContent.value.trim()}`
+      : replyContent.value.trim();
+    const nodeId = parent.nodeId || props.nodeId || '';
+    await commentApi.add(nodeId, props.caseSetId, content, parent.id);
+    cancelReply();
+    load();
+    if (nodeId) refreshCount(nodeId);
+  });
 }
 
 // ── 新增评论 ─────────────────────────────────────
 async function addComment() {
   if (!newComment.value.trim() || !props.nodeId) return;
-  await commentApi.add(props.nodeId, props.caseSetId, newComment.value.trim());
-  newComment.value = '';
-  loadNodeComments();
-  refreshCount(props.nodeId);
+  await run('addComment', async () => {
+    await commentApi.add(props.nodeId!, props.caseSetId, newComment.value.trim());
+    newComment.value = '';
+    loadNodeComments();
+    refreshCount(props.nodeId!);
+  });
 }
 
 // ── 编辑 ─────────────────────────────────────────
@@ -242,29 +248,34 @@ function cancelEdit() {
 }
 async function saveEdit(c: any) {
   if (!editingId.value || !editingContent.value.trim()) return;
-  // 如果原来有 @mention 前缀，保存时重新拼接
-  const content = editingReplyPrefix.value
-    ? `${editingReplyPrefix.value}: ${editingContent.value.trim()}`
-    : editingContent.value.trim();
-  await commentApi.update(editingId.value, content);
-  cancelEdit();
-  load();
+  await run('saveEdit', async () => {
+    const content = editingReplyPrefix.value
+      ? `${editingReplyPrefix.value}: ${editingContent.value.trim()}`
+      : editingContent.value.trim();
+    await commentApi.update(editingId.value!, content);
+    cancelEdit();
+    load();
+  });
 }
 
 // ── 删除 ─────────────────────────────────────────
 async function doDelete(id: string, nodeId?: string) {
-  await commentApi.delete(id);
-  load();
-  const nid = nodeId || props.nodeId;
-  if (nid) refreshCount(nid);
+  await run('doDelete', async () => {
+    await commentApi.delete(id);
+    load();
+    const nid = nodeId || props.nodeId;
+    if (nid) refreshCount(nid);
+  });
 }
 
 // ── 标记解决 ─────────────────────────────────────
 async function doResolve(c: any) {
-  await commentApi.resolve(c.id);
-  load();
-  const nodeId = c.nodeId || props.nodeId;
-  if (nodeId) refreshCount(nodeId);
+  await run('doResolve', async () => {
+    await commentApi.resolve(c.id);
+    load();
+    const nodeId = c.nodeId || props.nodeId;
+    if (nodeId) refreshCount(nodeId);
+  });
 }
 </script>
 

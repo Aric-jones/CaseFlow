@@ -115,6 +115,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Plus, Search } from '@element-plus/icons-vue';
+import { useGuard } from '../composables/useGuard';
 import { directoryApi, testPlanApi } from '../api';
 import { useAppStore } from '../stores/app';
 import type { DirectoryNode, TestPlan, PageResult } from '../types';
@@ -126,6 +127,7 @@ const plans = ref<PageResult<TestPlan>>({ records: [], total: 0, size: 20, curre
 const keyword = ref('');
 const onlyMine = ref(false);
 const loading = ref(false);
+const { locks, run } = useGuard();
 const siderCollapsed = ref(false);
 const addingDir = ref(false);
 const newDirName = ref('');
@@ -171,8 +173,10 @@ async function confirmAdd() {
   const name = newDirName.value.trim();
   if (!name || !store.currentProject || !addingDir.value) { addingDir.value = false; return; }
   addingDir.value = false; newDirName.value = '';
-  await directoryApi.create(name, addParentId.value, store.currentProject.id, 'TEST_PLAN');
-  loadDirs();
+  await run('confirmAdd', async () => {
+    await directoryApi.create(name, addParentId.value, store.currentProject!.id, 'TEST_PLAN');
+    loadDirs();
+  });
 }
 function startAddSibling(id: string) {
   ctxMenu.value.visible = false;
@@ -185,16 +189,30 @@ function startRenameDir(id: string) {
   editingDirId.value = id; editingDirName.value = dir?.name || '';
 }
 async function finishEditDir() {
-  if (editingDirId.value && editingDirName.value.trim()) { await directoryApi.rename(editingDirId.value, editingDirName.value.trim()); loadDirs(); }
+  if (editingDirId.value && editingDirName.value.trim()) {
+    await run('finishEditDir', async () => {
+      await directoryApi.rename(editingDirId.value!, editingDirName.value.trim());
+      loadDirs();
+    });
+  }
   editingDirId.value = null;
 }
 function cancelEditDir() { editingDirId.value = null; }
-async function delDir(id: string) { ctxMenu.value.visible = false; await directoryApi.delete(id); ElMessage.success('删除成功'); loadDirs(); }
+async function delDir(id: string) {
+  ctxMenu.value.visible = false;
+  await run('delDir', async () => {
+    await directoryApi.delete(id); ElMessage.success('删除成功'); loadDirs();
+  });
+}
 function showCtx(e: MouseEvent, id: string) { ctxMenu.value = { visible: true, x: e.clientX, y: e.clientY, nodeId: id }; }
 onMounted(() => document.addEventListener('click', () => { ctxMenu.value.visible = false; }));
 onUnmounted(() => document.removeEventListener('click', () => {}));
 
-async function deletePlan(id: string) { await testPlanApi.delete(id); ElMessage.success('已移入回收站'); loadPlans(); }
+async function deletePlan(id: string) {
+  await run('deletePlan', async () => {
+    await testPlanApi.delete(id); ElMessage.success('已移入回收站'); loadPlans();
+  });
+}
 function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 19) : ''; }
 
 </script>

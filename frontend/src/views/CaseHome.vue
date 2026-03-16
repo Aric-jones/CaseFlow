@@ -147,7 +147,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showCreateCase = false">取消</el-button>
-        <el-button type="primary" @click="createCase">确定</el-button>
+        <el-button type="primary" :loading="locks.createCase" @click="createCase">确定</el-button>
       </template>
     </el-dialog>
 
@@ -168,7 +168,7 @@
         :expand-on-click-node="false" @node-click="(d: any) => moveTarget = d.id" />
       <template #footer>
         <el-button @click="showMove = false">取消</el-button>
-        <el-button type="primary" @click="confirmMove">确定</el-button>
+        <el-button type="primary" :loading="locks.confirmMove" @click="confirmMove">确定</el-button>
       </template>
     </el-dialog>
 
@@ -178,7 +178,7 @@
         :expand-on-click-node="false" @node-click="(d: any) => copyTarget = d.id" />
       <template #footer>
         <el-button @click="showCopy = false">取消</el-button>
-        <el-button type="primary" @click="confirmCopy">确定</el-button>
+        <el-button type="primary" :loading="locks.confirmCopy" @click="confirmCopy">确定</el-button>
       </template>
     </el-dialog>
 
@@ -207,6 +207,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { useGuard } from '../composables/useGuard';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Search, Upload, Plus } from '@element-plus/icons-vue';
@@ -224,6 +225,7 @@ const caseData = ref<PageResult<CaseSet>>({ records: [], total: 0, size: 20, cur
 const keyword = ref('');
 const statusFilter = ref<string | undefined>();
 const loading = ref(false);
+const { locks, run } = useGuard();
 const siderCollapsed = ref(false);
 const editingDirId = ref<string | null>(null);
 const editingDirName = ref('');
@@ -305,8 +307,10 @@ async function confirmAdd() {
   const name = newDirName.value.trim();
   if (!name || !store.currentProject || !addingDir.value) { addingDir.value = false; return; }
   addingDir.value = false; newDirName.value = '';
-  await directoryApi.create(name, addParentId.value, store.currentProject.id, 'CASE');
-  loadDirs();
+  await run('confirmAdd', async () => {
+    await directoryApi.create(name, addParentId.value, store.currentProject!.id, 'CASE');
+    loadDirs();
+  });
 }
 function cancelAdd() { addingDir.value = false; newDirName.value = ''; }
 function startAddSibling(id: string) {
@@ -320,13 +324,20 @@ function startRenameDir(id: string) {
   editingDirId.value = id; editingDirName.value = dir?.name || '';
 }
 async function finishEditDir() {
-  if (editingDirId.value && editingDirName.value.trim()) { await directoryApi.rename(editingDirId.value, editingDirName.value.trim()); loadDirs(); }
+  if (editingDirId.value && editingDirName.value.trim()) {
+    await run('finishEditDir', async () => {
+      await directoryApi.rename(editingDirId.value!, editingDirName.value.trim());
+      loadDirs();
+    });
+  }
   editingDirId.value = null;
 }
 function cancelEditDir() { editingDirId.value = null; }
 async function deleteDir(id: string) {
   ctxMenu.value.visible = false;
-  try { await directoryApi.delete(id); ElMessage.success('删除成功'); if (selectedDir.value === id) selectedDir.value = null; loadDirs(); } catch {}
+  await run('deleteDir', async () => {
+    try { await directoryApi.delete(id); ElMessage.success('删除成功'); if (selectedDir.value === id) selectedDir.value = null; loadDirs(); } catch {}
+  });
 }
 function showCtx(e: MouseEvent, id: string) { ctxMenu.value = { visible: true, x: e.clientX, y: e.clientY, nodeId: id }; }
 onMounted(() => document.addEventListener('click', () => { ctxMenu.value.visible = false; }));
@@ -339,9 +350,11 @@ async function createCase() {
   if (!newCaseName.value.trim() || !store.currentProject) return;
   const targetDir = newCaseDirId.value || dirs.value[0]?.id;
   if (!targetDir) { ElMessage.error('请先选择一个目录'); return; }
-  const res = await caseSetApi.create({ name: newCaseName.value, directoryId: targetDir, projectId: store.currentProject.id, requirementLink: newCaseLink.value });
-  showCreateCase.value = false;
-  router.push(`/mind-map/${res.data.id}`);
+  await run('createCase', async () => {
+    const res = await caseSetApi.create({ name: newCaseName.value, directoryId: targetDir, projectId: store.currentProject!.id, requirementLink: newCaseLink.value });
+    showCreateCase.value = false;
+    router.push(`/mind-map/${res.data.id}`);
+  });
 }
 
 const editCaseDlg = ref({ visible: false, saving: false, id: '', name: '', requirementLink: '', directoryId: '' });
@@ -367,22 +380,37 @@ async function handleCaseAction(key: string, record: CaseSet) {
   if (key === 'move') { movingId.value = record.id; showMove.value = true; }
   if (key === 'delete') {
     await ElMessageBox.confirm('确认删除？将移入回收站', '提示', { type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消' });
-    await caseSetApi.delete(record.id);
-    ElMessage.success('已移入回收站'); loadCases();
+    await run('deleteCase', async () => {
+      await caseSetApi.delete(record.id);
+      ElMessage.success('已移入回收站'); loadCases();
+    });
   }
 }
 async function confirmCopy() {
-  if (copyingId.value && copyTarget.value) { await caseSetApi.copy(copyingId.value, copyTarget.value); ElMessage.success('复制成功'); showCopy.value = false; loadCases(); }
+  if (copyingId.value && copyTarget.value) {
+    await run('confirmCopy', async () => {
+      await caseSetApi.copy(copyingId.value!, copyTarget.value!);
+      ElMessage.success('复制成功'); showCopy.value = false; loadCases();
+    });
+  }
 }
 async function confirmMove() {
-  if (movingId.value && moveTarget.value) { await caseSetApi.move(movingId.value, moveTarget.value); ElMessage.success('移动成功'); showMove.value = false; loadCases(); }
+  if (movingId.value && moveTarget.value) {
+    await run('confirmMove', async () => {
+      await caseSetApi.move(movingId.value!, moveTarget.value!);
+      ElMessage.success('移动成功'); showMove.value = false; loadCases();
+    });
+  }
 }
 async function handleImport(file: File) {
   if (!store.currentProject) return false;
   const targetDir = selectedDir.value || dirs.value[0]?.id;
   if (!targetDir) { ElMessage.error('请先创建目录'); return false; }
-  await caseSetApi.importExcel(file, targetDir, store.currentProject.id);
-  ElMessage.success('导入成功'); showImport.value = false; loadCases(); return false;
+  await run('handleImport', async () => {
+    await caseSetApi.importExcel(file, targetDir, store.currentProject!.id);
+    ElMessage.success('导入成功'); showImport.value = false; loadCases();
+  });
+  return false;
 }
 
 function statusLabel(s: string) { return ({ WRITING: '编写中', PENDING_REVIEW: '待评审', NO_REVIEW: '无需评审', APPROVED: '审核通过' } as any)[s] || s; }

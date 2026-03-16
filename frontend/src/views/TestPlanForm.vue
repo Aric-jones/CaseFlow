@@ -210,6 +210,7 @@ async function loadFilteredCount(csId: string) {
 }
 
 async function submitForm() {
+  if (saving.value) return;
   if (!form.value.name.trim()) { ElMessage.error('请输入计划名称'); return; }
   saving.value = true;
   try {

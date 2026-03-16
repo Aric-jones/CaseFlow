@@ -25,6 +25,12 @@
       <div class="review-mm-wrap">
         <div ref="mindMapContainer" class="review-mm"></div>
 
+        <!-- 加载遮罩 -->
+        <div v-if="mindMapLoading" class="mm-loading-overlay">
+          <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+          <span style="margin-top:12px;color:#666;font-size:13px">加载思维导图中…</span>
+        </div>
+
         <!-- 水平滚动条 -->
         <div class="mm-scrollbar mm-scrollbar-h"
           @click="(e: MouseEvent) => mindMapInstance?.scrollbar?.onClick(e, 'horizontal')">
@@ -79,7 +85,7 @@
               </div>
               <div class="prop-field">
                 <label>标记</label>
-                <el-select :model-value="currentMark" @change="(v: any) => handleMark(v)" style="width:100%" size="small">
+                <el-select :model-value="currentMark" @change="(v: any) => handleMark(v)" style="width:100%" size="small" :loading="markLoading" :disabled="markLoading">
                   <el-option value="NONE" label="无" />
                   <el-option value="待完成" label="待完成" />
                   <el-option value="待确认" label="待确认" />
@@ -160,6 +166,9 @@ const selectedNodeRaw = ref<any>(null);
 const commentPanelRef = ref<InstanceType<typeof CommentPanel> | null>(null);
 const rightPanelOpen = ref(false);
 const panelTab = ref<string>('node');
+const mindMapLoading = ref(true);
+const markLoading = ref(false);
+const reviewLoading = ref(false);
 
 const revLabel: Record<string, string> = { PENDING: '未评审', APPROVED: '通过', REJECTED: '不通过', NEED_MODIFY: '待修改' };
 const myReview = computed(() => reviewers.value.find(r => r.reviewerId === store.user?.id));
@@ -188,8 +197,21 @@ function revElType(s: string): any { return ({ PENDING: 'info', APPROVED: 'succe
 watch(panelTab, (tab) => { if (tab === 'comments') nextTick(() => commentPanelRef.value?.refresh()); });
 
 function nodeToMM(node: MindNodeData): any {
+  const uid = node.id || ('n_' + Math.random().toString(36).substring(2, 10));
   return {
-    data: { text: node.text, uid: node.id || ('n_' + Math.random().toString(36).substring(2, 10)), _raw: { ...node, children: undefined } },
+    data: {
+      text: node.text,
+      uid,
+      _raw: {
+        id: uid,
+        text: node.text,
+        nodeType: node.nodeType || null,
+        sortOrder: node.sortOrder || 0,
+        isRoot: node.isRoot,
+        properties: node.properties,
+        commentCount: node.commentCount || 0,
+      },
+    },
     children: (node.children || []).map(c => nodeToMM(c)),
   };
 }
@@ -226,18 +248,26 @@ function navigateToCommentNode(nodeId: string) {
 let cleanupMouseOverrides: (() => void) | null = null;
 
 onMounted(async () => {
-  const [csRes, treeRes, revRes] = await Promise.all([caseSetApi.get(id), mindNodeApi.tree(id), reviewApi.list(id)]);
+  const [csRes, treeRes, revRes, uRes] = await Promise.all([
+    caseSetApi.get(id), mindNodeApi.tree(id), reviewApi.list(id), userApi.listAll()
+  ]);
   caseSet.value = csRes.data;
   reviewers.value = revRes.data;
-  users.value = (await userApi.listAll()).data;
+  users.value = uRes.data;
   await nextTick();
+  const mmData = (treeRes.data as any).tree?.length ? nodeToMM((treeRes.data as any).tree[0]) : { data: { text: '空' }, children: [] };
   mindMapInstance = new MindMap({
     el: mindMapContainer.value!,
-    data: (treeRes.data as any).tree?.length ? nodeToMM((treeRes.data as any).tree[0]) : { data: { text: '空' }, children: [] },
+    data: mmData,
     theme: 'classic4', layout: 'logicalStructure', readonly: true, mousewheelAction: 'move',
     textAutoWrapWidth: 300,
     enableFreeDrag: false, useLeftKeySelectionRightKeyDrag: true,
     initRootNodePosition: [10, 'center'],
+    enableNodeTransitionMove: false,
+    createNodePrefixContent: false,
+    isShowExpandNum: false,
+    openPerformance: false,
+    performanceConfig: { time: 250, padding: 200, removeNodeWhenOutCanvas: true },
     themeConfig: { second: { marginX: 80, marginY: 60 }, node: { marginX: 50, marginY: 50 } },
   });
   mindMapInstance.on('node_active', (_: any, nodes: any[]) => {
@@ -247,6 +277,7 @@ onMounted(async () => {
   mindMapInstance.on('node_click', (n: any) => { handleNodeSelect(n); });
   mindMapInstance.on('node_tree_render_end', () => {
     requestAnimationFrame(() => addAllCustomLabels(mindMapInstance));
+    if (mindMapLoading.value) mindMapLoading.value = false;
   });
   mindMapInstance.on('scale', (scale: number) => { zoomLevel.value = Math.round(scale * 100); });
   mindMapInstance.on('scrollbar_change', (data: any) => {
@@ -272,7 +303,8 @@ function openCommentPanel() {
 }
 
 async function handleMark(mark: string) {
-  if (!selectedNodeRaw.value?.id) return;
+  if (!selectedNodeRaw.value?.id || markLoading.value) return;
+  markLoading.value = true;
   const nodeId = selectedNodeRaw.value.id;
   const cleanProps: Record<string, any> = {};
   for (const [k, v] of Object.entries(selectedNodeRaw.value.properties || {})) {
@@ -291,19 +323,23 @@ async function handleMark(mark: string) {
     selectedNodeRaw.value = { ...selectedNodeRaw.value, properties: { ...cleanProps } };
     requestAnimationFrame(() => addAllCustomLabels(mindMapInstance));
     ElMessage.success('标记已更新');
-  } catch { ElMessage.error('标记更新失败'); }
+  } catch { ElMessage.error('标记更新失败'); } finally { markLoading.value = false; }
 }
 
 async function updateReview(rid: string, status: string) {
-  const res = await reviewApi.updateStatus(rid, status);
-  const data = res.data as any;
-  if (data?.reviewers) reviewers.value = data.reviewers;
-  else reviewers.value = (await reviewApi.list(id)).data;
-  if (data?.caseSetStatus && caseSet.value) {
-    caseSet.value.status = data.caseSetStatus;
-  }
-  if (data?.allApproved) { ElMessage.success('全部审核通过！'); }
-  else ElMessage.success('评审状态已更新');
+  if (reviewLoading.value) return;
+  reviewLoading.value = true;
+  try {
+    const res = await reviewApi.updateStatus(rid, status);
+    const data = res.data as any;
+    if (data?.reviewers) reviewers.value = data.reviewers;
+    else reviewers.value = (await reviewApi.list(id)).data;
+    if (data?.caseSetStatus && caseSet.value) {
+      caseSet.value.status = data.caseSetStatus;
+    }
+    if (data?.allApproved) { ElMessage.success('全部审核通过！'); }
+    else ElMessage.success('评审状态已更新');
+  } catch { ElMessage.error('更新失败'); } finally { reviewLoading.value = false; }
 }
 </script>
 
@@ -321,6 +357,11 @@ async function updateReview(rid: string, status: string) {
 .empty-hint { display:flex; align-items:center; justify-content:center; height:160px; color:#c0c4cc; font-size:13px; }
 .reviewer-card { margin-bottom:12px; padding:10px; border:1px solid #e4e7ed; border-radius:8px; }
 .reviewer-name { margin-bottom:6px; font-weight:600; font-size:13px; }
+.mm-loading-overlay {
+  position: absolute; inset: 0; z-index: 200;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: rgba(250, 250, 250, 0.85); backdrop-filter: blur(2px);
+}
 
 /* 滚动条 */
 .mm-scrollbar { position: absolute; z-index: 50; }

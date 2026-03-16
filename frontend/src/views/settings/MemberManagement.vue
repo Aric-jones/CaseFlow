@@ -48,7 +48,7 @@
         <el-table-column label="操作" min-width="70" align="center">
           <template #default="{ row }">
             <el-button :type="row.status === 1 ? 'danger' : 'primary'" link size="small"
-              @click="userApi.toggleStatus(row.id).then(() => loadUsers(page))">
+              :loading="locks['toggle_' + row.id]" @click="toggleStatus(row.id)">
               {{ row.status === 1 ? '禁用' : '启用' }}
             </el-button>
           </template>
@@ -83,7 +83,7 @@
       </el-alert>
       <template #footer>
         <el-button @click="showAdd = false">取消</el-button>
-        <el-button type="primary" @click="addUser">确定</el-button>
+        <el-button type="primary" :loading="locks.addUser" @click="addUser">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -95,6 +95,7 @@ import { ElMessage } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import { userApi, projectApi } from '../../api';
 import type { User, Project } from '../../types';
+import { useGuard } from '../../composables/useGuard';
 
 const users = ref<User[]>([]);
 const projects = ref<Project[]>([]);
@@ -104,6 +105,7 @@ const total = ref(0);
 const showAdd = ref(false);
 const form = reactive({ username: '', displayName: '', identity: 'TEST', projectIds: [] as string[] });
 const userProjectMap = ref<Record<string, string[]>>({});
+const { locks, run } = useGuard();
 
 async function loadUsers(p = 1) {
   loading.value = true;
@@ -125,10 +127,18 @@ async function loadUserProjects() {
 onMounted(() => { projectApi.listAll().then(r => projects.value = r.data); loadUsers(); });
 
 async function addUser() {
-  await userApi.create({ ...form, password: 'wps123456' });
-  ElMessage.success('创建成功'); showAdd.value = false;
-  Object.assign(form, { username: '', displayName: '', identity: 'TEST', projectIds: [] });
-  loadUsers();
+  await run('addUser', async () => {
+    await userApi.create({ ...form, password: 'wps123456' });
+    ElMessage.success('创建成功'); showAdd.value = false;
+    Object.assign(form, { username: '', displayName: '', identity: 'TEST', projectIds: [] });
+    loadUsers();
+  });
+}
+async function toggleStatus(userId: string) {
+  await run('toggle_' + userId, async () => {
+    await userApi.toggleStatus(userId);
+    await loadUsers(page.value);
+  });
 }
 async function onProjectsChange(userId: string, projectIds: string[]) {
   userProjectMap.value[userId] = projectIds;

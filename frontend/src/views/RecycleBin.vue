@@ -15,7 +15,7 @@
         </el-table-column>
         <el-table-column label="操作" min-width="150">
           <template #default="{ row }">
-            <el-button text type="primary" size="small" @click="restore(row.id)">恢复</el-button>
+            <el-button text type="primary" size="small" :loading="locks.restore" @click="restore(row.id)">恢复</el-button>
             <el-popconfirm title="彻底删除？不可恢复" @confirm="permanentDel(row.id)">
               <template #reference>
                 <el-button text type="danger" size="small">彻底删除</el-button>
@@ -34,10 +34,12 @@ import { ElMessage } from 'element-plus';
 import { recycleBinApi } from '../api';
 import { useAppStore } from '../stores/app';
 import type { RecycleBinItem } from '../types';
+import { useGuard } from '../composables/useGuard';
 
 const store = useAppStore();
 const items = ref<RecycleBinItem[]>([]);
 const loading = ref(false);
+const { locks, run } = useGuard();
 
 async function load() {
   if (!store.currentProject) return;
@@ -48,8 +50,8 @@ async function load() {
 watch(() => store.currentProject, load);
 onMounted(load);
 
-async function restore(id: string) { await recycleBinApi.restore(id); ElMessage.success('已恢复'); load(); }
-async function permanentDel(id: string) { await recycleBinApi.permanentDelete(id); ElMessage.success('已彻底删除'); load(); }
+async function restore(id: string) { await run('restore', async () => { await recycleBinApi.restore(id); ElMessage.success('已恢复'); load(); }); }
+async function permanentDel(id: string) { await run('permanentDel', async () => { await recycleBinApi.permanentDelete(id); ElMessage.success('已彻底删除'); load(); }); }
 function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 19) : ''; }
 
 </script>

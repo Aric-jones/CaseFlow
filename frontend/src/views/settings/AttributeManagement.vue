@@ -77,7 +77,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showModal = false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button type="primary" :loading="locks.save" @click="save">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -90,6 +90,7 @@ import { Plus } from '@element-plus/icons-vue';
 import { customAttributeApi } from '../../api';
 import { useAppStore } from '../../stores/app';
 import type { CustomAttribute } from '../../types';
+import { useGuard } from '../../composables/useGuard';
 
 const store = useAppStore();
 const attrs = ref<CustomAttribute[]>([]);
@@ -97,6 +98,7 @@ const loading = ref(false);
 const showModal = ref(false);
 const editId = ref<string | null>(null);
 const form = reactive({ name: '', options: '', multiSelect: false, required: false, nodeTypeLimit: '', displayType: 'DROPDOWN' });
+const { locks, run } = useGuard();
 
 async function loadAttrs() {
   if (!store.currentProject) return;
@@ -114,15 +116,17 @@ function startEdit(attr: CustomAttribute) {
   showModal.value = true;
 }
 async function save() {
-  const data = {
-    projectId: store.currentProject?.id, name: form.name,
-    options: form.options.split(',').map(s => s.trim()).filter(Boolean),
-    multiSelect: form.multiSelect ? 1 : 0, required: form.required ? 1 : 0,
-    nodeTypeLimit: form.nodeTypeLimit || null, displayType: form.displayType,
-  };
-  if (editId.value) await customAttributeApi.update(editId.value, data);
-  else await customAttributeApi.create(data);
-  ElMessage.success('保存成功'); showModal.value = false; loadAttrs();
+  await run('save', async () => {
+    const data = {
+      projectId: store.currentProject?.id, name: form.name,
+      options: form.options.split(',').map(s => s.trim()).filter(Boolean),
+      multiSelect: form.multiSelect ? 1 : 0, required: form.required ? 1 : 0,
+      nodeTypeLimit: form.nodeTypeLimit || null, displayType: form.displayType,
+    };
+    if (editId.value) await customAttributeApi.update(editId.value, data);
+    else await customAttributeApi.create(data);
+    ElMessage.success('保存成功'); showModal.value = false; loadAttrs();
+  });
 }
 
 </script>
