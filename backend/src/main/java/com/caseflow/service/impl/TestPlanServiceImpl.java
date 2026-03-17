@@ -29,10 +29,10 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
     private final CustomAttributeMapper customAttributeMapper;
 
     @Override
-    public Page<TestPlan> listPlans(String projectId, String keyword, int page, int size, String executorId) {
+    public Page<TestPlan> listPlans(String projectId, String keyword, int page, int size, String createdBy) {
         return lambdaQuery()
                 .eq(StringUtils.hasText(projectId), TestPlan::getProjectId, projectId)
-                .eq(StringUtils.hasText(executorId), TestPlan::getExecutorId, executorId)
+                .eq(StringUtils.hasText(createdBy), TestPlan::getCreatedBy, createdBy)
                 .like(StringUtils.hasText(keyword), TestPlan::getName, keyword)
                 .orderByDesc(TestPlan::getCreatedAt).page(new Page<>(page, size));
     }

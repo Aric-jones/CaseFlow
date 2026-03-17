@@ -11,9 +11,11 @@ import com.caseflow.service.CaseSetService;
 import com.caseflow.service.MindMapExcelService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
+import java.util.Map;
 
 @RestController @RequestMapping("/api/case-sets") @RequiredArgsConstructor
 public class CaseSetController {
@@ -22,8 +24,9 @@ public class CaseSetController {
 
     @GetMapping public Result<?> list(@RequestParam(required = false) String directoryId, @RequestParam(required = false) String projectId,
             @RequestParam(required = false) String keyword, @RequestParam(required = false) String status,
+            @RequestParam(required = false) String createdBy,
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
-        return Result.ok(caseSetService.listCaseSets(directoryId, projectId, keyword, status, page, size));
+        return Result.ok(caseSetService.listCaseSets(directoryId, projectId, keyword, status, createdBy, page, size));
     }
     @GetMapping("/{id}") public Result<?> get(@PathVariable String id) {
         var cs = caseSetService.getById(id);
@@ -71,6 +74,24 @@ public class CaseSetController {
     @PostMapping("/import") public Result<?> importExcel(@RequestParam("file") MultipartFile file, @RequestParam String directoryId, @RequestParam String projectId) {
         String csId = mindMapExcelService.importAsNewCaseSet(file, directoryId, projectId);
         return Result.ok(csId);
+    }
+
+    @PostMapping("/import/validate")
+    public Result<?> validateImport(@RequestParam("file") MultipartFile file, @RequestParam String projectId) {
+        Map<String, Object> validation = mindMapExcelService.validateExcel(file, projectId);
+        return Result.ok(validation);
+    }
+
+    @GetMapping("/import/template")
+    public void downloadTemplate(@RequestParam String projectId, HttpServletResponse response) {
+        try {
+            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            response.setHeader("Content-Disposition",
+                    "attachment; filename=" + java.net.URLEncoder.encode("用例导入模板.xlsx", "UTF-8"));
+            mindMapExcelService.generateTemplate(projectId, response.getOutputStream());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @SaCheckPermission("cases:delete")

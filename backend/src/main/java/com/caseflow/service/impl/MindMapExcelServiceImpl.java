@@ -110,9 +110,6 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
                 }
             }
 
-            // 合并单元格
-            computeAndApplyMerges(sheet, rows, maxModuleDepth);
-
             // 自动列宽
             for (int i = 0; i < headers.size(); i++) {
                 sheet.autoSizeColumn(i);
@@ -227,8 +224,8 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
         CaseSet cs = caseSetMapper.selectById(caseSetId);
         if (cs == null) throw new BusinessException("用例集不存在");
 
-        List<String> dynamicAttrNames = getDynamicAttrNames(cs.getProjectId());
-        List<CaseRow> rows = parseExcel(file, dynamicAttrNames);
+        List<CustomAttribute> allAttrs = customAttributeService.listByProject(cs.getProjectId());
+        List<CaseRow> rows = parseExcel(file, allAttrs);
         if (rows.isEmpty()) throw new BusinessException("Excel 中没有有效数据");
 
         MindNodeDTO root = rowsToTree(rows, cs.getName());
@@ -249,8 +246,8 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
     @Transactional
     public String importAsNewCaseSet(MultipartFile file, String directoryId, String projectId) {
         String uid = CurrentUserUtil.getCurrentUserId();
-        List<String> dynamicAttrNames = getDynamicAttrNames(projectId);
-        List<CaseRow> rows = parseExcel(file, dynamicAttrNames);
+        List<CustomAttribute> allAttrs = customAttributeService.listByProject(projectId);
+        List<CaseRow> rows = parseExcel(file, allAttrs);
         if (rows.isEmpty()) throw new BusinessException("Excel 中没有有效数据");
 
         String name = file.getOriginalFilename() != null
@@ -283,7 +280,16 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
 
     private static final Pattern MODULE_COL_PATTERN = Pattern.compile("^功能模块(\\d+)$");
 
-    private List<CaseRow> parseExcel(MultipartFile file, List<String> dynamicAttrNames) {
+    private List<CaseRow> parseExcel(MultipartFile file, List<CustomAttribute> allAttrs) {
+        List<String> dynamicAttrNames = new ArrayList<>();
+        Set<String> multiSelectAttrs = new HashSet<>();
+        for (CustomAttribute a : allAttrs) {
+            dynamicAttrNames.add(a.getName());
+            if (a.getMultiSelect() != null && a.getMultiSelect() == 1) {
+                multiSelectAttrs.add(a.getName());
+            }
+        }
+
         try (InputStream is = file.getInputStream(); Workbook wb = new XSSFWorkbook(is)) {
             Sheet sheet = wb.getSheetAt(0);
             Row header = sheet.getRow(0);
@@ -301,8 +307,7 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
             Integer titleCol = findCol(colMap, "用例标题", "标题", "Title");
             if (titleCol == null) throw new BusinessException("Excel表头必须包含 '用例标题' 列");
 
-            // 识别多级模块列：功能模块1, 功能模块2, ... 或单列 所属模块
-            TreeMap<Integer, Integer> moduleCols = new TreeMap<>(); // moduleLevel -> colIdx
+            TreeMap<Integer, Integer> moduleCols = new TreeMap<>();
             for (Map.Entry<String, Integer> e : colMap.entrySet()) {
                 Matcher m = MODULE_COL_PATTERN.matcher(e.getKey());
                 if (m.matches()) {
@@ -333,7 +338,6 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
 
                 CaseRow cr = new CaseRow();
 
-                // 解析模块层级
                 if (!moduleCols.isEmpty()) {
                     for (Map.Entry<Integer, Integer> me : moduleCols.entrySet()) {
                         String val = getCellValue(row, me.getValue(), mergedValues, i);
@@ -360,7 +364,16 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
                 for (Map.Entry<String, Integer> entry : attrCols.entrySet()) {
                     String v = getCellValue(row, entry.getValue(), mergedValues, i);
                     if (v != null && !v.isBlank()) {
-                        cr.properties.put(entry.getKey(), v);
+                        if (multiSelectAttrs.contains(entry.getKey()) && v.contains(",")) {
+                            List<String> list = new ArrayList<>();
+                            for (String part : v.split(",")) {
+                                String trimmed = part.trim();
+                                if (!trimmed.isEmpty()) list.add(trimmed);
+                            }
+                            cr.properties.put(entry.getKey(), list);
+                        } else {
+                            cr.properties.put(entry.getKey(), v);
+                        }
                     }
                 }
                 rows.add(cr);
@@ -421,6 +434,16 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
     }
 
     private String nullToEmpty(String s) { return s == null ? "" : s; }
+
+    private String getColumnLetter(int colIndex) {
+        StringBuilder sb = new StringBuilder();
+        int col = colIndex;
+        while (col >= 0) {
+            sb.insert(0, (char) ('A' + col % 26));
+            col = col / 26 - 1;
+        }
+        return sb.toString();
+    }
 
     // ═══════════════════════════════════════════════════════
     //  表格行 → 思维导图树
@@ -540,6 +563,328 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
         CellStyle style = wb.createCellStyle();
         style.setVerticalAlignment(VerticalAlignment.CENTER);
         style.setWrapText(true);
+        style.setBorderBottom(BorderStyle.THIN);
+        style.setBorderTop(BorderStyle.THIN);
+        style.setBorderLeft(BorderStyle.THIN);
+        style.setBorderRight(BorderStyle.THIN);
+        return style;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  预校验 Excel
+    // ═══════════════════════════════════════════════════════
+
+    @Override
+    public Map<String, Object> validateExcel(MultipartFile file, String projectId) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        List<String> errors = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        int dataRowCount = 0;
+
+        try (InputStream is = file.getInputStream(); Workbook wb = new XSSFWorkbook(is)) {
+            Sheet sheet = wb.getSheetAt(0);
+            Row header = sheet.getRow(0);
+            if (header == null) {
+                errors.add("Excel 文件为空，没有表头行");
+                result.put("errors", errors); result.put("warnings", warnings); result.put("dataRowCount", 0);
+                return result;
+            }
+
+            Map<String, Integer> colMap = new LinkedHashMap<>();
+            for (int i = 0; i < header.getLastCellNum(); i++) {
+                Cell c = header.getCell(i);
+                if (c != null) {
+                    String hv = c.getStringCellValue().trim();
+                    if (!hv.isEmpty()) colMap.put(hv, i);
+                }
+            }
+
+            // 1) 必需列校验：用例标题、前置条件、步骤、预期结果
+            Integer titleCol = findCol(colMap, "用例标题", "标题", "Title");
+            Integer preCol = findCol(colMap, "前置条件", "前提条件", "Precondition");
+            Integer stepCol = findCol(colMap, "步骤", "操作步骤", "Step", "Steps");
+            Integer expectedCol = findCol(colMap, "预期结果", "期望结果", "Expected");
+            if (titleCol == null) errors.add("表头缺少必需列「用例标题」");
+            if (preCol == null) errors.add("表头缺少必需列「前置条件」");
+            if (stepCol == null) errors.add("表头缺少必需列「步骤」");
+            if (expectedCol == null) errors.add("表头缺少必需列「预期结果」");
+
+            // 2) 功能模块列顺序校验
+            TreeMap<Integer, Integer> moduleCols = new TreeMap<>();
+            for (Map.Entry<String, Integer> e : colMap.entrySet()) {
+                Matcher m = MODULE_COL_PATTERN.matcher(e.getKey());
+                if (m.matches()) moduleCols.put(Integer.parseInt(m.group(1)), e.getValue());
+            }
+            if (!moduleCols.isEmpty()) {
+                int expectedLevel = 1;
+                for (Integer level : moduleCols.keySet()) {
+                    if (level != expectedLevel) {
+                        errors.add("功能模块列顺序错误：期望「功能模块" + expectedLevel + "」但找到了「功能模块" + level + "」，功能模块列必须从1开始连续编号");
+                        break;
+                    }
+                    expectedLevel++;
+                }
+            }
+
+            // 3) 检查自定义属性列
+            List<CustomAttribute> allAttrs = customAttributeService.listByProject(projectId);
+            List<String> dynamicAttrNames = new ArrayList<>();
+            Map<String, List<String>> attrOptionsMap = new LinkedHashMap<>();
+            Set<String> requiredAttrNames = new HashSet<>();
+            Set<String> multiSelectAttrNames = new HashSet<>();
+            for (CustomAttribute a : allAttrs) {
+                dynamicAttrNames.add(a.getName());
+                if (a.getOptions() != null && !a.getOptions().isEmpty()) {
+                    attrOptionsMap.put(a.getName(), a.getOptions());
+                }
+                if (a.getRequired() != null && a.getRequired() == 1) {
+                    requiredAttrNames.add(a.getName());
+                }
+                if (a.getMultiSelect() != null && a.getMultiSelect() == 1) {
+                    multiSelectAttrNames.add(a.getName());
+                }
+            }
+
+            List<String> matchedAttrs = new ArrayList<>();
+            Map<String, Integer> attrCols = new LinkedHashMap<>();
+            List<String> unmatchedCols = new ArrayList<>();
+            Set<String> knownCols = new HashSet<>(List.of("用例标题", "标题", "Title",
+                    "前置条件", "前提条件", "Precondition", "步骤", "操作步骤", "Step", "Steps",
+                    "预期结果", "期望结果", "Expected", "所属模块", "模块", "Module"));
+            for (String attrName : dynamicAttrNames) {
+                Integer idx = colMap.get(attrName);
+                if (idx != null) {
+                    matchedAttrs.add(attrName);
+                    attrCols.put(attrName, idx);
+                }
+            }
+            for (String colName : colMap.keySet()) {
+                if (knownCols.contains(colName) || MODULE_COL_PATTERN.matcher(colName).matches()) continue;
+                if (dynamicAttrNames.contains(colName)) continue;
+                unmatchedCols.add(colName);
+            }
+            if (!unmatchedCols.isEmpty()) {
+                warnings.add("以下列未识别，导入时将被忽略：" + String.join("、", unmatchedCols));
+            }
+
+            // 必填属性列是否存在于表头
+            for (String reqAttr : requiredAttrNames) {
+                if (!attrCols.containsKey(reqAttr)) {
+                    errors.add("表头缺少必填属性列「" + reqAttr + "」");
+                }
+            }
+
+            // 4) 返回属性定义（含可选值）供前端展示
+            List<Map<String, Object>> attrDefs = new ArrayList<>();
+            for (CustomAttribute a : allAttrs) {
+                Map<String, Object> def = new LinkedHashMap<>();
+                def.put("name", a.getName());
+                def.put("options", a.getOptions() != null ? a.getOptions() : List.of());
+                def.put("multiSelect", a.getMultiSelect() != null && a.getMultiSelect() == 1);
+                def.put("required", a.getRequired() != null && a.getRequired() == 1);
+                attrDefs.add(def);
+            }
+            result.put("attrDefs", attrDefs);
+
+            // 5) 逐行校验数据
+            boolean hasRequiredCols = titleCol != null && preCol != null && stepCol != null && expectedCol != null;
+            if (hasRequiredCols) {
+                Map<String, String> mergedValues = buildMergedValueMap(sheet);
+                int emptyTitleCount = 0;
+                int totalWithTitle = 0;
+                int invalidAttrRowCount = 0;
+                List<String> attrErrors = new ArrayList<>();
+                int maxAttrErrors = 20;
+
+                for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                    Row row = sheet.getRow(i);
+                    if (row == null) continue;
+                    String title = getCellValue(row, titleCol, mergedValues, i);
+                    if (title != null && !title.isBlank()) {
+                        totalWithTitle++;
+                        boolean rowValid = true;
+
+                        for (Map.Entry<String, Integer> ae : attrCols.entrySet()) {
+                            String attrName = ae.getKey();
+                            String cellVal = getCellValue(row, ae.getValue(), mergedValues, i);
+                            boolean isEmpty = cellVal == null || cellVal.isBlank();
+
+                            if (isEmpty && requiredAttrNames.contains(attrName)) {
+                                rowValid = false;
+                                if (attrErrors.size() < maxAttrErrors) {
+                                    String colLetter = getColumnLetter(ae.getValue());
+                                    attrErrors.add("第" + (i + 1) + "行 " + colLetter + "列「" + attrName + "」为必填属性，不能为空");
+                                }
+                                continue;
+                            }
+                            if (isEmpty) continue;
+
+                            // 单选属性不允许填写多个值
+                            boolean isMulti = multiSelectAttrNames.contains(attrName);
+                            String[] parts = cellVal.contains(",") ? cellVal.split(",") : new String[]{cellVal};
+                            if (!isMulti && parts.length > 1) {
+                                rowValid = false;
+                                if (attrErrors.size() < maxAttrErrors) {
+                                    String colLetter = getColumnLetter(ae.getValue());
+                                    attrErrors.add("第" + (i + 1) + "行 " + colLetter + "列「" + attrName
+                                            + "」为单选属性，不能填写多个值（当前值：" + cellVal + "）");
+                                }
+                                continue;
+                            }
+
+                            List<String> validOptions = attrOptionsMap.get(attrName);
+                            if (validOptions == null || validOptions.isEmpty()) continue;
+
+                            for (String part : parts) {
+                                String trimmed = part.trim();
+                                if (!trimmed.isEmpty() && !validOptions.contains(trimmed)) {
+                                    rowValid = false;
+                                    if (attrErrors.size() < maxAttrErrors) {
+                                        String colLetter = getColumnLetter(ae.getValue());
+                                        attrErrors.add("第" + (i + 1) + "行 " + colLetter + "列「" + attrName
+                                                + "」的值「" + trimmed + "」不是系统内置属性值，可选值为：" + String.join("、", validOptions));
+                                    }
+                                }
+                            }
+                        }
+
+                        if (rowValid) {
+                            dataRowCount++;
+                        } else {
+                            invalidAttrRowCount++;
+                        }
+                    } else {
+                        boolean allEmpty = true;
+                        for (int col = 0; col < header.getLastCellNum(); col++) {
+                            String val = getCellValue(row, col, mergedValues, i);
+                            if (val != null && !val.isBlank()) { allEmpty = false; break; }
+                        }
+                        if (!allEmpty) emptyTitleCount++;
+                    }
+                }
+                if (emptyTitleCount > 0) {
+                    warnings.add("有 " + emptyTitleCount + " 行缺少用例标题，这些行将被跳过");
+                }
+                if (totalWithTitle == 0) {
+                    errors.add("没有有效数据行（所有行的用例标题均为空）");
+                }
+                if (!attrErrors.isEmpty()) {
+                    errors.addAll(attrErrors);
+                    if (attrErrors.size() >= maxAttrErrors) {
+                        errors.add("... 属性校验错误过多，仅展示前 " + maxAttrErrors + " 条");
+                    }
+                }
+                result.put("invalidRowCount", invalidAttrRowCount);
+            }
+
+            result.put("errors", errors);
+            result.put("warnings", warnings);
+            result.put("dataRowCount", dataRowCount);
+            result.put("matchedAttrs", matchedAttrs);
+        } catch (Exception e) {
+            errors.add("Excel 文件解析失败：" + e.getMessage());
+            result.put("errors", errors); result.put("warnings", warnings); result.put("dataRowCount", 0);
+        }
+        return result;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  生成导入模板
+    // ═══════════════════════════════════════════════════════
+
+    @Override
+    public void generateTemplate(String projectId, OutputStream out) {
+        List<CustomAttribute> allAttrs = customAttributeService.listByProject(projectId);
+
+        try (Workbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet("用例模板");
+            CellStyle headerStyle = createHeaderStyle(wb);
+            CellStyle requiredHeaderStyle = createRequiredHeaderStyle(wb);
+
+            List<String> headers = new ArrayList<>();
+            headers.add("功能模块1");
+            headers.add("功能模块2");
+            headers.add("用例标题");
+            headers.add("前置条件");
+            headers.add("步骤");
+            headers.add("预期结果");
+            for (CustomAttribute a : allAttrs) headers.add(a.getName());
+
+            Set<String> requiredHeaders = new HashSet<>(List.of("用例标题", "前置条件", "步骤", "预期结果"));
+            for (CustomAttribute a : allAttrs) {
+                if (a.getRequired() != null && a.getRequired() == 1) requiredHeaders.add(a.getName());
+            }
+
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.size(); i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers.get(i));
+                cell.setCellStyle(requiredHeaders.contains(headers.get(i)) ? requiredHeaderStyle : headerStyle);
+            }
+
+            // 生成属性示例值映射
+            Map<String, String[]> attrExamples = new LinkedHashMap<>();
+            for (CustomAttribute a : allAttrs) {
+                List<String> opts = a.getOptions();
+                boolean multi = a.getMultiSelect() != null && a.getMultiSelect() == 1;
+                if (opts != null && !opts.isEmpty()) {
+                    String[] examples = new String[5];
+                    for (int i = 0; i < 5; i++) {
+                        if (multi && opts.size() >= 2) {
+                            examples[i] = opts.get(i % opts.size()) + "," + opts.get((i + 1) % opts.size());
+                        } else {
+                            examples[i] = opts.get(i % opts.size());
+                        }
+                    }
+                    attrExamples.put(a.getName(), examples);
+                }
+            }
+            int attrOffset = 6;
+
+            CellStyle bodyStyle = createBodyStyle(wb);
+
+            String[][] exampleData = {
+                {"登录模块", "密码登录", "正常登录",     "已注册账号",       "输入正确账号密码点击登录",      "登录成功跳转首页"},
+                {"登录模块", "密码登录", "密码错误",     "已注册账号",       "输入正确账号和错误密码点击登录", "提示密码错误"},
+                {"登录模块", "密码登录", "账号不存在",   "使用未注册账号",   "输入未注册账号和密码点击登录",   "提示账号不存在"},
+                {"登录模块", "验证码登录", "正常验证码登录", "已注册手机号",  "输入手机号获取验证码并登录",     "登录成功跳转首页"},
+                {"用户管理", "修改密码", "修改密码成功", "已登录状态",       "输入旧密码和新密码点击确认",     "密码修改成功，提示重新登录"},
+            };
+            for (int r = 0; r < exampleData.length; r++) {
+                Row row = sheet.createRow(r + 1);
+                for (int c = 0; c < exampleData[r].length; c++) {
+                    setCell(row, c, exampleData[r][c], bodyStyle);
+                }
+                for (CustomAttribute a : allAttrs) {
+                    String[] examples = attrExamples.get(a.getName());
+                    if (examples != null) {
+                        setCell(row, attrOffset + allAttrs.indexOf(a), examples[r], bodyStyle);
+                    }
+                }
+            }
+
+            for (int i = 0; i < headers.size(); i++) {
+                sheet.autoSizeColumn(i);
+                int w = sheet.getColumnWidth(i);
+                sheet.setColumnWidth(i, Math.min(Math.max(w, 4000), 15000));
+            }
+
+            wb.write(out);
+        } catch (Exception e) {
+            throw new BusinessException("生成模板失败: " + e.getMessage());
+        }
+    }
+
+    private CellStyle createRequiredHeaderStyle(Workbook wb) {
+        XSSFCellStyle style = (XSSFCellStyle) wb.createCellStyle();
+        Font font = wb.createFont();
+        font.setBold(true);
+        font.setColor(IndexedColors.RED.getIndex());
+        style.setFont(font);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setVerticalAlignment(VerticalAlignment.CENTER);
+        style.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 0xc6, (byte) 0xe0, (byte) 0xb4}, null));
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
         style.setBorderBottom(BorderStyle.THIN);
         style.setBorderTop(BorderStyle.THIN);
         style.setBorderLeft(BorderStyle.THIN);

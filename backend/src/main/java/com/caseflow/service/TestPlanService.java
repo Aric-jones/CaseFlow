@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Set;
 
 public interface TestPlanService extends IService<TestPlan> {
-    Page<TestPlan> listPlans(String projectId, String keyword, int page, int size, String executorId);
+    Page<TestPlan> listPlans(String projectId, String keyword, int page, int size, String createdBy);
 
     /** 返回带快照数据的用例列表，前端直接用于展示 */
     List<TestPlanCaseDTO> getCasesRich(String planId);

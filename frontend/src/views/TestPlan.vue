@@ -50,9 +50,13 @@
     <main class="page-main">
       <div class="content-card">
         <div class="toolbar">
-          <el-input v-model="keyword" placeholder="搜索计划名称" style="width:240px"
+          <el-input v-model="keyword" placeholder="搜索计划名称" style="width:220px"
             clearable :prefix-icon="Search" @keyup.enter="() => loadPlans(1)" />
-          <el-checkbox v-model="onlyMine">只看我的</el-checkbox>
+          <el-select v-model="creatorFilter" placeholder="创建人" clearable filterable style="width:140px"
+            @change="() => loadPlans(1)">
+            <el-option v-for="u in allUsers" :key="u.id" :label="u.displayName" :value="u.id" />
+          </el-select>
+          <el-button @click="() => loadPlans(1)">搜索</el-button>
           <div style="flex:1" />
           <el-button type="primary" :icon="Plus" @click="$router.push('/test-plan/create')">新建测试计划</el-button>
         </div>
@@ -128,16 +132,17 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Plus, Search } from '@element-plus/icons-vue';
 import { useGuard } from '../composables/useGuard';
-import { directoryApi, testPlanApi } from '../api';
+import { directoryApi, testPlanApi, userApi } from '../api';
 import { useAppStore } from '../stores/app';
-import type { DirectoryNode, TestPlan, PageResult } from '../types';
+import type { DirectoryNode, TestPlan, PageResult, User } from '../types';
 
 const store = useAppStore();
 const dirs = ref<DirectoryNode[]>([]);
 const selectedDir = ref<string | null>(null);
 const plans = ref<PageResult<TestPlan>>({ records: [], total: 0, size: 20, current: 1, pages: 0 });
 const keyword = ref('');
-const onlyMine = ref(false);
+const creatorFilter = ref<string | undefined>();
+const allUsers = ref<User[]>([]);
 const loading = ref(false);
 const selectedPlans = ref<TestPlan[]>([]);
 const { locks, run } = useGuard();
@@ -169,15 +174,18 @@ async function loadPlans(page = 1) {
   try {
     plans.value = (await testPlanApi.list({
       projectId: store.currentProject.id, directoryId: selectedDir.value ?? undefined,
-      keyword: keyword.value || undefined, onlyMine: onlyMine.value, page, size: 20,
+      keyword: keyword.value || undefined, createdBy: creatorFilter.value || undefined, page, size: 20,
     })).data;
   } finally { loading.value = false; }
 }
 
-watch(() => store.currentProject, () => { loadDirs(); loadPlans(); });
+async function loadUsers() {
+  try { allUsers.value = (await userApi.listAll()).data; } catch {}
+}
+
+watch(() => store.currentProject, () => { loadDirs(); loadPlans(); loadUsers(); });
 watch(selectedDir, () => loadPlans());
-watch(onlyMine, () => loadPlans());
-onMounted(() => { loadDirs(); loadPlans(); });
+onMounted(() => { loadDirs(); loadPlans(); loadUsers(); });
 
 function toggleSider() { siderCollapsed.value = !siderCollapsed.value; }
 function startAddRoot() { addingDir.value = true; addParentId.value = null; newDirName.value = ''; }

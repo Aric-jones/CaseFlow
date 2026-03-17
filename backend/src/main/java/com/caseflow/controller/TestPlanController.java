@@ -30,10 +30,9 @@ public class TestPlanController {
     @GetMapping public Result<?> list(@RequestParam String projectId,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String directoryId,
-            @RequestParam(defaultValue = "false") boolean onlyMine,
+            @RequestParam(required = false) String createdBy,
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
-        String executorId = onlyMine ? CurrentUserUtil.getCurrentUserId() : null;
-        Page<TestPlan> planPage = testPlanService.listPlans(projectId, keyword, page, size, executorId);
+        Page<TestPlan> planPage = testPlanService.listPlans(projectId, keyword, page, size, createdBy);
         List<String> planIds = planPage.getRecords().stream().map(TestPlan::getId).collect(Collectors.toList());
         if (planIds.isEmpty()) return Result.ok(planPage);
 

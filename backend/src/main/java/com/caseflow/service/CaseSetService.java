@@ -8,7 +8,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 public interface CaseSetService extends IService<CaseSet> {
     CaseSet createCaseSet(CaseSetDTO dto);
-    Page<CaseSet> listCaseSets(String directoryId, String projectId, String keyword, String status, int page, int size);
+    Page<CaseSet> listCaseSets(String directoryId, String projectId, String keyword, String status, String createdBy, int page, int size);
     void updateStatus(String id, String status, List<String> reviewerIds);
     void moveCaseSet(String id, String targetDirectoryId);
     CaseSet copyCaseSet(String id, String targetDirectoryId);

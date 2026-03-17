@@ -55,7 +55,7 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
     }
 
     @Override
-    public Page<CaseSet> listCaseSets(String directoryId, String projectId, String keyword, String status, int page, int size) {
+    public Page<CaseSet> listCaseSets(String directoryId, String projectId, String keyword, String status, String createdBy, int page, int size) {
         LambdaQueryWrapper<CaseSet> w = new LambdaQueryWrapper<>();
         w.eq(CaseSet::getDeleted, 0);
         if (StringUtils.hasText(directoryId)) {
@@ -65,6 +65,7 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
         if (StringUtils.hasText(projectId)) w.eq(CaseSet::getProjectId, projectId);
         if (StringUtils.hasText(keyword)) w.like(CaseSet::getName, keyword);
         if (StringUtils.hasText(status)) w.eq(CaseSet::getStatus, status);
+        if (StringUtils.hasText(createdBy)) w.eq(CaseSet::getCreatedBy, createdBy);
         w.orderByDesc(CaseSet::getUpdatedAt);
         return page(new Page<>(page, size), w);
     }

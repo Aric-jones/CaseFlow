@@ -75,6 +75,12 @@ export const caseSetApi = {
     const fd = new FormData(); fd.append('file', file);
     return request.post('/case-sets/import', fd, { params: { directoryId, projectId } });
   },
+  validateImport: (file: File, projectId: string): R<any> => {
+    const fd = new FormData(); fd.append('file', file);
+    return request.post('/case-sets/import/validate', fd, { params: { projectId } });
+  },
+  downloadTemplate: (projectId: string) =>
+    request.get('/case-sets/import/template', { params: { projectId }, responseType: 'blob' }),
 };
 
 export const mindNodeApi = {

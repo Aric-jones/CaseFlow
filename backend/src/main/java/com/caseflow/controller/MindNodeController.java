@@ -123,4 +123,12 @@ public class MindNodeController {
         mindMapExcelService.importFromExcel(file, caseSetId);
         return Result.ok();
     }
+
+    @PostMapping("/import-excel/validate")
+    public Result<?> validateImportExcel(@RequestParam("file") MultipartFile file,
+                                         @RequestParam String caseSetId) {
+        CaseSet cs = caseSetMapper.selectById(caseSetId);
+        if (cs == null) return Result.error("用例集不存在");
+        return Result.ok(mindMapExcelService.validateExcel(file, cs.getProjectId()));
+    }
 }

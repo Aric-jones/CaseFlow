@@ -52,17 +52,20 @@
       <div class="content-card">
         <!-- 工具栏 -->
         <div class="toolbar">
-          <el-input v-model="keyword" placeholder="搜索用例集名称" style="width:240px"
-            clearable :prefix-icon="Search" />
+          <el-input v-model="keyword" placeholder="搜索用例集名称" style="width:220px"
+            clearable :prefix-icon="Search" @keyup.enter="() => loadCases(1)" />
           <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width:130px">
             <el-option value="WRITING" label="编写中" />
             <el-option value="PENDING_REVIEW" label="待评审" />
             <el-option value="NO_REVIEW" label="无需评审" />
             <el-option value="APPROVED" label="审核通过" />
           </el-select>
+          <el-select v-model="creatorFilter" placeholder="创建人" clearable filterable style="width:140px">
+            <el-option v-for="u in allUsers" :key="u.id" :label="u.displayName" :value="u.id" />
+          </el-select>
           <el-button @click="() => loadCases(1)">搜索</el-button>
           <div style="flex:1" />
-          <el-button :icon="Upload" @click="showImport = true">导入</el-button>
+          <el-button :icon="Upload" @click="openImportDialog">导入</el-button>
           <el-button type="primary" :icon="Plus" @click="openCreateCase">新建用例集</el-button>
         </div>
 
@@ -165,16 +168,96 @@
     </el-dialog>
 
     <!-- 导入 -->
-    <el-dialog v-model="showImport" title="导入用例" width="480px">
-      <p style="color:#909399;margin-bottom:16px;font-size:13px">
-        请上传 Excel (.xlsx)，表头须含：用例标题。<br />
-        可选列：所属模块、前置条件、步骤、预期结果，以及项目自定义属性列。<br />
-        支持合并单元格，相同模块/标题的行会自动合并为树结构。
-      </p>
-      <el-upload drag accept=".xlsx" :limit="1" :before-upload="handleImport" action="">
-        <el-icon size="40" color="#1677ff"><Upload /></el-icon>
-        <div style="margin-top:8px;font-size:14px">点击或拖拽上传</div>
-      </el-upload>
+    <el-dialog v-model="showImport" title="导入用例" width="600px" @close="resetImport">
+      <!-- 导入规则说明 -->
+      <div style="margin-bottom:16px">
+        <el-alert type="info" :closable="false" show-icon>
+          <template #title><b>导入规则说明</b></template>
+          <div style="line-height:1.8;font-size:13px;margin-top:4px">
+            <div><b>必需列：</b>用例标题、前置条件、步骤、预期结果</div>
+            <div><b>功能模块（选填）：</b>使用「功能模块1」「功能模块2」...，必须从1开始连续编号</div>
+            <div v-if="projectAttrs.length">
+              <b>自定义属性列：</b>
+              <div style="margin-top:4px;padding-left:12px">
+                <div v-for="a in projectAttrs" :key="a.id" style="margin-bottom:6px;line-height:1.6">
+                  <el-tag size="small" :type="a.required ? 'danger' : 'info'" style="margin-right:6px">{{ a.name }}</el-tag>
+                  <el-tag size="small" :type="a.required ? 'danger' : 'success'" effect="plain" style="margin-right:6px">
+                    {{ a.required ? '必填' : '选填' }}
+                  </el-tag>
+                  <el-tag v-if="a.options?.length" size="small" effect="plain" style="margin-right:6px">
+                    {{ a.multiSelect ? '多选' : '单选' }}
+                  </el-tag>
+                  <span v-if="a.multiSelect && a.options?.length" style="color:#e6a23c;font-size:11px;margin-right:6px">
+                    (多选用英文逗号 , 分隔)
+                  </span>
+                  <br v-if="a.options?.length" />
+                  <span v-if="a.options?.length" style="color:#909399;font-size:12px;padding-left:4px">
+                    可选值：<el-tag v-for="opt in a.options" :key="opt" size="small" type="info"
+                      style="margin:1px 3px">{{ opt }}</el-tag>
+                  </span>
+                  <span v-else style="color:#909399;font-size:12px">自由输入</span>
+                </div>
+              </div>
+            </div>
+            <div>支持合并单元格，相同模块/标题的行会自动合并为树结构</div>
+          </div>
+        </el-alert>
+        <div style="margin-top:8px">
+          <el-button text type="primary" :loading="locks.downloadTemplate" @click="downloadTemplate">
+            <el-icon><Download /></el-icon> 下载导入模板
+          </el-button>
+        </div>
+      </div>
+
+      <!-- 步骤1: 上传 -->
+      <div v-if="importStep === 'upload'">
+        <el-upload drag accept=".xlsx" :limit="1" :auto-upload="false" :on-change="onImportFileChange" action="">
+          <el-icon size="40" color="#1677ff"><Upload /></el-icon>
+          <div style="margin-top:8px;font-size:14px">点击或拖拽选择 Excel 文件</div>
+        </el-upload>
+      </div>
+
+      <!-- 步骤2: 校验中 -->
+      <div v-if="importStep === 'validating'" style="text-align:center;padding:20px 0">
+        <el-icon class="is-loading" :size="28" color="#409eff"><Loading /></el-icon>
+        <div style="margin-top:8px;color:#909399">正在校验文件...</div>
+      </div>
+
+      <!-- 步骤3: 校验结果 -->
+      <div v-if="importStep === 'result' && importValidation">
+        <div style="margin-bottom:12px;font-size:13px;color:#606266">
+          文件：<b>{{ importFile?.name }}</b>，识别到 <b>{{ importValidation.dataRowCount }}</b> 条有效数据
+          <span v-if="importValidation.invalidRowCount" style="color:#f56c6c">
+            ，<b>{{ importValidation.invalidRowCount }}</b> 条数据属性校验不通过
+          </span>
+        </div>
+        <el-alert v-if="importValidation.errors?.length" type="error" :closable="false" show-icon style="margin-bottom:8px">
+          <template #title>校验失败，请修正以下问题后重新上传</template>
+          <ul style="margin:4px 0 0;padding-left:18px;line-height:1.8">
+            <li v-for="(e, i) in importValidation.errors" :key="i">{{ e }}</li>
+          </ul>
+        </el-alert>
+        <el-alert v-if="importValidation.warnings?.length" type="warning" :closable="false" show-icon style="margin-bottom:8px">
+          <template #title>注意事项</template>
+          <ul style="margin:4px 0 0;padding-left:18px;line-height:1.8">
+            <li v-for="(w, i) in importValidation.warnings" :key="i">{{ w }}</li>
+          </ul>
+        </el-alert>
+        <div v-if="importValidation.matchedAttrs?.length" style="font-size:13px;color:#606266;margin-bottom:8px">
+          已匹配属性列：
+          <el-tag v-for="a in importValidation.matchedAttrs" :key="a" size="small" type="success" style="margin:2px 4px 2px 0">{{ a }}</el-tag>
+        </div>
+        <el-alert v-if="!importValidation.errors?.length" type="success" :closable="false" show-icon>
+          校验通过，可以导入
+        </el-alert>
+      </div>
+
+      <template #footer>
+        <el-button @click="showImport = false">取消</el-button>
+        <el-button v-if="importStep === 'result' && importValidation?.errors?.length" @click="resetImport">重新选择</el-button>
+        <el-button v-if="importStep === 'result' && !importValidation?.errors?.length"
+          type="primary" :loading="locks.handleImport" @click="confirmImport">确认导入</el-button>
+      </template>
     </el-dialog>
 
     <!-- 移动 -->
@@ -225,10 +308,10 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useGuard } from '../composables/useGuard';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Search, Upload, Plus, Download } from '@element-plus/icons-vue';
-import { directoryApi, caseSetApi, mindNodeApi } from '../api';
+import { Search, Upload, Plus, Download, Loading } from '@element-plus/icons-vue';
+import { directoryApi, caseSetApi, mindNodeApi, userApi, customAttributeApi } from '../api';
 import { useAppStore } from '../stores/app';
-import type { DirectoryNode, CaseSet, PageResult } from '../types';
+import type { DirectoryNode, CaseSet, PageResult, User, CustomAttribute } from '../types';
 
 const router = useRouter();
 const store = useAppStore();
@@ -239,8 +322,10 @@ const selectedDir = ref<string | null>(null);
 const caseData = ref<PageResult<CaseSet>>({ records: [], total: 0, size: 20, current: 1, pages: 0 });
 const keyword = ref('');
 const statusFilter = ref<string | undefined>();
+const creatorFilter = ref<string | undefined>();
 const loading = ref(false);
 const selectedCases = ref<CaseSet[]>([]);
+const allUsers = ref<User[]>([]);
 const { locks, run } = useGuard();
 const siderCollapsed = ref(false);
 const editingDirId = ref<string | null>(null);
@@ -260,6 +345,10 @@ const movingId = ref<string | null>(null);
 const moveTarget = ref<string | null>(null);
 const copyingId = ref<string | null>(null);
 const copyTarget = ref<string | null>(null);
+const importStep = ref<'upload' | 'validating' | 'result'>('upload');
+const importFile = ref<File | null>(null);
+const importValidation = ref<any>(null);
+const projectAttrs = ref<CustomAttribute[]>([]);
 
 function dirToTree(list: DirectoryNode[]): any[] {
   return list.map(d => ({ id: d.id, label: d.name, parentId: d.parentId, children: d.children?.length ? dirToTree(d.children) : [] }));
@@ -305,14 +394,19 @@ async function loadCases(page = 1) {
   try {
     caseData.value = (await caseSetApi.list({
       directoryId: selectedDir.value ?? undefined, projectId: store.currentProject.id,
-      keyword: keyword.value || undefined, status: statusFilter.value, page, size: 20,
+      keyword: keyword.value || undefined, status: statusFilter.value,
+      createdBy: creatorFilter.value || undefined, page, size: 20,
     })).data;
   } finally { loading.value = false; }
 }
 
-watch(() => store.currentProject, () => { loadDirs(); loadCases(); });
+async function loadUsers() {
+  try { allUsers.value = (await userApi.listAll()).data; } catch {}
+}
+
+watch(() => store.currentProject, () => { loadDirs(); loadCases(); loadUsers(); loadProjectAttrs(); });
 watch(selectedDir, () => loadCases());
-onMounted(() => { loadDirs(); loadCases(); });
+onMounted(() => { loadDirs(); loadCases(); loadUsers(); loadProjectAttrs(); });
 
 function toggleSider() { siderCollapsed.value = !siderCollapsed.value; }
 function onSelectDir(id: string) { selectedDir.value = id; }
@@ -431,15 +525,59 @@ async function confirmMove() {
     });
   }
 }
-async function handleImport(file: File) {
-  if (!store.currentProject) return false;
+async function loadProjectAttrs() {
+  if (!store.currentProject) return;
+  try { projectAttrs.value = (await customAttributeApi.list(store.currentProject.id)).data; } catch {}
+}
+
+function openImportDialog() {
+  resetImport();
+  showImport.value = true;
+}
+
+function resetImport() {
+  importStep.value = 'upload';
+  importFile.value = null;
+  importValidation.value = null;
+}
+
+async function onImportFileChange(uploadFile: any) {
+  const file = uploadFile.raw as File;
+  if (!file || !store.currentProject) return;
+  importFile.value = file;
+  importStep.value = 'validating';
+  try {
+    const res = await caseSetApi.validateImport(file, store.currentProject.id);
+    importValidation.value = res.data;
+    importStep.value = 'result';
+  } catch {
+    importValidation.value = { errors: ['文件校验请求失败，请重试'], warnings: [], dataRowCount: 0 };
+    importStep.value = 'result';
+  }
+}
+
+async function confirmImport() {
+  if (!importFile.value || !store.currentProject) return;
   const targetDir = selectedDir.value || dirs.value[0]?.id;
-  if (!targetDir) { ElMessage.error('请先创建目录'); return false; }
+  if (!targetDir) { ElMessage.error('请先创建目录'); return; }
   await run('handleImport', async () => {
-    await caseSetApi.importExcel(file, targetDir, store.currentProject!.id);
+    await caseSetApi.importExcel(importFile.value!, targetDir, store.currentProject!.id);
     ElMessage.success('导入成功'); showImport.value = false; loadCases();
   });
-  return false;
+}
+
+async function downloadTemplate() {
+  if (!store.currentProject) return;
+  await run('downloadTemplate', async () => {
+    try {
+      const res = await caseSetApi.downloadTemplate(store.currentProject!.id);
+      const blob = new Blob([res as any], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = '用例导入模板.xlsx'; a.click();
+      URL.revokeObjectURL(url);
+    } catch { ElMessage.error('下载模板失败'); }
+  });
 }
 
 async function batchDeleteCases() {

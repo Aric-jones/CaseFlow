@@ -68,7 +68,7 @@ logging:
     # MyBatis-Plus / MyBatis（SQL 打印，开发设为 DEBUG，生产设为 INFO）
     com.baomidou.mybatisplus: INFO
     # 自定义 mapper 包（替换成你的 mapper 包名，打印具体 SQL）
-    com.yourpackage.mapper: DEBUG
+    com.caseflow.mapper: DEBUG
     # Sa-Token 核心日志（com.dev33.satoken）
     com.dev33.satoken: INFO
     # Sa-Token Redis 存储日志（如需排查 Redis 存储问题，设为 DEBUG）
@@ -79,8 +79,4 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
-  # 4. 可选：日志文件输出（生产环境建议开启）
-  file:
-    name: ./logs/caseflow.log
-    max-size: 100MB
-    max-history: 7
+

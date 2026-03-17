@@ -1,24 +1,25 @@
 package com.caseflow.service;
 
-import com.caseflow.dto.MindNodeDTO;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.OutputStream;
 import java.util.List;
+import java.util.Map;
 
 public interface MindMapExcelService {
-    /**
-     * 将思维导图树导出为 Excel，写入到 OutputStream
-     */
     void exportToExcel(String caseSetId, OutputStream out);
 
-    /**
-     * 将 Excel 导入，转换为思维导图树结构并保存到指定用例集（覆盖原有数据）
-     */
     void importFromExcel(MultipartFile file, String caseSetId);
 
-    /**
-     * 将 Excel 导入，创建新用例集
-     */
     String importAsNewCaseSet(MultipartFile file, String directoryId, String projectId);
+
+    /**
+     * 预校验 Excel 文件，返回校验结果（errors 列表为空则校验通过）
+     */
+    Map<String, Object> validateExcel(MultipartFile file, String projectId);
+
+    /**
+     * 生成导入模板 Excel
+     */
+    void generateTemplate(String projectId, OutputStream out);
 }
