@@ -162,3 +162,14 @@ export interface ApiResult<T> {
   message: string;
   data: T;
 }
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  content: string;
+  link: string;
+  isRead: number;
+  createdAt: string;
+}

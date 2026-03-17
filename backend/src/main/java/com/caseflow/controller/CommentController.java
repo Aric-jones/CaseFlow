@@ -2,8 +2,11 @@ package com.caseflow.controller;
 
 import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
+import com.caseflow.entity.CaseSet;
 import com.caseflow.entity.Comment;
+import com.caseflow.service.CaseSetService;
 import com.caseflow.service.CommentService;
+import com.caseflow.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
@@ -13,6 +16,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CommentController {
     private final CommentService commentService;
+    private final NotificationService notificationService;
+    private final CaseSetService caseSetService;
 
     @GetMapping("/node")
     public Result<?> nodeComments(@RequestParam String nodeId) {
@@ -47,6 +52,25 @@ public class CommentController {
         c.setDisplayName(CurrentUserUtil.getCurrentUserDisplayName());
         c.setResolved(0);
         commentService.save(c);
+
+        // 通知：回复评论通知原评论者；新评论通知用例集创建人
+        String currentUserId = CurrentUserUtil.getCurrentUserId();
+        String currentUserName = CurrentUserUtil.getCurrentUserDisplayName();
+        String link = "/review/" + (caseSetId != null ? caseSetId : "");
+        if (c.getParentId() != null) {
+            Comment parent = commentService.getById(c.getParentId());
+            if (parent != null && !parent.getUserId().equals(currentUserId)) {
+                notificationService.send(parent.getUserId(), "COMMENT_REPLY",
+                        "收到评论回复", currentUserName + " 回复了您的评论：" + content.substring(0, Math.min(content.length(), 50)), link);
+            }
+        } else if (caseSetId != null) {
+            CaseSet cs = caseSetService.getById(caseSetId);
+            if (cs != null && cs.getCreatedBy() != null && !cs.getCreatedBy().equals(currentUserId)) {
+                notificationService.send(cs.getCreatedBy(), "COMMENT_NEW",
+                        "新的评论", currentUserName + " 在用例集「" + cs.getName() + "」中添加了评论", link);
+            }
+        }
+
         return Result.ok(c);
     }
 

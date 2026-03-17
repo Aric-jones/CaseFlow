@@ -1,7 +1,7 @@
 import request from './request';
 import type {
   ApiResult, CaseSet, CommentData, CustomAttribute, DirectoryNode,
-  MindNodeData, PageResult, Project, RecycleBinItem, ReviewAssignment,
+  MindNodeData, Notification, PageResult, Project, RecycleBinItem, ReviewAssignment,
   TestPlan, TestPlanCase, User, ValidationResult, CaseHistory,
 } from '../types';
 
@@ -163,9 +163,21 @@ export const rbacApi = {
 };
 
 export const recycleBinApi = {
-  /** type: 'CASE_SET'（默认）或 'TEST_PLAN' */
   list: (projectId: string, type = 'CASE_SET'): R<RecycleBinItem[]> =>
     request.get('/recycle-bin', { params: { projectId, type } }),
   restore: (id: string): R<void> => request.post(`/recycle-bin/${id}/restore`),
   permanentDelete: (id: string): R<void> => request.delete(`/recycle-bin/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.delete('/recycle-bin/batch', { data: ids }),
+  batchRestore: (ids: string[]): R<void> => request.post('/recycle-bin/batch-restore', ids),
+};
+
+export const notificationApi = {
+  list: (): R<Notification[]> => request.get('/notifications'),
+  unreadCount: (): R<number> => request.get('/notifications/unread-count'),
+  markRead: (id: string): R<void> => request.put(`/notifications/${id}/read`),
+  markAllRead: (): R<void> => request.put('/notifications/read-all'),
+};
+
+export const dashboardApi = {
+  stats: (projectId: string): R<any> => request.get('/dashboard', { params: { projectId } }),
 };

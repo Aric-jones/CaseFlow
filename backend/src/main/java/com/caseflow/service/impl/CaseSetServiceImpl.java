@@ -14,6 +14,7 @@ import com.caseflow.service.CaseSetService;
 import com.caseflow.service.CustomAttributeService;
 import com.caseflow.service.DirectoryService;
 import com.caseflow.service.MindNodeService;
+import com.caseflow.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -37,6 +38,7 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
     private final DirectoryService directoryService;
     private final MindNodeService mindNodeService;
     private final CustomAttributeService customAttributeService;
+    private final NotificationService notificationService;
 
     @Override @Transactional
     public CaseSet createCaseSet(CaseSetDTO dto) {
@@ -99,6 +101,16 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
             reviewAssignmentMapper.delete(new LambdaQueryWrapper<ReviewAssignment>().eq(ReviewAssignment::getCaseSetId, id));
         }
         cs.setStatus(status); updateById(cs);
+
+        // 发送通知：提交评审时通知评审人
+        if ("PENDING_REVIEW".equals(status) && reviewerIds != null) {
+            String creatorName = CurrentUserUtil.getCurrentUserDisplayName();
+            String link = "/review/" + id;
+            for (String rid : reviewerIds) {
+                notificationService.send(rid, "REVIEW_REQUEST",
+                        "新的评审任务", creatorName + " 提交了用例集「" + cs.getName() + "」等待您评审", link);
+            }
+        }
     }
 
     @Override @Transactional

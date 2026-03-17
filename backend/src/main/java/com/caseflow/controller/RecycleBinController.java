@@ -9,6 +9,7 @@ import com.caseflow.mapper.RecycleBinMapper;
 import com.caseflow.service.CaseSetService;
 import com.caseflow.service.TestPlanService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -18,10 +19,6 @@ public class RecycleBinController {
     private final CaseSetService caseSetService;
     private final TestPlanService testPlanService;
 
-    /**
-     * 查询回收站列表
-     * type=CASE_SET（默认）或 type=TEST_PLAN
-     */
     @GetMapping
     public Result<?> list(@RequestParam String projectId,
                           @RequestParam(required = false, defaultValue = "CASE_SET") String type) {
@@ -29,7 +26,6 @@ public class RecycleBinController {
         if ("TEST_PLAN".equals(type)) {
             list = recycleBinMapper.selectByProjectAndType(projectId, "TEST_PLAN");
         } else {
-            // 使用兼容查询（支持历史数据中 project_id 为 null 的记录）
             list = recycleBinMapper.selectCaseSetsByProject(projectId);
         }
         return Result.ok(list);
@@ -37,12 +33,8 @@ public class RecycleBinController {
 
     @PostMapping("/{id}/restore")
     public Result<?> restore(@PathVariable String id) {
+        checkPermission(id, "恢复");
         RecycleBin rb = recycleBinMapper.selectById(id);
-        if (rb == null) throw new BusinessException("记录不存在");
-        String currentUserId = CurrentUserUtil.getCurrentUserId();
-        boolean isCreator = rb.getCreatedBy() != null && rb.getCreatedBy().equals(currentUserId);
-        boolean hasRole = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
-        if (!isCreator && !hasRole) throw new BusinessException("仅创建人或管理员可以恢复");
         if ("TEST_PLAN".equals(rb.getItemType())) {
             testPlanService.restorePlan(id);
         } else {
@@ -53,17 +45,60 @@ public class RecycleBinController {
 
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable String id) {
+        checkPermission(id, "彻底删除");
         RecycleBin rb = recycleBinMapper.selectById(id);
-        if (rb == null) throw new BusinessException("记录不存在");
-        String currentUserId = CurrentUserUtil.getCurrentUserId();
-        boolean isCreator = rb.getCreatedBy() != null && rb.getCreatedBy().equals(currentUserId);
-        boolean hasRole = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
-        if (!isCreator && !hasRole) throw new BusinessException("仅创建人或管理员可以彻底删除");
         if ("TEST_PLAN".equals(rb.getItemType())) {
             testPlanService.permanentDelete(id);
         } else {
             caseSetService.permanentDelete(id);
         }
         return Result.ok();
+    }
+
+    /** 批量彻底删除 */
+    @Transactional
+    @DeleteMapping("/batch")
+    public Result<?> batchDelete(@RequestBody List<String> ids) {
+        if (ids == null || ids.isEmpty()) throw new BusinessException("请选择要删除的记录");
+        // 先校验全部权限，有一条不符合就整体拒绝
+        for (String id : ids) checkPermission(id, "彻底删除");
+        for (String id : ids) {
+            RecycleBin rb = recycleBinMapper.selectById(id);
+            if (rb == null) continue;
+            if ("TEST_PLAN".equals(rb.getItemType())) {
+                testPlanService.permanentDelete(id);
+            } else {
+                caseSetService.permanentDelete(id);
+            }
+        }
+        return Result.ok();
+    }
+
+    /** 批量恢复 */
+    @Transactional
+    @PostMapping("/batch-restore")
+    public Result<?> batchRestore(@RequestBody List<String> ids) {
+        if (ids == null || ids.isEmpty()) throw new BusinessException("请选择要恢复的记录");
+        for (String id : ids) checkPermission(id, "恢复");
+        for (String id : ids) {
+            RecycleBin rb = recycleBinMapper.selectById(id);
+            if (rb == null) continue;
+            if ("TEST_PLAN".equals(rb.getItemType())) {
+                testPlanService.restorePlan(id);
+            } else {
+                caseSetService.restoreCaseSet(id);
+            }
+        }
+        return Result.ok();
+    }
+
+    private void checkPermission(String id, String action) {
+        RecycleBin rb = recycleBinMapper.selectById(id);
+        if (rb == null) throw new BusinessException("记录不存在");
+        String currentUserId = CurrentUserUtil.getCurrentUserId();
+        boolean isCreator = rb.getCreatedBy() != null && rb.getCreatedBy().equals(currentUserId);
+        boolean hasRole = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
+        if (!isCreator && !hasRole)
+            throw new BusinessException("「" + (rb.getItemName() != null ? rb.getItemName() : id) + "」仅创建人或管理员可以" + action);
     }
 }

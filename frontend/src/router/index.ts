@@ -7,8 +7,9 @@ const router = createRouter({
     {
       path: '/',
       component: () => import('../views/Layout.vue'),
-      redirect: '/cases',
+      redirect: '/dashboard',
       children: [
+        { path: 'dashboard', component: () => import('../views/Dashboard.vue') },
         { path: 'cases', component: () => import('../views/CaseHome.vue') },
         { path: 'test-plans', component: () => import('../views/TestPlan.vue') },
         { path: 'recycle-bin', component: () => import('../views/RecycleBin.vue') },

@@ -8,6 +8,7 @@ import com.caseflow.entity.TestPlanCase;
 import com.caseflow.entity.User;
 import com.caseflow.mapper.TestPlanCaseMapper;
 import com.caseflow.mapper.UserMapper;
+import com.caseflow.service.NotificationService;
 import com.caseflow.service.TestPlanService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -22,6 +23,7 @@ public class TestPlanController {
     private final TestPlanService testPlanService;
     private final TestPlanCaseMapper caseMapper;
     private final UserMapper userMapper;
+    private final NotificationService notificationService;
 
     @GetMapping public Result<?> list(@RequestParam String projectId,
             @RequestParam(required = false) String keyword,
@@ -118,6 +120,13 @@ public class TestPlanController {
                 testPlanService.addCasesFromSets(plan.getId(), caseSetIds);
             }
         }
+        // 通知执行人
+        if (plan.getExecutorId() != null && !plan.getExecutorId().equals(CurrentUserUtil.getCurrentUserId())) {
+            String creatorName = CurrentUserUtil.getCurrentUserDisplayName();
+            notificationService.send(plan.getExecutorId(), "PLAN_ASSIGNED",
+                    "新的测试任务", creatorName + " 分配给您一个测试计划「" + plan.getName() + "」",
+                    "/test-plan/" + plan.getId() + "/execute");
+        }
         return Result.ok(plan);
     }
 
@@ -183,7 +192,30 @@ public class TestPlanController {
     }
 
     @PutMapping("/cases/{id}/execute") public Result<?> execute(@PathVariable String id, @RequestBody Map<String, String> body) {
-        testPlanService.executeCase(id, body.get("result"), body.get("reason")); return Result.ok();
+        testPlanService.executeCase(id, body.get("result"), body.get("reason"));
+        // 检查是否全部执行完毕，通知计划创建人
+        TestPlanCase tc = caseMapper.selectById(id);
+        if (tc != null) {
+            TestPlan plan = testPlanService.getById(tc.getPlanId());
+            if (plan != null && plan.getCreatedBy() != null) {
+                List<TestPlanCase> allCases = caseMapper.selectList(
+                        new LambdaQueryWrapper<TestPlanCase>().eq(TestPlanCase::getPlanId, plan.getId()));
+                boolean allDone = allCases.stream().allMatch(c -> c.getResult() != null && !"PENDING".equals(c.getResult()));
+                String link = "/test-plan/" + plan.getId() + "/execute";
+                if (allDone) {
+                    notificationService.send(plan.getCreatedBy(), "PLAN_COMPLETED",
+                            "测试计划执行完成", "测试计划「" + plan.getName() + "」所有用例已执行完毕", link);
+                } else {
+                    String executorName = CurrentUserUtil.getCurrentUserDisplayName();
+                    String resultText = body.get("result");
+                    if (!plan.getCreatedBy().equals(CurrentUserUtil.getCurrentUserId())) {
+                        notificationService.send(plan.getCreatedBy(), "PLAN_STATUS_CHANGE",
+                                "测试执行进度更新", executorName + " 在「" + plan.getName() + "」中执行了用例，结果：" + resultText, link);
+                    }
+                }
+            }
+        }
+        return Result.ok();
     }
 
     @DeleteMapping("/cases/{id}") public Result<?> removeCase(@PathVariable String id) {
