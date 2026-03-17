@@ -242,7 +242,11 @@ function navigateToCommentNode(nodeId: string) {
     return null;
   }
   const target = findByRawId(mindMapInstance.renderer.root);
-  if (target) { target.active(); mindMapInstance.renderer.moveNodeToCenter(target); }
+  if (target) {
+    target.active();
+    mindMapInstance.renderer.moveNodeToCenter(target);
+    handleNodeSelect(target);
+  }
 }
 
 let cleanupMouseOverrides: (() => void) | null = null;
@@ -294,7 +298,7 @@ onMounted(async () => {
   });
   cleanupMouseOverrides = setupMouseOverrides(mindMapContainer.value!, () => mindMapInstance);
 
-  // 处理通知跳转：?nodeId=xxx&openComment=1
+  // 处理通知跳转：?nodeId=xxx&openComment=1 → 定位节点 + 打开当前节点评论
   const queryNodeId = route.query.nodeId as string;
   const openComment = route.query.openComment as string;
   if (queryNodeId) {
@@ -303,7 +307,10 @@ onMounted(async () => {
       if (openComment === '1') {
         rightPanelOpen.value = true;
         panelTab.value = 'comments';
-        nextTick(() => commentPanelRef.value?.refresh());
+        nextTick(() => {
+          commentPanelRef.value?.switchTab('node');
+          commentPanelRef.value?.refresh();
+        });
       }
     }, 500);
   }

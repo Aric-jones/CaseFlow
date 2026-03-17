@@ -1,5 +1,6 @@
 package com.caseflow.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
 import com.caseflow.entity.CaseSet;
@@ -25,6 +26,7 @@ public class ReviewController {
         return Result.ok(reviewService.lambdaQuery().eq(ReviewAssignment::getCaseSetId, caseSetId).list());
     }
 
+    @SaCheckPermission("review:approve")
     @Transactional
     @PutMapping("/{id}")
     public Result<?> updateStatus(@PathVariable String id, @RequestParam String status) {

@@ -1,5 +1,6 @@
 package com.caseflow.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import com.caseflow.common.BusinessException;
 import com.caseflow.common.CurrentUserUtil;
@@ -31,6 +32,7 @@ public class RecycleBinController {
         return Result.ok(list);
     }
 
+    @SaCheckPermission("recycle:restore")
     @PostMapping("/{id}/restore")
     public Result<?> restore(@PathVariable String id) {
         checkPermission(id, "恢复");
@@ -43,6 +45,7 @@ public class RecycleBinController {
         return Result.ok();
     }
 
+    @SaCheckPermission("recycle:delete")
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable String id) {
         checkPermission(id, "彻底删除");
@@ -55,7 +58,7 @@ public class RecycleBinController {
         return Result.ok();
     }
 
-    /** 批量彻底删除 */
+    @SaCheckPermission("recycle:delete")
     @Transactional
     @DeleteMapping("/batch")
     public Result<?> batchDelete(@RequestBody List<String> ids) {
@@ -74,7 +77,7 @@ public class RecycleBinController {
         return Result.ok();
     }
 
-    /** 批量恢复 */
+    @SaCheckPermission("recycle:restore")
     @Transactional
     @PostMapping("/batch-restore")
     public Result<?> batchRestore(@RequestBody List<String> ids) {

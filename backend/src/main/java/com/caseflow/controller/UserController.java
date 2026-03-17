@@ -80,6 +80,7 @@ public class UserController {
         return Result.ok(user);
     }
 
+    @SaCheckPermission("settings:members")
     @PutMapping("/{id}")
     public Result<?> update(@PathVariable String id, @RequestBody User user) {
         User existing = userService.getById(id);
@@ -108,6 +109,7 @@ public class UserController {
         return Result.ok(existing);
     }
 
+    @SaCheckPermission("settings:members:toggle")
     @PutMapping("/{id}/status")
     public Result<?> toggleStatus(@PathVariable String id) {
         // 不能禁用自己
@@ -125,6 +127,7 @@ public class UserController {
         return Result.ok(pids);
     }
 
+    @SaCheckPermission("settings:members")
     @Transactional
     @PutMapping("/{id}/projects")
     public Result<?> updateUserProjects(@PathVariable String id, @RequestBody List<String> projectIds) {

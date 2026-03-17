@@ -2,6 +2,7 @@ package com.caseflow.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.caseflow.entity.Notification;
 import com.caseflow.mapper.NotificationMapper;
@@ -33,7 +34,6 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
         n.setIsRead(0);
         n.setCreatedAt(LocalDateTime.now());
         save(n);
-
         pushToWs(userId, n);
     }
 
@@ -45,11 +45,11 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
     }
 
     @Override
-    public List<Notification> listByUser(String userId) {
-        return list(new LambdaQueryWrapper<Notification>()
-                .eq(Notification::getUserId, userId)
-                .orderByDesc(Notification::getCreatedAt)
-                .last("LIMIT 50"));
+    public Page<Notification> listByUser(String userId, int page, int size) {
+        return page(new Page<>(page, size),
+                new LambdaQueryWrapper<Notification>()
+                        .eq(Notification::getUserId, userId)
+                        .orderByDesc(Notification::getCreatedAt));
     }
 
     @Override
@@ -70,6 +70,13 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
     @Override
     public int countUnread(String userId) {
         return baseMapper.countUnread(userId);
+    }
+
+    @Override
+    public int deleteOlderThan(int days) {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(days);
+        return baseMapper.delete(new LambdaQueryWrapper<Notification>()
+                .lt(Notification::getCreatedAt, cutoff));
     }
 
     private void pushToWs(String userId, Notification n) {

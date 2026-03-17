@@ -57,7 +57,19 @@
           <el-button type="primary" :icon="Plus" @click="$router.push('/test-plan/create')">新建测试计划</el-button>
         </div>
 
-        <el-table :data="plans.records" v-loading="loading" border style="width:100%">
+        <!-- 批量操作 -->
+        <div v-if="selectedPlans.length" style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
+          <span style="color:#606266;font-size:13px">已选 {{ selectedPlans.length }} 项</span>
+          <el-popconfirm title="确认批量删除？将移入回收站" @confirm="batchDeletePlans">
+            <template #reference>
+              <el-button type="danger" size="small" :loading="locks.batchDeletePlans">批量删除</el-button>
+            </template>
+          </el-popconfirm>
+        </div>
+
+        <el-table :data="plans.records" v-loading="loading" border style="width:100%"
+          @selection-change="(rows: TestPlan[]) => selectedPlans = rows">
+          <el-table-column type="selection" width="60" />
           <el-table-column label="计划名称" prop="name" min-width="200" show-overflow-tooltip />
           <el-table-column label="执行进度" min-width="180">
             <template #default="{ row }">
@@ -127,6 +139,7 @@ const plans = ref<PageResult<TestPlan>>({ records: [], total: 0, size: 20, curre
 const keyword = ref('');
 const onlyMine = ref(false);
 const loading = ref(false);
+const selectedPlans = ref<TestPlan[]>([]);
 const { locks, run } = useGuard();
 const siderCollapsed = ref(false);
 const addingDir = ref(false);
@@ -211,6 +224,14 @@ onUnmounted(() => document.removeEventListener('click', () => {}));
 async function deletePlan(id: string) {
   await run('deletePlan', async () => {
     await testPlanApi.delete(id); ElMessage.success('已移入回收站'); loadPlans();
+  });
+}
+async function batchDeletePlans() {
+  const ids = selectedPlans.value.map(p => p.id);
+  if (!ids.length) return;
+  await run('batchDeletePlans', async () => {
+    await testPlanApi.batchDelete(ids);
+    ElMessage.success('批量删除成功'); selectedPlans.value = []; loadPlans();
   });
 }
 function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 19) : ''; }

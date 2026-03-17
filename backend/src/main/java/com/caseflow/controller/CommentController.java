@@ -1,5 +1,8 @@
 package com.caseflow.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.stp.StpUtil;
+import com.caseflow.common.BusinessException;
 import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
 import com.caseflow.entity.CaseSet;
@@ -36,6 +39,7 @@ public class CommentController {
         return Result.ok(commentService.countUnresolvedRootComments(nodeId));
     }
 
+    @SaCheckPermission("review:comment")
     @PostMapping
     public Result<?> add(@RequestBody Map<String, String> body) {
         String content = body.get("content");
@@ -56,22 +60,25 @@ public class CommentController {
         String currentUserId = CurrentUserUtil.getCurrentUserId();
         String currentUserName = CurrentUserUtil.getCurrentUserDisplayName();
         String link = "/review/" + (caseSetId != null ? caseSetId : "") + "?nodeId=" + nodeId + "&openComment=1";
-        CaseSet cs = caseSetId != null ? caseSetService.getById(caseSetId) : null;
-        String csCreator = cs != null ? cs.getCreatedBy() : null;
-        String csName = cs != null ? cs.getName() : "";
+        String snippet = content.substring(0, Math.min(content.length(), 50));
 
         if (c.getParentId() != null) {
-            // 回复：只通知被回复者
-            Comment parent = commentService.getById(c.getParentId());
-            if (parent != null && !parent.getUserId().equals(currentUserId)) {
-                notificationService.send(parent.getUserId(), "COMMENT_REPLY",
-                        "收到评论回复", currentUserName + " 回复了您的评论：" + content.substring(0, Math.min(content.length(), 50)), link);
+            // 回复：通知实际被回复的人（可能是根评论作者，也可能是子评论作者）
+            String replyToUserId = body.get("replyToUserId");
+            if (replyToUserId == null || replyToUserId.isBlank()) {
+                Comment parent = commentService.getById(c.getParentId());
+                if (parent != null) replyToUserId = parent.getUserId();
+            }
+            if (replyToUserId != null && !replyToUserId.equals(currentUserId)) {
+                notificationService.send(replyToUserId, "COMMENT_REPLY",
+                        "收到评论回复", currentUserName + " 回复了您的评论：" + snippet, link);
             }
         } else {
-            // 根评论：通知用例集创建人
-            if (csCreator != null && !csCreator.equals(currentUserId)) {
-                notificationService.send(csCreator, "COMMENT_NEW",
-                        "新的评论", currentUserName + " 在用例集「" + csName + "」中添加了评论", link);
+            // 根评论：通知用例集创建人，附带评论内容
+            CaseSet cs = caseSetId != null ? caseSetService.getById(caseSetId) : null;
+            if (cs != null && cs.getCreatedBy() != null && !cs.getCreatedBy().equals(currentUserId)) {
+                notificationService.send(cs.getCreatedBy(), "COMMENT_NEW",
+                        "新的评论", currentUserName + " 在用例集「" + cs.getName() + "」中评论：" + snippet, link);
             }
         }
 
@@ -81,7 +88,9 @@ public class CommentController {
     @PutMapping("/{id}")
     public Result<?> update(@PathVariable String id, @RequestBody Map<String, String> body) {
         Comment c = commentService.getById(id);
-        if (c == null) return Result.error("评论不存在");
+        if (c == null) throw new BusinessException("评论不存在");
+        if (!CurrentUserUtil.getCurrentUserId().equals(c.getUserId()))
+            throw new BusinessException("仅评论作者可以编辑");
         String content = body.get("content");
         if (content == null || content.isBlank()) return Result.error("评论内容不能为空");
         c.setContent(content.trim());
@@ -91,7 +100,13 @@ public class CommentController {
 
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable String id) {
-        commentService.removeById(id);
+        Comment c = commentService.getById(id);
+        if (c == null) throw new BusinessException("评论不存在");
+        String uid = CurrentUserUtil.getCurrentUserId();
+        boolean isOwner = uid.equals(c.getUserId());
+        boolean isAdmin = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
+        if (!isOwner && !isAdmin) throw new BusinessException("仅评论作者或管理员可以删除");
+        commentService.deleteWithDescendants(id);
         return Result.ok();
     }
 

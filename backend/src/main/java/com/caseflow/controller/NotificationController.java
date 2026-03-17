@@ -14,9 +14,10 @@ public class NotificationController {
     private final NotificationService notificationService;
 
     @GetMapping
-    public Result<?> list() {
+    public Result<?> list(@RequestParam(defaultValue = "1") int page,
+                          @RequestParam(defaultValue = "20") int size) {
         String uid = CurrentUserUtil.getCurrentUserId();
-        return Result.ok(notificationService.listByUser(uid));
+        return Result.ok(notificationService.listByUser(uid, page, size));
     }
 
     @GetMapping("/unread-count")

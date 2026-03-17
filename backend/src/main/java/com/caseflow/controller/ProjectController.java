@@ -35,6 +35,8 @@ public class ProjectController {
     @SaCheckPermission("settings:*")
     @DeleteMapping("/{id}") public Result<?> delete(@PathVariable String id) { projectService.removeById(id); return Result.ok(); }
     @GetMapping("/{id}/members") public Result<?> members(@PathVariable String id) { return Result.ok(projectService.getMembers(id)); }
+    @SaCheckPermission("settings:members")
     @PostMapping("/{id}/members") public Result<?> addMember(@PathVariable String id, @RequestParam String userId) { projectService.addMember(id, userId); return Result.ok(); }
+    @SaCheckPermission("settings:members")
     @DeleteMapping("/{id}/members/{userId}") public Result<?> removeMember(@PathVariable String id, @PathVariable String userId) { projectService.removeMember(id, userId); return Result.ok(); }
 }

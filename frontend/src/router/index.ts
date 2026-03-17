@@ -19,6 +19,7 @@ const router = createRouter({
         { path: 'settings/attributes', component: () => import('../views/settings/AttributeManagement.vue') },
         { path: 'settings/projects', component: () => import('../views/settings/ProjectManagement.vue') },
         { path: 'settings/rbac', component: () => import('../views/settings/RbacManagement.vue') },
+        { path: 'settings/jobs', component: () => import('../views/settings/JobManagement.vue') },
       ],
     },
     { path: '/mind-map/:caseSetId', component: () => import('../views/MindMapEditor.vue') },

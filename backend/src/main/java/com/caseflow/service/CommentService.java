@@ -9,4 +9,5 @@ public interface CommentService extends IService<Comment> {
     List<CommentDTO> getNodeComments(String nodeId);
     List<CommentDTO> getAllComments(String caseSetId, int page, int size);
     int countUnresolvedRootComments(String nodeId);
+    void deleteWithDescendants(String id);
 }

@@ -1,5 +1,6 @@
 package com.caseflow.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.caseflow.common.Result;
 import com.caseflow.dto.MindNodeDTO;
 import com.caseflow.entity.CaseSet;
@@ -48,6 +49,7 @@ public class MindNodeController {
         return c;
     }
 
+    @SaCheckPermission("mindmap:save")
     @PostMapping("/batch-save")
     public Result<?> batchSave(
             @RequestParam String caseSetId,
@@ -84,18 +86,22 @@ public class MindNodeController {
         return Result.ok(result);
     }
 
+    @SaCheckPermission("mindmap:edit")
     @PostMapping
     public Result<?> create(@RequestBody MindNode node) { return Result.ok(mindNodeService.createNode(node)); }
 
+    @SaCheckPermission("mindmap:edit")
     @PutMapping("/{id}")
     public Result<?> update(@PathVariable String id, @RequestBody MindNode node) { return Result.ok(mindNodeService.updateNode(id, node)); }
 
+    @SaCheckPermission("mindmap:edit")
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable String id) { mindNodeService.deleteNode(id); return Result.ok(); }
 
     @GetMapping("/count")
     public Result<?> count(@RequestParam String caseSetId) { return Result.ok(mindNodeService.countValidCases(caseSetId)); }
 
+    @SaCheckPermission("mindmap:export")
     @GetMapping("/export-excel")
     public void exportExcel(@RequestParam String caseSetId, HttpServletResponse response) {
         CaseSet cs = caseSetMapper.selectById(caseSetId);
@@ -110,6 +116,7 @@ public class MindNodeController {
         }
     }
 
+    @SaCheckPermission("mindmap:import")
     @PostMapping("/import-excel")
     public Result<?> importExcel(@RequestParam("file") MultipartFile file,
                                  @RequestParam String caseSetId) {

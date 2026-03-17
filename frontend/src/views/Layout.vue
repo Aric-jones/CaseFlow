@@ -25,6 +25,7 @@
             <el-menu-item index="/settings/attributes">用例属性管理</el-menu-item>
             <el-menu-item index="/settings/projects">项目空间管理</el-menu-item>
             <el-menu-item v-if="store.user?.role === 'SUPER_ADMIN'" index="/settings/rbac">权限管理</el-menu-item>
+            <el-menu-item v-if="store.user?.role === 'SUPER_ADMIN'" index="/settings/jobs">定时任务</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </div>
@@ -35,7 +36,7 @@
         </el-select>
 
         <!-- 通知铃铛 -->
-        <el-popover placement="bottom-end" :width="380" trigger="click" @show="loadNotifications">
+        <el-popover placement="bottom-end" :width="380" trigger="click" @show="() => loadNotifications()">
           <template #reference>
             <el-badge :value="unreadCount > 0 ? unreadCount : undefined" :hidden="unreadCount === 0"
                        :max="99" class="notification-badge">
@@ -48,14 +49,19 @@
               <el-button v-if="unreadCount > 0" text size="small" type="primary" @click="markAll">全部已读</el-button>
             </div>
             <div class="notif-list">
-              <el-empty v-if="!notifications.length" description="暂无通知" :image-size="50" />
-              <div v-for="n in notifications" :key="n.id"
+              <el-empty v-if="!notifData.records.length" description="暂无通知" :image-size="50" />
+              <div v-for="n in notifData.records" :key="n.id"
                    :class="['notif-item', { unread: !n.isRead }]"
                    @click="handleNotifClick(n)">
                 <div class="notif-item-title">{{ n.title }}</div>
                 <div class="notif-item-content">{{ n.content }}</div>
                 <div class="notif-item-time">{{ fmtTime(n.createdAt) }}</div>
               </div>
+            </div>
+            <div v-if="notifData.pages > 1" class="notif-pagination">
+              <el-pagination small layout="prev, pager, next" :total="notifData.total"
+                :page-size="20" :current-page="notifData.current"
+                @current-change="(p: number) => loadNotifications(p)" />
             </div>
           </div>
         </el-popover>
@@ -102,7 +108,9 @@ const route = useRoute();
 const store = useAppStore();
 
 const { unreadCount, latestNotification, connect, disconnect } = useWebSocket();
-const notifications = ref<Notification[]>([]);
+const notifData = ref<{ records: Notification[]; total: number; current: number; pages: number }>({
+  records: [], total: 0, current: 1, pages: 0,
+});
 
 const activeKey = computed(() => {
   const p = route.path;
@@ -123,9 +131,10 @@ function handleUserMenu(command: string) {
   if (command === 'logout') { disconnect(); store.logout(); router.push('/login'); }
 }
 
-async function loadNotifications() {
+async function loadNotifications(page = 1) {
   try {
-    notifications.value = (await notificationApi.list()).data;
+    const res = (await notificationApi.list(page)).data;
+    notifData.value = { records: res.records, total: res.total, current: res.current, pages: res.pages };
   } catch { /* ignore */ }
 }
 
@@ -139,7 +148,7 @@ async function fetchUnreadCount() {
 async function markAll() {
   await notificationApi.markAllRead();
   setUnreadCount(0);
-  notifications.value.forEach(n => n.isRead = 1);
+  notifData.value.records.forEach(n => n.isRead = 1);
 }
 
 async function handleNotifClick(n: Notification) {
@@ -156,7 +165,7 @@ function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 16) : 
 // 监听 WebSocket 推送的新通知，在列表中插入
 watch(latestNotification, (n) => {
   if (n) {
-    notifications.value.unshift(n);
+    if (notifData.value.current === 1) notifData.value.records.unshift(n);
     ElMessage.info({ message: n.title + '：' + (n.content || '').substring(0, 40), duration: 4000 });
   }
 });
@@ -209,6 +218,7 @@ onUnmounted(() => { disconnect(); });
 .notif-item-title { font-size: 13px; font-weight: 600; color: #1f2329; margin-bottom: 3px; }
 .notif-item-content { font-size: 12px; color: #606266; margin-bottom: 3px; line-height: 1.4; }
 .notif-item-time { font-size: 11px; color: #c0c4cc; }
+.notif-pagination { padding-top: 8px; border-top: 1px solid #f0f0f0; display: flex; justify-content: center; }
 
 .user-dropdown { cursor: pointer; }
 .user-trigger { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; transition: background 0.2s; }

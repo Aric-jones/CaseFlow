@@ -215,7 +215,8 @@ async function submitReply(parent: any) {
       ? `回复 @${replyTarget.value.displayName}: ${replyContent.value.trim()}`
       : replyContent.value.trim();
     const nodeId = parent.nodeId || props.nodeId || '';
-    await commentApi.add(nodeId, props.caseSetId, content, parent.id);
+    const replyToUserId = replyTarget.value ? replyTarget.value.userId : parent.userId;
+    await commentApi.add(nodeId, props.caseSetId, content, parent.id, replyToUserId);
     cancelReply();
     load();
     if (nodeId) refreshCount(nodeId);

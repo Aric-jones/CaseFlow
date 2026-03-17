@@ -1,5 +1,7 @@
 package com.caseflow.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.caseflow.common.BusinessException;
 import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
 import cn.dev33.satoken.stp.StpUtil;
@@ -99,6 +101,7 @@ public class TestPlanController {
         return Result.ok(List.of(m));
     }
 
+    @SaCheckPermission("plans:create")
     @SuppressWarnings("unchecked")
     @Transactional
     @PostMapping public Result<?> create(@RequestBody Map<String, Object> body) {
@@ -130,6 +133,7 @@ public class TestPlanController {
         return Result.ok(plan);
     }
 
+    @SaCheckPermission("plans:edit")
     @SuppressWarnings("unchecked")
     @Transactional
     @PutMapping("/{id}") public Result<?> update(@PathVariable String id, @RequestBody Map<String, Object> body) {
@@ -141,14 +145,33 @@ public class TestPlanController {
         return Result.ok();
     }
 
+    @SaCheckPermission("plans:delete")
     @DeleteMapping("/{id}") public Result<?> delete(@PathVariable String id) {
         TestPlan plan = testPlanService.getById(id);
         if (plan == null) return Result.error("测试计划不存在");
         String currentUserId = CurrentUserUtil.getCurrentUserId();
         boolean isCreator = plan.getCreatedBy() != null && plan.getCreatedBy().equals(currentUserId);
-        boolean hasRole = cn.dev33.satoken.stp.StpUtil.hasRole("SUPER_ADMIN") || cn.dev33.satoken.stp.StpUtil.hasRole("ADMIN");
+        boolean hasRole = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
         if (!isCreator && !hasRole) return Result.error("仅创建人或管理员可以删除");
         testPlanService.softDelete(id); return Result.ok();
+    }
+
+    @SaCheckPermission("plans:delete")
+    @Transactional
+    @DeleteMapping("/batch")
+    public Result<?> batchDelete(@RequestBody List<String> ids) {
+        if (ids == null || ids.isEmpty()) throw new BusinessException("请选择要删除的记录");
+        String currentUserId = CurrentUserUtil.getCurrentUserId();
+        boolean hasRole = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
+        for (String id : ids) {
+            TestPlan plan = testPlanService.getById(id);
+            if (plan == null) continue;
+            boolean isCreator = plan.getCreatedBy() != null && plan.getCreatedBy().equals(currentUserId);
+            if (!isCreator && !hasRole)
+                throw new BusinessException("测试计划「" + plan.getName() + "」仅创建人或管理员可以删除");
+        }
+        for (String id : ids) testPlanService.softDelete(id);
+        return Result.ok();
     }
 
     /** 获取测试计划已关联的用例集 ID 列表 */
@@ -177,7 +200,7 @@ public class TestPlanController {
         return Result.ok(testPlanService.previewValidPaths(caseSetId, filters));
     }
 
-    /** 刷新用例：回源重新拍快照，保留已有执行状态，同步新增/修改 */
+    @SaCheckPermission("plans:edit")
     @PostMapping("/{id}/refresh") public Result<?> refreshCases(@PathVariable String id) {
         testPlanService.refreshCases(id); return Result.ok();
     }
@@ -191,6 +214,7 @@ public class TestPlanController {
         return Result.ok();
     }
 
+    @SaCheckPermission("plans:execute")
     @PutMapping("/cases/{id}/execute") public Result<?> execute(@PathVariable String id, @RequestBody Map<String, String> body) {
         testPlanService.executeCase(id, body.get("result"), body.get("reason"));
         // 根据执行结果自动更新计划状态，仅在状态变化时通知
@@ -231,6 +255,7 @@ public class TestPlanController {
         };
     }
 
+    @SaCheckPermission("plans:edit")
     @DeleteMapping("/cases/{id}") public Result<?> removeCase(@PathVariable String id) {
         testPlanService.removeCase(id); return Result.ok();
     }

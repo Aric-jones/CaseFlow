@@ -66,8 +66,20 @@
           <el-button type="primary" :icon="Plus" @click="openCreateCase">新建用例集</el-button>
         </div>
 
+        <!-- 批量操作 -->
+        <div v-if="selectedCases.length" style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
+          <span style="color:#606266;font-size:13px">已选 {{ selectedCases.length }} 项</span>
+          <el-popconfirm title="确认批量删除？将移入回收站" @confirm="batchDeleteCases">
+            <template #reference>
+              <el-button type="danger" size="small" :loading="locks.batchDeleteCases">批量删除</el-button>
+            </template>
+          </el-popconfirm>
+        </div>
+
         <!-- 表格 -->
-        <el-table :data="caseData.records" v-loading="loading" border style="width:100%">
+        <el-table :data="caseData.records" v-loading="loading" border style="width:100%"
+          @selection-change="(rows: CaseSet[]) => selectedCases = rows">
+          <el-table-column type="selection" width="60" />
           <el-table-column label="用例集名称" min-width="280" show-overflow-tooltip>
             <template #default="{ row }">
               <a class="tbl-link" @click="$router.push(`/mind-map/${row.id}`)">{{ row.name }}</a>
@@ -228,6 +240,7 @@ const caseData = ref<PageResult<CaseSet>>({ records: [], total: 0, size: 20, cur
 const keyword = ref('');
 const statusFilter = ref<string | undefined>();
 const loading = ref(false);
+const selectedCases = ref<CaseSet[]>([]);
 const { locks, run } = useGuard();
 const siderCollapsed = ref(false);
 const editingDirId = ref<string | null>(null);
@@ -427,6 +440,15 @@ async function handleImport(file: File) {
     ElMessage.success('导入成功'); showImport.value = false; loadCases();
   });
   return false;
+}
+
+async function batchDeleteCases() {
+  const ids = selectedCases.value.map(c => c.id);
+  if (!ids.length) return;
+  await run('batchDeleteCases', async () => {
+    await caseSetApi.batchDelete(ids);
+    ElMessage.success('批量删除成功'); selectedCases.value = []; loadCases();
+  });
 }
 
 function statusLabel(s: string) { return ({ WRITING: '编写中', PENDING_REVIEW: '待评审', NO_REVIEW: '无需评审', APPROVED: '审核通过' } as any)[s] || s; }

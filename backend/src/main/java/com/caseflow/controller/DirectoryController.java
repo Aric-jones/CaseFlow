@@ -1,5 +1,6 @@
 package com.caseflow.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.caseflow.common.Result;
 import com.caseflow.entity.CaseSet;
@@ -21,6 +22,7 @@ public class DirectoryController {
     private final TestPlanMapper testPlanMapper;
 
     @GetMapping("/tree") public Result<?> tree(@RequestParam String projectId, @RequestParam String dirType) { return Result.ok(directoryService.getTree(projectId, dirType)); }
+    @SaCheckPermission("directory:create")
     @PostMapping public Result<?> create(@RequestParam String name, @RequestParam(required = false) String parentId, @RequestParam String projectId, @RequestParam String dirType) {
         if (name == null || name.isBlank()) return Result.error("目录名称不能为空");
         Directory d = new Directory(); d.setName(name);
@@ -28,17 +30,20 @@ public class DirectoryController {
         d.setProjectId(projectId); d.setDirType(dirType); d.setSortOrder(0);
         directoryService.save(d); return Result.ok(d);
     }
+    @SaCheckPermission("directory:edit")
     @PutMapping("/{id}/rename") public Result<?> rename(@PathVariable String id, @RequestParam String name) {
         Directory d = directoryService.getById(id);
         if (d == null) return Result.error("目录不存在");
         d.setName(name); directoryService.updateById(d); return Result.ok();
     }
+    @SaCheckPermission("directory:edit")
     @PutMapping("/{id}/move") public Result<?> move(@PathVariable String id, @RequestParam String newParentId) {
         Directory d = directoryService.getById(id);
         if (d == null) return Result.error("目录不存在");
         d.setParentId(newParentId); directoryService.updateById(d); return Result.ok();
     }
 
+    @SaCheckPermission("directory:delete")
     @Transactional
     @DeleteMapping("/{id}") public Result<?> delete(@PathVariable String id) {
         List<String> allIds = new ArrayList<>();

@@ -28,7 +28,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
     @Override
     public List<CommentDTO> getAllComments(String caseSetId, int page, int size) {
-        List<Comment> all = lambdaQuery().eq(Comment::getCaseSetId, caseSetId).orderByDesc(Comment::getCreatedAt).list();
+        List<Comment> all = lambdaQuery().eq(Comment::getCaseSetId, caseSetId).orderByAsc(Comment::getCreatedAt).list();
         List<CommentDTO> tree = buildTree(all);
         int start = (page - 1) * size;
         if (start >= tree.size()) return List.of();
@@ -42,6 +42,24 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
                 .isNull(Comment::getParentId)
                 .eq(Comment::getResolved, 0)
                 .count());
+    }
+
+    @Override
+    public void deleteWithDescendants(String id) {
+        // 收集所有要删除的 ID（当前评论 + 所有子孙）
+        List<String> toDelete = new ArrayList<>();
+        collectDescendants(id, toDelete);
+        if (!toDelete.isEmpty()) {
+            removeBatchByIds(toDelete);
+        }
+    }
+
+    private void collectDescendants(String parentId, List<String> ids) {
+        ids.add(parentId);
+        List<Comment> children = lambdaQuery().eq(Comment::getParentId, parentId).list();
+        for (Comment child : children) {
+            collectDescendants(child.getId(), ids);
+        }
     }
 
     private List<CommentDTO> buildTree(List<Comment> comments) {

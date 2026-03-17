@@ -54,3 +54,33 @@ sa-token:
   token-style: uuid
   is-log: false
   is-read-cookie: false
+
+# 原有配置（server、spring、mybatis-plus、sa-token）保持不变，新增以下 logging 节点
+logging:
+  # 1. 全局日志级别（默认：INFO，开发环境可设为 DEBUG，生产设为 INFO/WARN）
+  level:
+    root: INFO
+    # 2. 按组件精准设置日志级别（重点）
+    # Spring 核心（如 web、context）
+    org.springframework: INFO
+    # Spring Data Redis（ lettuce 客户端）
+    org.springframework.data.redis: INFO
+    # MyBatis-Plus / MyBatis（SQL 打印，开发设为 DEBUG，生产设为 INFO）
+    com.baomidou.mybatisplus: INFO
+    # 自定义 mapper 包（替换成你的 mapper 包名，打印具体 SQL）
+    com.yourpackage.mapper: DEBUG
+    # Sa-Token 核心日志（com.dev33.satoken）
+    com.dev33.satoken: INFO
+    # Sa-Token Redis 存储日志（如需排查 Redis 存储问题，设为 DEBUG）
+    com.dev33.satoken.dao.redis: INFO
+    # MySQL JDBC 驱动（排查数据库连接问题用）
+    com.mysql.cj.jdbc: INFO
+  # 3. 可选：日志输出格式（自定义控制台日志样式）
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+  # 4. 可选：日志文件输出（生产环境建议开启）
+  file:
+    name: ./logs/caseflow.log
+    max-size: 100MB
+    max-history: 7

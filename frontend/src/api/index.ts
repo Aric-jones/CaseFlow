@@ -65,6 +65,7 @@ export const caseSetApi = {
   copy: (id: string, targetDirectoryId: string): R<CaseSet> =>
     request.post(`/case-sets/${id}/copy`, null, { params: { targetDirectoryId } }),
   delete: (id: string): R<void> => request.delete(`/case-sets/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.delete('/case-sets/batch', { data: ids }),
   rename: (id: string, name: string): R<void> =>
     request.put(`/case-sets/${id}/rename`, null, { params: { name } }),
   validate: (id: string): R<ValidationResult> => request.get(`/case-sets/${id}/validate`),
@@ -98,8 +99,8 @@ export const commentApi = {
   allComments: (caseSetId: string, page = 1, size = 20): R<CommentData[]> =>
     request.get('/comments/all', { params: { caseSetId, page, size } }),
   unresolvedCount: (nodeId: string): R<number> => request.get('/comments/node/count', { params: { nodeId } }),
-  add: (nodeId: string, caseSetId: string, content: string, parentId?: string): R<CommentData> =>
-    request.post('/comments', { nodeId, caseSetId, content, parentId }),
+  add: (nodeId: string, caseSetId: string, content: string, parentId?: string, replyToUserId?: string): R<CommentData> =>
+    request.post('/comments', { nodeId, caseSetId, content, parentId, replyToUserId }),
   update: (id: string, content: string): R<void> => request.put(`/comments/${id}`, { content }),
   delete: (id: string): R<void> => request.delete(`/comments/${id}`),
   resolve: (id: string): R<void> => request.put(`/comments/${id}/resolve`),
@@ -126,6 +127,7 @@ export const testPlanApi = {
   create: (data: any): R<TestPlan> => request.post('/test-plans', data),
   update: (id: string, data: any): R<void> => request.put(`/test-plans/${id}`, data),
   delete: (id: string): R<void> => request.delete(`/test-plans/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.delete('/test-plans/batch', { data: ids }),
   getCases: (id: string): R<any[]> => request.get(`/test-plans/${id}/cases`),
   refreshCases: (id: string): R<void> => request.post(`/test-plans/${id}/refresh`),
   getAttributeValues: (caseSetId: string): R<Record<string, string[]>> =>
@@ -172,7 +174,7 @@ export const recycleBinApi = {
 };
 
 export const notificationApi = {
-  list: (): R<Notification[]> => request.get('/notifications'),
+  list: (page = 1, size = 20): R<PageResult<Notification>> => request.get('/notifications', { params: { page, size } }),
   unreadCount: (): R<number> => request.get('/notifications/unread-count'),
   markRead: (id: string): R<void> => request.put(`/notifications/${id}/read`),
   markAllRead: (): R<void> => request.put('/notifications/read-all'),
