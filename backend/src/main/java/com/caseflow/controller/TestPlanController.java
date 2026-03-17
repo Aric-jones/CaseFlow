@@ -193,29 +193,42 @@ public class TestPlanController {
 
     @PutMapping("/cases/{id}/execute") public Result<?> execute(@PathVariable String id, @RequestBody Map<String, String> body) {
         testPlanService.executeCase(id, body.get("result"), body.get("reason"));
-        // 检查是否全部执行完毕，通知计划创建人
+        // 根据执行结果自动更新计划状态，仅在状态变化时通知
         TestPlanCase tc = caseMapper.selectById(id);
         if (tc != null) {
             TestPlan plan = testPlanService.getById(tc.getPlanId());
-            if (plan != null && plan.getCreatedBy() != null) {
+            if (plan != null) {
+                String oldStatus = plan.getStatus();
                 List<TestPlanCase> allCases = caseMapper.selectList(
                         new LambdaQueryWrapper<TestPlanCase>().eq(TestPlanCase::getPlanId, plan.getId()));
                 boolean allDone = allCases.stream().allMatch(c -> c.getResult() != null && !"PENDING".equals(c.getResult()));
-                String link = "/test-plan/" + plan.getId() + "/execute";
-                if (allDone) {
-                    notificationService.send(plan.getCreatedBy(), "PLAN_COMPLETED",
-                            "测试计划执行完成", "测试计划「" + plan.getName() + "」所有用例已执行完毕", link);
-                } else {
-                    String executorName = CurrentUserUtil.getCurrentUserDisplayName();
-                    String resultText = body.get("result");
-                    if (!plan.getCreatedBy().equals(CurrentUserUtil.getCurrentUserId())) {
+                boolean anyDone = allCases.stream().anyMatch(c -> c.getResult() != null && !"PENDING".equals(c.getResult()));
+                String newStatus = allDone ? "COMPLETED" : (anyDone ? "IN_PROGRESS" : "NOT_STARTED");
+
+                if (!newStatus.equals(oldStatus)) {
+                    plan.setStatus(newStatus);
+                    testPlanService.updateById(plan);
+                    // 状态变化时通知创建人
+                    if (plan.getCreatedBy() != null && !plan.getCreatedBy().equals(CurrentUserUtil.getCurrentUserId())) {
+                        String link = "/test-plan/" + plan.getId() + "/execute";
+                        String statusCn = planStatusCn(newStatus);
                         notificationService.send(plan.getCreatedBy(), "PLAN_STATUS_CHANGE",
-                                "测试执行进度更新", executorName + " 在「" + plan.getName() + "」中执行了用例，结果：" + resultText, link);
+                                "测试计划状态变更",
+                                "测试计划「" + plan.getName() + "」状态变更为" + statusCn, link);
                     }
                 }
             }
         }
         return Result.ok();
+    }
+
+    private String planStatusCn(String status) {
+        return switch (status) {
+            case "NOT_STARTED" -> "待执行";
+            case "IN_PROGRESS" -> "执行中";
+            case "COMPLETED" -> "执行完成";
+            default -> status;
+        };
     }
 
     @DeleteMapping("/cases/{id}") public Result<?> removeCase(@PathVariable String id) {

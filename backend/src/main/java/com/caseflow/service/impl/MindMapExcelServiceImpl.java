@@ -16,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xssf.usermodel.XSSFCellStyle;
+import org.apache.poi.xssf.usermodel.XSSFColor;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -518,13 +520,14 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
     }
 
     private CellStyle createHeaderStyle(Workbook wb) {
-        CellStyle style = wb.createCellStyle();
+        XSSFCellStyle style = (XSSFCellStyle) wb.createCellStyle();
         Font font = wb.createFont();
         font.setBold(true);
         style.setFont(font);
         style.setAlignment(HorizontalAlignment.CENTER);
         style.setVerticalAlignment(VerticalAlignment.CENTER);
-        style.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        // #c6e0b4
+        style.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 0xc6, (byte) 0xe0, (byte) 0xb4}, null));
         style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
         style.setBorderBottom(BorderStyle.THIN);
         style.setBorderTop(BorderStyle.THIN);

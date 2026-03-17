@@ -53,21 +53,25 @@ public class CommentController {
         c.setResolved(0);
         commentService.save(c);
 
-        // 通知：回复评论通知原评论者；新评论通知用例集创建人
         String currentUserId = CurrentUserUtil.getCurrentUserId();
         String currentUserName = CurrentUserUtil.getCurrentUserDisplayName();
-        String link = "/review/" + (caseSetId != null ? caseSetId : "");
+        String link = "/review/" + (caseSetId != null ? caseSetId : "") + "?nodeId=" + nodeId + "&openComment=1";
+        CaseSet cs = caseSetId != null ? caseSetService.getById(caseSetId) : null;
+        String csCreator = cs != null ? cs.getCreatedBy() : null;
+        String csName = cs != null ? cs.getName() : "";
+
         if (c.getParentId() != null) {
+            // 回复：只通知被回复者
             Comment parent = commentService.getById(c.getParentId());
             if (parent != null && !parent.getUserId().equals(currentUserId)) {
                 notificationService.send(parent.getUserId(), "COMMENT_REPLY",
                         "收到评论回复", currentUserName + " 回复了您的评论：" + content.substring(0, Math.min(content.length(), 50)), link);
             }
-        } else if (caseSetId != null) {
-            CaseSet cs = caseSetService.getById(caseSetId);
-            if (cs != null && cs.getCreatedBy() != null && !cs.getCreatedBy().equals(currentUserId)) {
-                notificationService.send(cs.getCreatedBy(), "COMMENT_NEW",
-                        "新的评论", currentUserName + " 在用例集「" + cs.getName() + "」中添加了评论", link);
+        } else {
+            // 根评论：通知用例集创建人
+            if (csCreator != null && !csCreator.equals(currentUserId)) {
+                notificationService.send(csCreator, "COMMENT_NEW",
+                        "新的评论", currentUserName + " 在用例集「" + csName + "」中添加了评论", link);
             }
         }
 

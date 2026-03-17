@@ -293,6 +293,20 @@ onMounted(async () => {
     }
   });
   cleanupMouseOverrides = setupMouseOverrides(mindMapContainer.value!, () => mindMapInstance);
+
+  // 处理通知跳转：?nodeId=xxx&openComment=1
+  const queryNodeId = route.query.nodeId as string;
+  const openComment = route.query.openComment as string;
+  if (queryNodeId) {
+    setTimeout(() => {
+      navigateToCommentNode(queryNodeId);
+      if (openComment === '1') {
+        rightPanelOpen.value = true;
+        panelTab.value = 'comments';
+        nextTick(() => commentPanelRef.value?.refresh());
+      }
+    }, 500);
+  }
 });
 onUnmounted(() => { if (mindMapInstance) mindMapInstance.destroy(); cleanupMouseOverrides?.(); });
 

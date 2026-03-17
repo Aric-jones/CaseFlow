@@ -1,4 +1,5 @@
-import { ref, onUnmounted } from 'vue';
+import { ref } from 'vue';
+import { notificationApi } from '../api';
 
 const unreadCount = ref(0);
 const latestNotification = ref<any>(null);
@@ -6,6 +7,7 @@ const latestNotification = ref<any>(null);
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 function getWsUrl() {
   const token = localStorage.getItem('token');
@@ -33,27 +35,40 @@ function connect() {
     try {
       const msg = JSON.parse(event.data);
       if (msg.type === 'notification') {
-        latestNotification.value = msg.data;
+        latestNotification.value = { ...msg.data, _ts: Date.now() };
         unreadCount.value = msg.unreadCount ?? unreadCount.value + 1;
       }
     } catch { /* ignore non-JSON */ }
   };
 
   ws.onclose = () => {
-    cleanup();
+    cleanupWs();
     reconnectTimer = setTimeout(connect, 3000);
   };
 
   ws.onerror = () => { ws?.close(); };
+
+  startPoll();
 }
 
-function cleanup() {
+function cleanupWs() {
   if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
 }
 
+function startPoll() {
+  if (pollTimer) return;
+  pollTimer = setInterval(async () => {
+    try {
+      const res = await notificationApi.unreadCount();
+      unreadCount.value = res.data;
+    } catch { /* ignore */ }
+  }, 15000);
+}
+
 function disconnect() {
-  cleanup();
+  cleanupWs();
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
 }
 
