@@ -38,7 +38,7 @@ public class UserController {
         return Result.ok(userService.list());
     }
 
-    @SaCheckPermission("settings:*")
+    @SaCheckPermission("settings:members:add")
     @SuppressWarnings("unchecked")
     @Transactional
     @PostMapping
@@ -80,7 +80,7 @@ public class UserController {
         return Result.ok(user);
     }
 
-    @SaCheckPermission("settings:members")
+    @SaCheckPermission("settings:members:edit")
     @PutMapping("/{id}")
     public Result<?> update(@PathVariable String id, @RequestBody User user) {
         User existing = userService.getById(id);
@@ -127,7 +127,7 @@ public class UserController {
         return Result.ok(pids);
     }
 
-    @SaCheckPermission("settings:members")
+    @SaCheckPermission("settings:members:edit")
     @Transactional
     @PutMapping("/{id}/projects")
     public Result<?> updateUserProjects(@PathVariable String id, @RequestBody List<String> projectIds) {

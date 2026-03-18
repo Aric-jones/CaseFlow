@@ -1,6 +1,7 @@
 package com.caseflow.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import com.caseflow.common.Result;
 import com.caseflow.dto.MindNodeDTO;
 import com.caseflow.entity.CaseSet;
@@ -101,7 +102,7 @@ public class MindNodeController {
     @GetMapping("/count")
     public Result<?> count(@RequestParam String caseSetId) { return Result.ok(mindNodeService.countValidCases(caseSetId)); }
 
-    @SaCheckPermission("mindmap:export")
+    @SaCheckPermission(value = {"mindmap:export", "cases:export"}, mode = SaMode.OR)
     @GetMapping("/export-excel")
     public void exportExcel(@RequestParam String caseSetId, HttpServletResponse response) {
         CaseSet cs = caseSetMapper.selectById(caseSetId);
@@ -116,7 +117,7 @@ public class MindNodeController {
         }
     }
 
-    @SaCheckPermission("mindmap:import")
+    @SaCheckPermission(value = {"mindmap:import", "cases:import"}, mode = SaMode.OR)
     @PostMapping("/import-excel")
     public Result<?> importExcel(@RequestParam("file") MultipartFile file,
                                  @RequestParam String caseSetId) {

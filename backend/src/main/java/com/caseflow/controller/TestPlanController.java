@@ -204,7 +204,7 @@ public class TestPlanController {
         testPlanService.refreshCases(id); return Result.ok();
     }
 
-    /** 更新单条用例的执行人 */
+    @SaCheckPermission("plans:edit")
     @PutMapping("/cases/{id}/executor") public Result<?> updateCaseExecutor(@PathVariable String id, @RequestBody Map<String, String> body) {
         TestPlanCase tc = caseMapper.selectById(id);
         if (tc == null) return Result.error("用例不存在");

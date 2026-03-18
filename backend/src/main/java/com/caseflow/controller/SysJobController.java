@@ -1,6 +1,7 @@
 package com.caseflow.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.caseflow.common.BusinessException;
@@ -16,18 +17,19 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/sys-jobs")
 @RequiredArgsConstructor
-@SaCheckPermission("settings:*")
 public class SysJobController {
 
     private final SysJobMapper jobMapper;
     private final SysJobLogMapper jobLogMapper;
     private final ScheduledTaskManager taskManager;
 
+    @SaCheckPermission(value = {"settings:jobs:create", "settings:jobs:edit", "settings:jobs:delete", "settings:jobs:run"}, mode = SaMode.OR)
     @GetMapping
     public Result<?> list() {
         return Result.ok(jobMapper.selectList(new LambdaQueryWrapper<SysJob>().orderByAsc(SysJob::getCreatedAt)));
     }
 
+    @SaCheckPermission("settings:jobs:create")
     @PostMapping
     public Result<?> create(@RequestBody SysJob job) {
         if (job.getJobName() == null || job.getJobName().isBlank()) throw new BusinessException("任务名称不能为空");
@@ -39,6 +41,7 @@ public class SysJobController {
         return Result.ok(job);
     }
 
+    @SaCheckPermission("settings:jobs:edit")
     @PutMapping("/{id}")
     public Result<?> update(@PathVariable String id, @RequestBody SysJob job) {
         SysJob existing = jobMapper.selectById(id);
@@ -58,6 +61,7 @@ public class SysJobController {
         return Result.ok(existing);
     }
 
+    @SaCheckPermission("settings:jobs:delete")
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable String id) {
         taskManager.removeTask(id);
@@ -65,6 +69,7 @@ public class SysJobController {
         return Result.ok();
     }
 
+    @SaCheckPermission("settings:jobs:edit")
     @PutMapping("/{id}/status")
     public Result<?> changeStatus(@PathVariable String id, @RequestParam Integer status) {
         SysJob job = jobMapper.selectById(id);
@@ -79,6 +84,7 @@ public class SysJobController {
         return Result.ok();
     }
 
+    @SaCheckPermission("settings:jobs:run")
     @PostMapping("/{id}/run")
     public Result<?> runOnce(@PathVariable String id) {
         SysJob job = jobMapper.selectById(id);
@@ -87,6 +93,7 @@ public class SysJobController {
         return Result.ok();
     }
 
+    @SaCheckPermission(value = {"settings:jobs:create", "settings:jobs:edit", "settings:jobs:delete", "settings:jobs:run"}, mode = SaMode.OR)
     @GetMapping("/{id}/logs")
     public Result<?> logs(@PathVariable String id,
                           @RequestParam(defaultValue = "1") int page,

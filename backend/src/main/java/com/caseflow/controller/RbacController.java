@@ -1,6 +1,8 @@
 package com.caseflow.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.session.SaSession;
+import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.caseflow.common.Result;
 import com.caseflow.entity.*;
@@ -15,7 +17,6 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/rbac")
 @RequiredArgsConstructor
-@SaCheckPermission("settings:*")
 public class RbacController {
     private final SysRoleMapper roleMapper;
     private final SysMenuMapper menuMapper;
@@ -23,6 +24,7 @@ public class RbacController {
     private final SysRoleMenuMapper roleMenuMapper;
     private final UserMapper userMapper;
 
+    @SaCheckPermission("settings:rbac:role")
     @GetMapping("/roles")
     public Result<?> listRoles() {
         List<SysRole> roles = roleMapper.selectList(
@@ -48,6 +50,7 @@ public class RbacController {
         return Result.ok(result);
     }
 
+    @SaCheckPermission("settings:rbac:role")
     @PostMapping("/roles")
     public Result<?> createRole(@RequestBody SysRole role) {
 
@@ -55,6 +58,7 @@ public class RbacController {
         return Result.ok(role);
     }
 
+    @SaCheckPermission("settings:rbac:role")
     @PutMapping("/roles/{roleId}")
     public Result<?> updateRole(@PathVariable String roleId, @RequestBody SysRole role) {
 
@@ -63,6 +67,7 @@ public class RbacController {
         return Result.ok();
     }
 
+    @SaCheckPermission("settings:rbac:role")
     @Transactional
     @DeleteMapping("/roles/{roleId}")
     public Result<?> deleteRole(@PathVariable String roleId) {
@@ -75,6 +80,7 @@ public class RbacController {
         return Result.ok();
     }
 
+    @SaCheckPermission("settings:rbac:menu")
     @GetMapping("/menus")
     public Result<?> listMenus() {
 
@@ -82,6 +88,7 @@ public class RbacController {
                 new LambdaQueryWrapper<SysMenu>().orderByAsc(SysMenu::getSortOrder)));
     }
 
+    @SaCheckPermission("settings:rbac:menu")
     @PostMapping("/menus")
     public Result<?> createMenu(@RequestBody SysMenu menu) {
 
@@ -89,6 +96,7 @@ public class RbacController {
         return Result.ok(menu);
     }
 
+    @SaCheckPermission("settings:rbac:menu")
     @PutMapping("/menus/{menuId}")
     public Result<?> updateMenu(@PathVariable String menuId, @RequestBody SysMenu menu) {
 
@@ -97,6 +105,7 @@ public class RbacController {
         return Result.ok();
     }
 
+    @SaCheckPermission("settings:rbac:menu")
     @Transactional
     @DeleteMapping("/menus/{menuId}")
     public Result<?> deleteMenu(@PathVariable String menuId) {
@@ -109,6 +118,7 @@ public class RbacController {
         return Result.ok();
     }
 
+    @SaCheckPermission("settings:rbac:role")
     @Transactional
     @PutMapping("/roles/{roleId}/menus")
     public Result<?> updateRoleMenus(@PathVariable String roleId, @RequestBody List<String> menuIds) {
@@ -122,9 +132,11 @@ public class RbacController {
                 roleMenuMapper.insert(rm);
             }
         }
+        clearPermissionCacheByRole(roleId);
         return Result.ok();
     }
 
+    @SaCheckPermission("settings:rbac:user")
     @GetMapping("/users")
     public Result<?> listUsersWithRoles() {
 
@@ -153,6 +165,7 @@ public class RbacController {
         return Result.ok(result);
     }
 
+    @SaCheckPermission("settings:rbac:user")
     @Transactional
     @PutMapping("/users/{userId}/roles")
     public Result<?> updateUserRoles(@PathVariable String userId, @RequestBody List<String> roleIds) {
@@ -174,6 +187,30 @@ public class RbacController {
                 userMapper.updateById(user);
             }
         }
+        clearPermissionCacheByUser(userId);
         return Result.ok();
+    }
+
+    /**
+     * 清除某角色下所有用户的权限缓存，使权限变更实时生效
+     */
+    private void clearPermissionCacheByRole(String roleId) {
+        List<String> userIds = userRoleMapper.selectList(
+                new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getRoleId, roleId))
+                .stream().map(SysUserRole::getUserId).toList();
+        for (String uid : userIds) {
+            clearPermissionCacheByUser(uid);
+        }
+    }
+
+    private void clearPermissionCacheByUser(String userId) {
+        try {
+            SaSession session = StpUtil.getSessionByLoginId(userId, false);
+            if (session != null) {
+                session.delete("Permission_List");
+                session.delete("Role_List");
+            }
+        } catch (Exception ignored) {
+        }
     }
 }

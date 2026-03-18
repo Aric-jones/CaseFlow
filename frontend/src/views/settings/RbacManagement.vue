@@ -359,9 +359,8 @@ function onExpandAllMenus(val: boolean) {
 async function saveRoleMenus() {
   roleMenuDlg.value.saving = true;
   try {
-    const checked = roleMenuTreeRef.value?.getCheckedKeys() || [];
-    const half = roleMenuTreeRef.value?.getHalfCheckedKeys() || [];
-    await rbacApi.updateRoleMenus(roleMenuDlg.value.roleId, [...checked, ...half]);
+    const leafChecked = roleMenuTreeRef.value?.getCheckedKeys(true) || [];
+    await rbacApi.updateRoleMenus(roleMenuDlg.value.roleId, leafChecked);
     ElMessage.success('权限已更新');
     roleMenuDlg.value.visible = false;
     loadRoles();

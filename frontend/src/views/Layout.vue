@@ -17,15 +17,15 @@
           <el-menu-item index="/test-plans">
             <el-icon><Calendar /></el-icon><span>测试计划</span>
           </el-menu-item>
-          <el-sub-menu index="/settings" v-if="store.user?.role !== 'MEMBER'">
+          <el-sub-menu index="/settings" v-if="showSettings">
             <template #title>
-              <el-icon><Setting /></el-icon><span>系统设置</span>
+              <el-icon><Setting /></el-icon><span>系统管理</span>
             </template>
-            <el-menu-item index="/settings/members">成员管理</el-menu-item>
-            <el-menu-item index="/settings/attributes">用例属性管理</el-menu-item>
-            <el-menu-item index="/settings/projects">项目空间管理</el-menu-item>
-            <el-menu-item v-if="store.user?.role === 'SUPER_ADMIN'" index="/settings/rbac">权限管理</el-menu-item>
-            <el-menu-item v-if="store.user?.role === 'SUPER_ADMIN'" index="/settings/jobs">定时任务</el-menu-item>
+            <el-menu-item v-if="store.hasAnyPermission('settings:members:add', 'settings:members:edit', 'settings:members:toggle')" index="/settings/members">成员管理</el-menu-item>
+            <el-menu-item v-if="store.hasAnyPermission('settings:attributes:create', 'settings:attributes:edit', 'settings:attributes:delete')" index="/settings/attributes">用例属性管理</el-menu-item>
+            <el-menu-item v-if="store.hasAnyPermission('settings:projects:create', 'settings:projects:edit', 'settings:projects:delete')" index="/settings/projects">项目空间管理</el-menu-item>
+            <el-menu-item v-if="store.hasAnyPermission('settings:rbac:role', 'settings:rbac:menu', 'settings:rbac:user')" index="/settings/rbac">权限管理</el-menu-item>
+            <el-menu-item v-if="store.hasAnyPermission('settings:jobs:create', 'settings:jobs:edit', 'settings:jobs:delete', 'settings:jobs:run')" index="/settings/jobs">定时任务</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </div>
@@ -112,6 +112,16 @@ const notifData = ref<{ records: Notification[]; total: number; current: number;
   records: [], total: 0, current: 1, pages: 0,
 });
 
+const showSettings = computed(() =>
+  store.hasAnyPermission(
+    'settings:members:add', 'settings:members:edit', 'settings:members:toggle',
+    'settings:attributes:create', 'settings:attributes:edit', 'settings:attributes:delete',
+    'settings:projects:create', 'settings:projects:edit', 'settings:projects:delete',
+    'settings:rbac:role', 'settings:rbac:menu', 'settings:rbac:user',
+    'settings:jobs:create', 'settings:jobs:edit', 'settings:jobs:delete', 'settings:jobs:run',
+  )
+);
+
 const activeKey = computed(() => {
   const p = route.path;
   if (p === '/dashboard' || p === '/') return '/dashboard';
@@ -173,11 +183,19 @@ watch(latestNotification, (n) => {
 onMounted(async () => {
   if (!store.user) {
     try {
-      const [uRes, pRes] = await Promise.all([authApi.currentUser(), projectApi.list()]);
+      const [uRes, pRes, permRes] = await Promise.all([
+        authApi.currentUser(), projectApi.list(), authApi.permissions(),
+      ]);
       store.setUser(uRes.data);
       store.setProjects(pRes.data);
+      store.setPermissions(permRes.data.permissions || [], permRes.data.roles || []);
       if (!store.currentProject && pRes.data.length > 0) store.setCurrentProject(pRes.data[0]);
     } catch { router.push('/login'); return; }
+  } else if (!store.permissions.length) {
+    try {
+      const permRes = await authApi.permissions();
+      store.setPermissions(permRes.data.permissions || [], permRes.data.roles || []);
+    } catch { /* ignore */ }
   }
   connect();
   fetchUnreadCount();

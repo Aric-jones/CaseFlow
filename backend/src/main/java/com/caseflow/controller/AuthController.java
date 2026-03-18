@@ -10,6 +10,7 @@ import com.caseflow.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 import java.util.Map;
 
 @RestController @RequestMapping("/api/auth") @RequiredArgsConstructor
@@ -39,6 +40,13 @@ public class AuthController {
         if (user == null) return Result.error("用户不存在");
         user.setPassword(null);
         return Result.ok(user);
+    }
+
+    @GetMapping("/permissions")
+    public Result<?> permissions() {
+        List<String> perms = StpUtil.getPermissionList();
+        List<String> roles = StpUtil.getRoleList();
+        return Result.ok(Map.of("permissions", perms, "roles", roles));
     }
 
     @PostMapping("/change-password")

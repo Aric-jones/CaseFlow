@@ -12,10 +12,10 @@ public class CustomAttributeController {
     private final CustomAttributeService service;
 
     @GetMapping public Result<?> list(@RequestParam String projectId) { return Result.ok(service.listByProject(projectId)); }
-    @SaCheckPermission("settings:*")
+    @SaCheckPermission("settings:attributes:create")
     @PostMapping public Result<?> create(@RequestBody CustomAttribute attr) { service.save(attr); return Result.ok(attr); }
-    @SaCheckPermission("settings:*")
+    @SaCheckPermission("settings:attributes:edit")
     @PutMapping("/{id}") public Result<?> update(@PathVariable String id, @RequestBody CustomAttribute attr) { attr.setId(id); service.updateById(attr); return Result.ok(attr); }
-    @SaCheckPermission("settings:*")
+    @SaCheckPermission("settings:attributes:delete")
     @DeleteMapping("/{id}") public Result<?> delete(@PathVariable String id) { service.removeById(id); return Result.ok(); }
 }

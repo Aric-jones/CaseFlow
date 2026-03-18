@@ -110,6 +110,7 @@ public class CommentController {
         return Result.ok();
     }
 
+    @SaCheckPermission("review:comment")
     @PutMapping("/{id}/resolve")
     public Result<?> resolve(@PathVariable String id) {
         Comment c = commentService.getById(id);
