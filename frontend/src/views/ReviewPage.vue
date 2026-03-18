@@ -72,16 +72,13 @@
           <!-- 节点属性 -->
           <template v-if="panelTab === 'node'">
             <template v-if="selectedNodeRaw">
-              <div class="prop-field">
-                <label>节点文本</label>
-                <div>{{ selectedNodeRaw.text }}</div>
-              </div>
-              <div class="prop-field">
-                <label>节点类型</label>
-                <el-tag v-if="selectedNodeRaw.nodeType" :type="nodeTypeElType(selectedNodeRaw.nodeType)" size="small">
-                  {{ NODE_TYPE_LABEL[selectedNodeRaw.nodeType] }}
-                </el-tag>
-                <span v-else style="color:#c0c4cc">未设置</span>
+              <div class="node-card">
+                <div class="node-card-header">
+                  <span class="node-card-title">{{ selectedNodeRaw.text }}</span>
+                  <el-tag v-if="selectedNodeRaw.nodeType" :type="nodeTypeElType(selectedNodeRaw.nodeType)" size="small" effect="dark" round>
+                    {{ NODE_TYPE_LABEL[selectedNodeRaw.nodeType] }}
+                  </el-tag>
+                </div>
               </div>
               <div class="prop-field">
                 <label>标记</label>
@@ -96,7 +93,7 @@
                 <template v-for="[pKey, pVal] in Object.entries(selectedNodeRaw.properties || {})" :key="pKey">
                   <div v-if="pKey !== 'mark' && pVal !== undefined && pVal !== null && pVal !== ''" class="prop-field">
                     <label>{{ pKey }}</label>
-                    <div>{{ Array.isArray(pVal) ? pVal.join(', ') : pVal }}</div>
+                    <div class="prop-value">{{ Array.isArray(pVal) ? pVal.join(', ') : pVal }}</div>
                   </div>
                 </template>
               </template>
@@ -136,15 +133,14 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import MindMap from 'simple-mind-map';
-import Scrollbar from 'simple-mind-map/src/plugins/Scrollbar';
+import { SvgMindMapEngine as MindMap } from '../composables/svgMindMap';
 import { caseSetApi, mindNodeApi, reviewApi, userApi, customAttributeApi } from '../api';
 import { useAppStore } from '../stores/app';
 import type { CaseSet, MindNodeData, ReviewAssignment, User, CustomAttribute } from '../types';
 import { NODE_TYPE_LABEL, addAllCustomLabels, setupMouseOverrides } from '../composables/useMindMap';
 import CommentPanel from '../components/CommentPanel.vue';
 
-MindMap.usePlugin(Scrollbar);
+MindMap.usePlugin(null);
 
 const route = useRoute();
 const store = useAppStore();
@@ -219,8 +215,8 @@ function nodeToMM(node: MindNodeData): any {
 function handleNodeSelect(n: any) {
   const raw = n.nodeData?.data?._raw || n.getData?.('_raw') || n.data?._raw || null;
   selectedNodeRaw.value = raw ? { ...raw, properties: raw.properties ? { ...raw.properties } : {} } : null;
-  if (!rightPanelOpen.value) { rightPanelOpen.value = true; panelTab.value = 'node'; }
-  if (raw?.id && panelTab.value === 'comments') nextTick(() => commentPanelRef.value?.refresh());
+  rightPanelOpen.value = true;
+  panelTab.value = 'node';
 }
 
 function onCommentCountChanged(nodeId: string, count: number) {
@@ -230,7 +226,7 @@ function onCommentCountChanged(nodeId: string, count: number) {
     if (r && r.id === nodeId) r.commentCount = count;
     (n.children || []).forEach(walkUpdate);
   })(mindMapInstance.renderer.root);
-  requestAnimationFrame(() => addAllCustomLabels(mindMapInstance));
+  if (mindMapInstance._isSvgEngine) { mindMapInstance.refresh(); } else { requestAnimationFrame(() => addAllCustomLabels(mindMapInstance)); }
 }
 
 function navigateToCommentNode(nodeId: string) {
@@ -272,7 +268,10 @@ onMounted(async () => {
     isShowExpandNum: false,
     openPerformance: false,
     performanceConfig: { time: 250, padding: 200, removeNodeWhenOutCanvas: true },
-    themeConfig: { second: { marginX: 80, marginY: 60 }, node: { marginX: 50, marginY: 50 } },
+    themeConfig: {
+      second: { marginX: 60, marginY: 40 },
+      node: { marginX: 40, marginY: 30 },
+    },
   });
   mindMapInstance.on('node_active', (_: any, nodes: any[]) => {
     if (nodes.length === 1) handleNodeSelect(nodes[0]);
@@ -342,7 +341,7 @@ async function handleMark(mark: string) {
       })(mindMapInstance.renderer.root);
     }
     selectedNodeRaw.value = { ...selectedNodeRaw.value, properties: { ...cleanProps } };
-    requestAnimationFrame(() => addAllCustomLabels(mindMapInstance));
+    if (mindMapInstance._isSvgEngine) { mindMapInstance.refresh(); } else { requestAnimationFrame(() => addAllCustomLabels(mindMapInstance)); }
     ElMessage.success('标记已更新');
   } catch { ElMessage.error('标记更新失败'); } finally { markLoading.value = false; }
 }
@@ -373,8 +372,12 @@ async function updateReview(rid: string, status: string) {
 .review-panel { position:absolute; right:0; top:0; bottom:0; width:360px; background:#fff; border-left:1px solid #e4e7ed; display:flex; flex-direction:column; z-index:100; box-shadow:-2px 0 8px rgba(0,0,0,0.06); }
 .rp-header { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #e4e7ed; flex-shrink:0; }
 .rp-body { flex:1; overflow-y:auto; padding:12px; }
-.prop-field { margin-bottom:12px; }
-.prop-field label { display:block; font-size:12px; color:#909399; margin-bottom:3px; }
+.node-card { background: linear-gradient(135deg, #f0f5ff 0%, #e8f4f8 100%); border: 1px solid #d6e4ff; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+.node-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.node-card-title { font-size: 14px; font-weight: 600; color: #1d2129; line-height: 1.6; word-break: break-all; flex: 1; }
+.prop-field { margin-bottom: 14px; }
+.prop-field label { display: block; font-size: 12px; color: #909399; margin-bottom: 4px; font-weight: 500; }
+.prop-value { font-size: 13px; color: #303133; background: #f5f7fa; padding: 6px 10px; border-radius: 4px; line-height: 1.5; word-break: break-all; }
 .empty-hint { display:flex; align-items:center; justify-content:center; height:160px; color:#c0c4cc; font-size:13px; }
 .reviewer-card { margin-bottom:12px; padding:10px; border:1px solid #e4e7ed; border-radius:8px; }
 .reviewer-name { margin-bottom:6px; font-weight:600; font-size:13px; }

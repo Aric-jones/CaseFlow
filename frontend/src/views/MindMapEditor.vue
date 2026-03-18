@@ -171,10 +171,24 @@
                 <template v-for="dattr in descendantAttrs" :key="dattr.id">
                   <div class="prop-field">
                     <label>{{ dattr.name }} <span style="color:#722ed1;font-size:10px">({{ (dattr.nodeTypeLimit || '').split(',').map((t: string) => NODE_TYPE_LABEL[t] || t).join('、') }})</span></label>
-                    <a-select v-if="dattr.multiSelect" mode="multiple" :value="[]"
+                    <!-- 单选 + 平铺 -->
+                    <div v-if="dattr.displayType === 'TILE' && !dattr.multiSelect" class="tile-group">
+                      <span v-for="o in dattr.options" :key="o" class="tile-tag desc-tile"
+                        :class="{ active: descTileValues[dattr.name] === o }"
+                        @click="toggleDescSingleTile(dattr, o)">{{ o }}</span>
+                    </div>
+                    <!-- 多选 + 平铺 -->
+                    <div v-else-if="dattr.multiSelect && dattr.displayType === 'TILE'" class="tile-group">
+                      <span v-for="o in dattr.options" :key="o" class="tile-tag desc-tile"
+                        :class="{ active: (descTileValues[dattr.name] || []).includes(o) }"
+                        @click="toggleDescMultiTile(dattr, o)">{{ o }}</span>
+                    </div>
+                    <!-- 多选 + 下拉 -->
+                    <a-select v-else-if="dattr.multiSelect" mode="multiple" :value="[]"
                       @change="(v: any) => applyToDescendants(dattr, v)"
                       :options="dattr.options.map((o: string) => ({ value: o, label: o }))" style="width: 100%"
                       placeholder="选择后批量设置" />
+                    <!-- 单选 + 下拉 -->
                     <a-select v-else :value="undefined"
                       @change="(v: any) => applyToDescendants(dattr, v)"
                       allow-clear :options="dattr.options.map((o: string) => ({ value: o, label: o }))" style="width: 100%"
@@ -344,10 +358,7 @@ import {
   NodeExpandOutlined, NodeCollapseOutlined,
   DownloadOutlined, UploadOutlined,
 } from '@ant-design/icons-vue';
-import MindMap from 'simple-mind-map';
-import Select from 'simple-mind-map/src/plugins/Select';
-import Drag from 'simple-mind-map/src/plugins/Drag';
-import Scrollbar from 'simple-mind-map/src/plugins/Scrollbar';
+import { SvgMindMapEngine as MindMap } from '../composables/svgMindMap';
 import { caseSetApi, mindNodeApi, commentApi, caseHistoryApi, userApi, customAttributeApi, reviewApi } from '../api';
 import { useAppStore } from '../stores/app';
 import type { CaseSet, MindNodeData, CaseHistory, User, CustomAttribute } from '../types';
@@ -356,9 +367,9 @@ import { useGuard } from '../composables/useGuard';
 import { deleteLocalDraft } from '../composables/useLocalMindMap';
 import CommentPanel from '../components/CommentPanel.vue';
 
-MindMap.usePlugin(Select);
-MindMap.usePlugin(Drag);
-MindMap.usePlugin(Scrollbar);
+MindMap.usePlugin(null);
+MindMap.usePlugin(null);
+MindMap.usePlugin(null);
 
 const route = useRoute();
 const router = useRouter();
@@ -523,6 +534,23 @@ function hasDescendantWithType(node: any, types: string[]): boolean {
     if (hasDescendantWithType(child, types)) return true;
   }
   return false;
+}
+
+const descTileValues = reactive<Record<string, any>>({});
+
+function toggleDescSingleTile(attr: CustomAttribute, option: string) {
+  const cur = descTileValues[attr.name];
+  const val = cur === option ? undefined : option;
+  descTileValues[attr.name] = val;
+  applyToDescendants(attr, val);
+}
+function toggleDescMultiTile(attr: CustomAttribute, option: string) {
+  const cur = descTileValues[attr.name];
+  const arr: string[] = Array.isArray(cur) ? [...cur] : [];
+  const idx = arr.indexOf(option);
+  if (idx >= 0) arr.splice(idx, 1); else arr.push(option);
+  descTileValues[attr.name] = [...arr];
+  applyToDescendants(attr, [...arr]);
 }
 
 /** 批量为子孙中符合条件的节点设置属性 */
@@ -749,12 +777,14 @@ function scheduleRefreshLabels() {
   if (refreshScheduled) return;
   refreshScheduled = true;
   requestAnimationFrame(() => {
-    addAllCustomLabels(mindMapInstance);
+    if (mindMapInstance?._isSvgEngine) mindMapInstance.refresh();
+    else addAllCustomLabels(mindMapInstance);
     refreshScheduled = false;
   });
 }
 function refreshLabels() {
-  addAllCustomLabels(mindMapInstance);
+  if (mindMapInstance?._isSvgEngine) mindMapInstance.refresh();
+  else addAllCustomLabels(mindMapInstance);
 }
 
 // =============================================
@@ -931,8 +961,8 @@ function initMindMap(initialData?: any) {
     //openPerformance: true,
     performanceConfig: { time: 250, padding: 200, removeNodeWhenOutCanvas: true },
     themeConfig: {
-      second: { marginX: 80, marginY: 60 },
-      node: { marginX: 50, marginY: 50 },
+      second: { marginX: 60, marginY: 40 },
+      node: { marginX: 40, marginY: 30 },
     },
   });
 
@@ -1804,6 +1834,8 @@ onUnmounted(() => {
 }
 .tile-tag:hover { border-color: #1677ff; color: #1677ff; }
 .tile-tag.active { background: #1677ff; border-color: #1677ff; color: #fff; }
+.tile-tag.desc-tile:hover { border-color: #722ed1; color: #722ed1; }
+.tile-tag.desc-tile.active { background: #722ed1; border-color: #722ed1; color: #fff; }
 .tile-tag.priority-p0.active { background: #f5222d; border-color: #f5222d; }
 .tile-tag.priority-p1.active { background: #fa8c16; border-color: #fa8c16; }
 .tile-tag.priority-p2.active { background: #1677ff; border-color: #1677ff; }

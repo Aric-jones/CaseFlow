@@ -147,6 +147,7 @@ export function addNodeLabels(node: any, forceRefresh = false) {
 }
 
 export function addAllCustomLabels(mindMapInstance: any) {
+  if (mindMapInstance?._isSvgEngine) return;
   if (!mindMapInstance?.renderer?.root) return;
   const t0 = performance.now();
   let count = 0;
@@ -178,6 +179,9 @@ export function setupMouseOverrides(
   container: HTMLElement,
   getMindMap: () => any,
 ): () => void {
+  const mm = getMindMap();
+  if (mm?._isSvgEngine) return () => {};
+
   let panActive = false;
   let lastX = 0;
   let lastY = 0;

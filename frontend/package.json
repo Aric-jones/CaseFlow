@@ -10,13 +10,18 @@
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
+    "@antv/g6": "^5.0.51",
     "@element-plus/icons-vue": "^2.3.2",
     "ant-design-vue": "^4.2.3",
     "axios": "^1.7.2",
+    "d3": "^7.9.0",
     "dayjs": "^1.11.11",
     "element-plus": "^2.13.5",
+    "markmap-lib": "^0.18.12",
+    "markmap-view": "^0.18.12",
     "pinia": "^2.1.7",
     "simple-mind-map": "^0.12.1",
+    "tslib": "^2.8.1",
     "vue": "^3.4.27",
     "vue-router": "^4.3.2"
   },
