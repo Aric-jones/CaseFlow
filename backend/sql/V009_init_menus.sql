@@ -15,6 +15,9 @@ VALUES ('d_dashboard', NULL, '工作台', NULL, 'DIR', '/dashboard', 1);
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('m_dashboard_view', 'd_dashboard', '工作台首页', NULL, 'MENU', '/dashboard', 1);
 
+INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
+VALUES ('b_dashboard_view', 'm_dashboard_view', '查看工作台', 'dashboard:view', 'BTN', NULL, 1);
+
 -- ======================== 二、用例管理 ========================
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('d_cases', NULL, '用例管理', NULL, 'DIR', NULL, 2);
@@ -23,6 +26,8 @@ VALUES ('d_cases', NULL, '用例管理', NULL, 'DIR', NULL, 2);
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('m_cases', 'd_cases', '用例列表', NULL, 'MENU', '/cases', 1);
 
+INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
+VALUES ('b_cases_view', 'm_cases', '查看用例列表', 'cases:view', 'BTN', NULL, 0);
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('b_cases_create', 'm_cases', '新建用例集', 'cases:create', 'BTN', NULL, 1);
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
@@ -43,18 +48,18 @@ INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path
 VALUES ('m_mindmap', 'd_cases', '思维导图', NULL, 'MENU', '/mind-map', 2);
 
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
+VALUES ('b_mindmap_view', 'm_mindmap', '查看思维导图', 'mindmap:view', 'BTN', NULL, 0);
+INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('b_mindmap_edit', 'm_mindmap', '编辑节点', 'mindmap:edit', 'BTN', NULL, 1);
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('b_mindmap_save', 'm_mindmap', '保存/同步', 'mindmap:save', 'BTN', NULL, 2);
-INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
-VALUES ('b_mindmap_export', 'm_mindmap', '导出Excel', 'mindmap:export', 'BTN', NULL, 3);
-INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
-VALUES ('b_mindmap_import', 'm_mindmap', '导入Excel', 'mindmap:import', 'BTN', NULL, 4);
 
 -- 2.3 评审管理
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('m_review', 'd_cases', '评审管理', NULL, 'MENU', '/review', 3);
 
+INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
+VALUES ('b_review_view', 'm_review', '查看评审', 'review:view', 'BTN', NULL, 0);
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('b_review_submit', 'm_review', '提交评审', 'review:submit', 'BTN', NULL, 1);
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
@@ -78,6 +83,8 @@ INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path
 VALUES ('m_recycle', 'd_cases', '回收站', NULL, 'MENU', '/recycle-bin', 5);
 
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
+VALUES ('b_recycle_view', 'm_recycle', '查看回收站', 'recycle:view', 'BTN', NULL, 0);
+INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('b_recycle_restore', 'm_recycle', '恢复', 'recycle:restore', 'BTN', NULL, 1);
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('b_recycle_delete', 'm_recycle', '永久删除', 'recycle:delete', 'BTN', NULL, 2);
@@ -89,6 +96,8 @@ VALUES ('d_plans', NULL, '测试计划', NULL, 'DIR', NULL, 3);
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('m_plans', 'd_plans', '计划列表', NULL, 'MENU', '/test-plans', 1);
 
+INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
+VALUES ('b_plans_view', 'm_plans', '查看计划列表', 'plans:view', 'BTN', NULL, 0);
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
 VALUES ('b_plans_create', 'm_plans', '新建计划', 'plans:create', 'BTN', NULL, 1);
 INSERT INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
@@ -207,29 +216,49 @@ WHERE id NOT IN (
 -- ============================================================
 INSERT INTO sys_role_menu (id, role_id, menu_id) VALUES
 -- 工作台
-(REPLACE(UUID(), '-', ''), 'role_member', 'd_dashboard'), (REPLACE(UUID(), '-', ''), 'role_member', 'm_dashboard_view'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'd_dashboard'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'm_dashboard_view'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_dashboard_view'),
 -- 用例管理目录
 (REPLACE(UUID(), '-', ''), 'role_member', 'd_cases'),
 -- 用例列表
 (REPLACE(UUID(), '-', ''), 'role_member', 'm_cases'),
-(REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_create'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_edit'),
-(REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_export'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_import'),
-(REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_move'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_copy'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_view'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_create'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_edit'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_export'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_import'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_move'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_cases_copy'),
 -- 思维导图
 (REPLACE(UUID(), '-', ''), 'role_member', 'm_mindmap'),
-(REPLACE(UUID(), '-', ''), 'role_member', 'b_mindmap_edit'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_mindmap_save'),
-(REPLACE(UUID(), '-', ''), 'role_member', 'b_mindmap_export'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_mindmap_import'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_mindmap_view'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_mindmap_edit'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_mindmap_save'),
 -- 评审管理
 (REPLACE(UUID(), '-', ''), 'role_member', 'm_review'),
-(REPLACE(UUID(), '-', ''), 'role_member', 'b_review_submit'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_review_approve'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_review_comment'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_review_view'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_review_submit'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_review_approve'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_review_comment'),
 -- 目录管理
 (REPLACE(UUID(), '-', ''), 'role_member', 'm_directory'),
-(REPLACE(UUID(), '-', ''), 'role_member', 'b_dir_create'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_dir_edit'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_dir_delete'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_dir_create'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_dir_edit'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_dir_delete'),
 -- 回收站（仅恢复，不含永久删除）
-(REPLACE(UUID(), '-', ''), 'role_member', 'm_recycle'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_recycle_restore'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'm_recycle'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_recycle_view'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_recycle_restore'),
 -- 测试计划
-(REPLACE(UUID(), '-', ''), 'role_member', 'd_plans'), (REPLACE(UUID(), '-', ''), 'role_member', 'm_plans'),
-(REPLACE(UUID(), '-', ''), 'role_member', 'b_plans_create'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_plans_edit'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_plans_execute'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'd_plans'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'm_plans'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_plans_view'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_plans_create'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_plans_edit'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_plans_execute'),
 -- 个人设置
-(REPLACE(UUID(), '-', ''), 'role_member', 'd_personal'), (REPLACE(UUID(), '-', ''), 'role_member', 'm_notification'),
-(REPLACE(UUID(), '-', ''), 'role_member', 'b_notif_view'), (REPLACE(UUID(), '-', ''), 'role_member', 'b_notif_mark');
+(REPLACE(UUID(), '-', ''), 'role_member', 'd_personal'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'm_notification'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_notif_view'),
+(REPLACE(UUID(), '-', ''), 'role_member', 'b_notif_mark');

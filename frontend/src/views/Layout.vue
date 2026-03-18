@@ -8,25 +8,18 @@
         </div>
         <el-menu mode="horizontal" :default-active="activeKey" class="top-menu"
           :ellipsis="false" @select="(key: string) => $router.push(key)">
-          <el-menu-item index="/dashboard">
+          <el-menu-item v-if="store.hasPermission('dashboard:view')" index="/dashboard">
             <el-icon><Monitor /></el-icon><span>工作台</span>
           </el-menu-item>
-          <el-menu-item index="/cases">
+          <el-menu-item v-if="store.hasPermission('cases:view')" index="/cases">
             <el-icon><Document /></el-icon><span>用例管理</span>
           </el-menu-item>
-          <el-menu-item index="/test-plans">
+          <el-menu-item v-if="store.hasPermission('plans:view')" index="/test-plans">
             <el-icon><Calendar /></el-icon><span>测试计划</span>
           </el-menu-item>
-          <el-sub-menu index="/settings" v-if="showSettings">
-            <template #title>
-              <el-icon><Setting /></el-icon><span>系统管理</span>
-            </template>
-            <el-menu-item v-if="store.hasAnyPermission('settings:members:add', 'settings:members:edit', 'settings:members:toggle')" index="/settings/members">成员管理</el-menu-item>
-            <el-menu-item v-if="store.hasAnyPermission('settings:attributes:create', 'settings:attributes:edit', 'settings:attributes:delete')" index="/settings/attributes">用例属性管理</el-menu-item>
-            <el-menu-item v-if="store.hasAnyPermission('settings:projects:create', 'settings:projects:edit', 'settings:projects:delete')" index="/settings/projects">项目空间管理</el-menu-item>
-            <el-menu-item v-if="store.hasAnyPermission('settings:rbac:role', 'settings:rbac:menu', 'settings:rbac:user')" index="/settings/rbac">权限管理</el-menu-item>
-            <el-menu-item v-if="store.hasAnyPermission('settings:jobs:create', 'settings:jobs:edit', 'settings:jobs:delete', 'settings:jobs:run')" index="/settings/jobs">定时任务</el-menu-item>
-          </el-sub-menu>
+          <el-menu-item v-if="showSettings" index="/settings">
+            <el-icon><Setting /></el-icon><span>系统管理</span>
+          </el-menu-item>
         </el-menu>
       </div>
       <div class="header-right">
