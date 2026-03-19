@@ -48,7 +48,7 @@ function connect() {
 
   ws.onerror = () => { ws?.close(); };
 
-  startPoll();
+  // startPoll(); // 暂时关闭 15 秒兜底轮询，测试 WebSocket 实时推送
 }
 
 function cleanupWs() {

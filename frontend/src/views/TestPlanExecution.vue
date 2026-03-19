@@ -27,11 +27,19 @@
     <!-- 搜索栏 -->
     <div class="exec-filter">
       <span class="filter-label">用例名称</span>
-      <el-input v-model="filterKeyword" placeholder="搜索" clearable style="width:200px" @input="rebuildTree" />
+      <el-input v-model="filterKeyword" placeholder="搜索" clearable style="width:160px" @input="rebuildTree" />
+      <span class="filter-label">前置条件</span>
+      <el-input v-model="filterPre" placeholder="搜索" clearable style="width:140px" @input="rebuildTree" />
+      <span class="filter-label">步骤</span>
+      <el-input v-model="filterStep" placeholder="搜索" clearable style="width:140px" @input="rebuildTree" />
+      <span class="filter-label">预期结果</span>
+      <el-input v-model="filterExpected" placeholder="搜索" clearable style="width:140px" @input="rebuildTree" />
       <span class="filter-label">执行结果</span>
-      <el-select v-model="filterResult" placeholder="全部结果" clearable style="width:140px" @change="rebuildTree">
+      <el-select v-model="filterResult" placeholder="全部结果" clearable style="width:120px" @change="rebuildTree">
         <el-option v-for="o in resultOpts" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
+      <el-button text type="primary" @click="toggleExpand(true)">全部展开</el-button>
+      <el-button text type="primary" @click="toggleExpand(false)">全部折叠</el-button>
     </div>
 
     <!-- 主体 -->
@@ -39,7 +47,7 @@
       <!-- 左侧树表格 -->
       <div class="exec-left">
         <el-table ref="treeTableRef" :data="displayTree" row-key="_key" border
-          :tree-props="{ children: 'children' }" default-expand-all
+          :tree-props="{ children: 'children' }" :default-expand-all="expandAll"
           :row-class-name="rowClass" @row-click="onRowClick" style="width:100%">
           <el-table-column label="测试用例" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">
@@ -134,9 +142,12 @@
             </el-button>
           </div>
           <div class="footer-actions">
-            <el-button class="btn-pass" :loading="locks.execute" @click="doExecute('PASS')">通过</el-button>
-            <el-button class="btn-fail" :disabled="locks.execute" @click="openReasonModal('FAIL')">不通过</el-button>
-            <el-button class="btn-skip" :disabled="locks.execute" @click="openReasonModal('SKIP')">跳过</el-button>
+            <template v-if="canExecute">
+              <el-button class="btn-pass" :loading="locks.execute" @click="doExecute('PASS')">通过</el-button>
+              <el-button class="btn-fail" :disabled="locks.execute" @click="openReasonModal('FAIL')">不通过</el-button>
+              <el-button class="btn-skip" :disabled="locks.execute" @click="openReasonModal('SKIP')">跳过</el-button>
+            </template>
+            <el-tag v-else type="info" size="large">只有执行人才能执行</el-tag>
           </div>
         </div>
       </div>
@@ -194,15 +205,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useGuard } from '../composables/useGuard';
 import { testPlanApi } from '../api';
+import { useAppStore } from '../stores/app';
 import type { TestPlan } from '../types';
 
 const route = useRoute();
 const router = useRouter();
+const store = useAppStore();
 const planId = String(route.params.planId);
 
 const plan = ref<TestPlan | null>(null);
@@ -212,7 +225,12 @@ const selectedCase = ref<any>(null);
 const showReport = ref(false);
 const refreshing = ref(false);
 const filterKeyword = ref('');
+const filterPre = ref('');
+const filterStep = ref('');
+const filterExpected = ref('');
 const filterResult = ref<string | undefined>();
+const expandAll = ref(true);
+const treeTableRef = ref<any>(null);
 const reasonModal = ref({ visible: false, action: '', text: '' });
 const { locks, run } = useGuard();
 const planExecutors = ref<{ userId: string; displayName: string }[]>([]);
@@ -232,6 +250,15 @@ const stats = computed(() => {
 const progressPct = computed(() => stats.value.total ? Math.round(stats.value.executed / stats.value.total * 100) : 0);
 const curIdx = computed(() => selectedCase.value ? cases.value.findIndex((c: any) => c.id === selectedCase.value.id) : -1);
 const executorOptions = computed(() => planExecutors.value.map(e => ({ value: e.userId, label: e.displayName })));
+
+const canExecute = computed(() => {
+  const uid = store.user?.id;
+  if (!uid) return false;
+  if (store.userRoles.includes('SUPER_ADMIN') || store.userRoles.includes('ADMIN')) return true;
+  if (plan.value?.executorId === uid) return true;
+  if (selectedCase.value?.executorId === uid) return true;
+  return false;
+});
 
 const executorProgress = computed(() => {
   const m = new Map<string, any>();
@@ -302,11 +329,43 @@ async function doRefresh() {
   finally { refreshing.value = false; }
 }
 
+function toggleExpand(expand: boolean) {
+  expandAll.value = expand;
+  // 强制重建树以触发 default-expand-all 变化
+  const saved = displayTree.value;
+  displayTree.value = [];
+  nextTick(() => { displayTree.value = saved; });
+}
+
 function rebuildTree() {
   let filtered = cases.value;
   if (filterKeyword.value) {
     const kw = filterKeyword.value.toLowerCase();
     filtered = filtered.filter((c: any) => (c.pathSnapshot || []).some((n: any) => (n.text || '').toLowerCase().includes(kw)));
+  }
+  if (filterPre.value) {
+    const kw = filterPre.value.toLowerCase();
+    filtered = filtered.filter((c: any) => {
+      const path = c.pathSnapshot || [];
+      const preNode = path.length >= 3 ? path[path.length - 3] : null;
+      return preNode && (preNode.text || '').toLowerCase().includes(kw);
+    });
+  }
+  if (filterStep.value) {
+    const kw = filterStep.value.toLowerCase();
+    filtered = filtered.filter((c: any) => {
+      const path = c.pathSnapshot || [];
+      const stepNode = path.length >= 2 ? path[path.length - 2] : null;
+      return stepNode && (stepNode.text || '').toLowerCase().includes(kw);
+    });
+  }
+  if (filterExpected.value) {
+    const kw = filterExpected.value.toLowerCase();
+    filtered = filtered.filter((c: any) => {
+      const path = c.pathSnapshot || [];
+      const expNode = path.length >= 1 ? path[path.length - 1] : null;
+      return expNode && (expNode.text || '').toLowerCase().includes(kw);
+    });
   }
   if (filterResult.value) filtered = filtered.filter((c: any) => c.result === filterResult.value);
 
@@ -418,7 +477,7 @@ onMounted(loadData);
 .c-pass { color:#52c41a; font-weight:600; }
 .c-fail { color:#f56c6c; font-weight:600; }
 .c-skip { color:#e6a23c; font-weight:600; }
-.exec-filter { display:flex; gap:8px; align-items:center; padding:10px 20px; background:#fff; border-bottom:1px solid #e4e7ed; flex-shrink:0; }
+.exec-filter { display:flex; gap:8px; align-items:center; padding:10px 20px; background:#fff; border-bottom:1px solid #e4e7ed; flex-shrink:0; flex-wrap:wrap; }
 .filter-label { font-size:13px; color:#606266; }
 .exec-body { display:flex; flex:1; overflow:hidden; }
 .exec-left { flex:1; overflow:auto; background:#fff; }

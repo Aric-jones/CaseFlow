@@ -212,6 +212,10 @@ CREATE TABLE test_plans
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='测试计划表';
 
+-- 测试计划新增字段：筛选条件和用例集ID
+ALTER TABLE test_plans ADD COLUMN IF NOT EXISTS filters JSON DEFAULT NULL COMMENT '用例筛选条件 {caseSetId -> {attrName -> [values]}}';
+ALTER TABLE test_plans ADD COLUMN IF NOT EXISTS case_set_ids JSON DEFAULT NULL COMMENT '选中的用例集ID列表';
+
 -- ========================================
 -- 测试计划执行人 (关联表不加审计字段)
 -- ========================================

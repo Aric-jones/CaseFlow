@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.caseflow.common.BusinessException;
 import com.caseflow.dto.MindNodeDTO;
 import com.caseflow.entity.CaseSet;
+import com.caseflow.entity.Comment;
 import com.caseflow.entity.CustomAttribute;
 import com.caseflow.entity.MindNode;
 import com.caseflow.mapper.CaseSetMapper;
@@ -93,7 +94,7 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
 
     @Override
     @Transactional
-    public int batchSave(String caseSetId, List<MindNodeDTO> nodes) {
+    public Map<String, Integer> batchSave(String caseSetId, List<MindNodeDTO> nodes) {
         long t0 = System.currentTimeMillis();
 
         // 1. 展平 DTO 树为 MindNode 列表
@@ -102,56 +103,112 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
             flattenTree(caseSetId, nodes, null, flatNodes);
         }
 
-        // 2. 查询数据库中已有节点 ID
-        Set<String> existingIds = lambdaQuery()
-                .eq(MindNode::getCaseSetId, caseSetId)
-                .select(MindNode::getId)
-                .list().stream()
-                .map(MindNode::getId)
-                .collect(Collectors.toSet());
+        // 2. 查询数据库中已有节点 ID（仅查 ID 列）
+        Set<String> existingIds = listObjs(
+                new LambdaQueryWrapper<MindNode>()
+                        .eq(MindNode::getCaseSetId, caseSetId)
+                        .select(MindNode::getId))
+                .stream().map(String::valueOf).collect(Collectors.toSet());
 
-        // 3. 分类：待删除 / 待更新 / 待新增
         Set<String> incomingIds = new HashSet<>();
-        List<MindNode> toUpdate = new ArrayList<>();
-        List<MindNode> toInsert = new ArrayList<>();
-        for (MindNode node : flatNodes) {
-            String nid = node.getId();
-            if (nid != null) incomingIds.add(nid);
-            if (nid != null && existingIds.contains(nid)) {
-                toUpdate.add(node);
-            } else {
-                toInsert.add(node);
+        for (MindNode node : flatNodes) if (node.getId() != null) incomingIds.add(node.getId());
+
+        Set<String> toDeleteIds = new HashSet<>(existingIds);
+        toDeleteIds.removeAll(incomingIds);
+
+        // 3. 批量删除不再存在的节点 + 清理关联评论
+        int deletedComments = 0;
+        if (!toDeleteIds.isEmpty()) {
+            List<String> delList = new ArrayList<>(toDeleteIds);
+            for (int i = 0; i < delList.size(); i += BATCH_SIZE) {
+                List<String> batch = delList.subList(i, Math.min(i + BATCH_SIZE, delList.size()));
+                baseMapper.deleteBatchIds(batch);
+                deletedComments += commentMapper.delete(new LambdaQueryWrapper<Comment>()
+                        .in(Comment::getNodeId, batch));
             }
         }
 
-        Set<String> toDelete = new HashSet<>(existingIds);
-        toDelete.removeAll(incomingIds);
-
-        // 4. 批量删除
-        if (!toDelete.isEmpty()) {
-            baseMapper.deleteBatchIds(new ArrayList<>(toDelete));
-        }
-
-        // 5. 批量更新（JDBC batch，配合 rewriteBatchedStatements）
-        if (!toUpdate.isEmpty()) {
-            updateBatchById(toUpdate, BATCH_SIZE);
-        }
-
-        // 6. 批量新增
-        if (!toInsert.isEmpty()) {
-            saveBatch(toInsert, BATCH_SIZE);
+        // 4. 批量 upsert（INSERT ... ON DUPLICATE KEY UPDATE，一次 SQL）
+        if (!flatNodes.isEmpty()) {
+            for (int i = 0; i < flatNodes.size(); i += BATCH_SIZE) {
+                List<MindNode> batch = flatNodes.subList(i, Math.min(i + BATCH_SIZE, flatNodes.size()));
+                baseMapper.batchUpsert(batch);
+            }
         }
 
         long t1 = System.currentTimeMillis();
 
-        // 7. 计算有效用例数
-        int validCount = countValidCases(caseSetId);
+        // 5. 从内存树计算有效用例数（无需再查库）
+        CaseSet cs = caseSetMapper.selectById(caseSetId);
+        List<String> required = cs != null ? getRequiredAttrs(cs.getProjectId()) : List.of();
+        int validCount = countValidFromDTO(nodes, required);
+
         long t2 = System.currentTimeMillis();
-        log.info("[batchSave] caseSet={} total={} delete={} update={} insert={} | save={}ms count={}ms",
-                caseSetId, flatNodes.size(), toDelete.size(), toUpdate.size(), toInsert.size(),
+        log.info("[batchSave] caseSet={} total={} delete={} upsert={} deletedComments={} | db={}ms count={}ms",
+                caseSetId, flatNodes.size(), toDeleteIds.size(), flatNodes.size(), deletedComments,
                 t1 - t0, t2 - t1);
 
-        return validCount;
+        Map<String, Integer> result = new HashMap<>();
+        result.put("validCount", validCount);
+        result.put("deletedComments", deletedComments);
+        return result;
+    }
+
+    /**
+     * 直接从前端传入的 DTO 树计算有效用例数，避免重新查库。
+     * 遍历所有叶子路径，满足 {@link #isValidDTOPath} 规则的计为一条合格用例。
+     */
+    private int countValidFromDTO(List<MindNodeDTO> nodes, List<String> required) {
+        if (nodes == null || nodes.isEmpty()) return 0;
+        int[] count = {0};
+        countDTORecursive(nodes.get(0), new ArrayList<>(), required, count);
+        return count[0];
+    }
+
+    /** 递归遍历 DTO 树，收集从根到叶的路径，对每条叶子路径调用 isValidDTOPath 判断 */
+    private void countDTORecursive(MindNodeDTO node, List<MindNodeDTO> path, List<String> required, int[] count) {
+        path.add(node);
+        List<MindNodeDTO> children = node.getChildren();
+        if (children == null || children.isEmpty()) {
+            if (isValidDTOPath(path, required)) count[0]++;
+        } else {
+            for (MindNodeDTO child : children)
+                countDTORecursive(child, new ArrayList<>(path), required, count);
+        }
+    }
+
+    /**
+     * 判断一条从根到叶的 DTO 路径是否为合格用例：
+     * 1) 路径至少 5 个节点（根 + ≥1 功能模块 + TITLE + PRECONDITION + STEP + EXPECTED）
+     * 2) 最后 4 个节点类型依次为 TITLE → PRECONDITION → STEP → EXPECTED
+     * 3) 最后 4 个节点之前的所有功能模块节点不能设置类型（nodeType 必须为 null 或空）
+     * 4) EXPECTED 节点的必填属性已填写
+     */
+    private boolean isValidDTOPath(List<MindNodeDTO> path, List<String> required) {
+        if (path.size() < 5) return false;
+        int len = path.size();
+        // 规则2：最后4个节点类型检查
+        if (!"TITLE".equals(path.get(len - 4).getNodeType())) return false;
+        if (!"PRECONDITION".equals(path.get(len - 3).getNodeType())) return false;
+        if (!"STEP".equals(path.get(len - 2).getNodeType())) return false;
+        if (!"EXPECTED".equals(path.get(len - 1).getNodeType())) return false;
+        // 规则3：功能模块节点不能设置类型
+        for (int i = 0; i < len - 4; i++) {
+            String nt = path.get(i).getNodeType();
+            if (nt != null && !nt.isEmpty()) return false;
+        }
+        // 规则4：EXPECTED 必填属性检查
+        if (!required.isEmpty()) {
+            Map<String, Object> props = path.get(len - 1).getProperties();
+            if (props == null) props = Map.of();
+            for (String attr : required) {
+                Object v = props.get(attr);
+                if (v == null) return false;
+                if (v instanceof String && ((String) v).isBlank()) return false;
+                if (v instanceof List && ((List<?>) v).isEmpty()) return false;
+            }
+        }
+        return true;
     }
 
     /** 递归展平 DTO 树为 MindNode 实体列表 */
@@ -205,6 +262,7 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
         return count[0];
     }
 
+    /** 递归遍历 MindNode 树，收集从根到叶的路径，对每条叶子路径调用 isValidCasePath 判断 */
     private void countRecursive(MindNode node, List<MindNode> path,
                                 Map<String, List<MindNode>> childrenMap,
                                 List<String> required, int[] count) {
@@ -219,20 +277,27 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
     }
 
     /**
-     * 有效用例判定：
-     * 1) 至少 5 个节点（root + 至少 0 个模块 + TITLE + PRE + STEP + EXPECTED）
+     * 判断一条从根到叶的 MindNode 路径是否为合格用例（从数据库实体判断）。
+     * 规则与 {@link #isValidDTOPath} 完全一致：
+     * 1) 路径至少 5 个节点（根 + ≥1 功能模块 + TITLE + PRECONDITION + STEP + EXPECTED）
      * 2) 最后 4 个节点类型依次为 TITLE → PRECONDITION → STEP → EXPECTED
-     * 3) EXPECTED 节点的必填属性已填写
+     * 3) 最后 4 个节点之前的所有功能模块节点不能设置类型（nodeType 必须为 null 或空）
+     * 4) EXPECTED 节点的必填属性已填写
      */
     private boolean isValidCasePath(List<MindNode> path, List<String> required) {
         if (path.size() < 5) return false;
         int len = path.size();
+        // 规则2：最后4个节点类型检查
         if (!"TITLE".equals(path.get(len - 4).getNodeType())) return false;
         if (!"PRECONDITION".equals(path.get(len - 3).getNodeType())) return false;
         if (!"STEP".equals(path.get(len - 2).getNodeType())) return false;
         if (!"EXPECTED".equals(path.get(len - 1).getNodeType())) return false;
-
-        // 校验 EXPECTED 必填属性
+        // 规则3：功能模块节点不能设置类型
+        for (int i = 0; i < len - 4; i++) {
+            String nt = path.get(i).getNodeType();
+            if (nt != null && !nt.isEmpty()) return false;
+        }
+        // 规则4：EXPECTED 必填属性检查
         if (!required.isEmpty()) {
             Map<String, Object> props = path.get(len - 1).getProperties();
             if (props == null) props = Map.of();

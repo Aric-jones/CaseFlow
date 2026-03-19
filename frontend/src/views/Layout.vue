@@ -165,11 +165,12 @@ async function handleNotifClick(n: Notification) {
 
 function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 16) : ''; }
 
-// 监听 WebSocket 推送的新通知，在列表中插入
+// 监听 WebSocket 推送的新通知，在列表中插入并确保气泡计数同步
 watch(latestNotification, (n) => {
   if (n) {
     if (notifData.value.current === 1) notifData.value.records.unshift(n);
     ElMessage.info({ message: n.title + '：' + (n.content || '').substring(0, 40), duration: 4000 });
+    fetchUnreadCount();
   }
 });
 

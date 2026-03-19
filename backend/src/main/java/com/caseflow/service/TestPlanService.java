@@ -23,6 +23,10 @@ public interface TestPlanService extends IService<TestPlan> {
 
     void updatePlan(String id, String name, String directoryId, String executorId, List<String> caseSetIds);
 
+    /** 编辑测试计划并根据筛选条件重新同步用例（新增/删除/保留） */
+    void updatePlanWithFilters(String id, String name, String directoryId, String executorId,
+                               List<String> caseSetIds, Map<String, Map<String, List<String>>> filters);
+
     /**
      * 从用例集中提取有效用例路径（满足 TITLE→PRE→STEP→EXPECTED 规则 + 必填属性校验），
      * 生成路径快照写入 test_plan_cases
@@ -42,6 +46,9 @@ public interface TestPlanService extends IService<TestPlan> {
 
     /** 刷新用例：按 node_id 回源重新拍快照，保留执行状态 */
     void refreshCases(String planId);
+
+    /** 按保存的筛选条件刷新用例：新增匹配的、删除不匹配的、保留已有的状态 */
+    void refreshCasesWithFilters(String planId);
 
     void softDelete(String planId);
 

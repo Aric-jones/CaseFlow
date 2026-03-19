@@ -71,7 +71,9 @@ public class MindNodeController {
             return Result.ok(conflict);
         }
 
-        int validCount = mindNodeService.batchSave(caseSetId, nodes);
+        Map<String, Integer> saveResult = mindNodeService.batchSave(caseSetId, nodes);
+        int validCount = saveResult.getOrDefault("validCount", 0);
+        int deletedComments = saveResult.getOrDefault("deletedComments", 0);
         int newVersion = serverVersion + 1;
         cs.setDataVersion(newVersion);
         cs.setCaseCount(validCount);
@@ -83,6 +85,7 @@ public class MindNodeController {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("caseCount", validCount);
         result.put("version", newVersion);
+        if (deletedComments > 0) result.put("deletedComments", deletedComments);
         return Result.ok(result);
     }
 

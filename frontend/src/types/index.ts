@@ -95,6 +95,8 @@ export interface TestPlan {
   projectId: string;
   status: string;
   executorId: string | null;
+  filters?: Record<string, Record<string, string[]>>;
+  caseSetIds?: string[];
   createdBy: string;
   createdByName: string;
   updatedBy: string;

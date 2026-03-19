@@ -88,9 +88,10 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
 
     /**
      * 检查路径是否满足有效用例规则：
-     * 1) 至少5个节点（root + 至少0个模块 + TITLE + PRE + STEP + EXPECTED）
-     * 2) 最后4个节点类型依次为 TITLE, PRECONDITION, STEP, EXPECTED
-     * 3) EXPECTED 节点的必填属性已填写
+     * 1) 至少5个节点（root + 至少1个模块 + TITLE + PRE + STEP + EXPECTED）
+     * 2) 最后4个节点类型依次为 TITLE → PRECONDITION → STEP → EXPECTED
+     * 3) 最后4个节点之前的所有功能模块节点不能设置类型
+     * 4) EXPECTED 节点的必填属性已填写
      */
     private boolean isValidCasePath(List<Map<String, Object>> path, List<String> required) {
         if (path.size() < 5) return false;
@@ -101,6 +102,11 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
         String t0 = str(path.get(len - 1).get("nodeType"));
         if (!"TITLE".equals(t3) || !"PRECONDITION".equals(t2) || !"STEP".equals(t1) || !"EXPECTED".equals(t0)) {
             return false;
+        }
+        // 功能模块节点（最后4个之前）不能设置类型
+        for (int i = 0; i < len - 4; i++) {
+            String nt = str(path.get(i).get("nodeType"));
+            if (nt != null && !nt.isEmpty()) return false;
         }
         // 校验 EXPECTED 节点必填属性
         if (!required.isEmpty()) {
@@ -382,6 +388,32 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
         return true;
     }
 
+    /** 按保存的筛选条件刷新用例：利用 plan 中保存的 filters 重新同步 */
+    @Override @Transactional
+    public void refreshCasesWithFilters(String planId) {
+        TestPlan plan = getById(planId);
+        if (plan == null) throw new BusinessException("测试计划不存在");
+        List<String> caseSetIds = plan.getCaseSetIds();
+        Map<String, Map<String, List<String>>> filters = plan.getFilters();
+        if (caseSetIds == null || caseSetIds.isEmpty()) {
+            refreshCases(planId);
+            return;
+        }
+        // 移除不在 caseSetIds 中的用例
+        Set<String> existingSets = caseMapper.selectList(
+                new LambdaQueryWrapper<TestPlanCase>().eq(TestPlanCase::getPlanId, planId).select(TestPlanCase::getCaseSetId))
+                .stream().map(TestPlanCase::getCaseSetId).collect(Collectors.toSet());
+        Set<String> toRemove = existingSets.stream().filter(s -> !caseSetIds.contains(s)).collect(Collectors.toSet());
+        if (!toRemove.isEmpty()) {
+            caseMapper.delete(new LambdaQueryWrapper<TestPlanCase>()
+                    .eq(TestPlanCase::getPlanId, planId).in(TestPlanCase::getCaseSetId, toRemove));
+        }
+        for (String csId : caseSetIds) {
+            Map<String, List<String>> csFilter = filters != null ? filters.getOrDefault(csId, null) : null;
+            syncCasesForSet(planId, csId, csFilter, plan.getExecutorId());
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  基础 CRUD
     // ═══════════════════════════════════════════════════════════════
@@ -408,33 +440,83 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
 
     @Override @Transactional
     public void updatePlan(String id, String name, String directoryId, String executorId, List<String> caseSetIds) {
+        updatePlanWithFilters(id, name, directoryId, executorId, caseSetIds, null);
+    }
+
+    @Override @Transactional
+    public void updatePlanWithFilters(String id, String name, String directoryId, String executorId,
+                                      List<String> caseSetIds, Map<String, Map<String, List<String>>> filters) {
         TestPlan plan = getById(id);
         if (plan == null) throw new BusinessException("测试计划不存在");
         if (StringUtils.hasText(name)) plan.setName(name);
         if (directoryId != null) plan.setDirectoryId(directoryId);
         plan.setExecutorId(executorId);
+        plan.setCaseSetIds(caseSetIds);
+        plan.setFilters(filters);
         updateById(plan);
-        // 同步所有用例的执行人
-        if (executorId != null) {
-            List<TestPlanCase> planCases = caseMapper.selectList(
-                    new LambdaQueryWrapper<TestPlanCase>().eq(TestPlanCase::getPlanId, id));
-            for (TestPlanCase tc : planCases) {
-                tc.setExecutorId(executorId);
+
+        if (caseSetIds == null) return;
+
+        // 移除不再选择的用例集
+        Set<String> existingSets = caseMapper.selectList(
+                new LambdaQueryWrapper<TestPlanCase>().eq(TestPlanCase::getPlanId, id).select(TestPlanCase::getCaseSetId))
+                .stream().map(TestPlanCase::getCaseSetId).collect(Collectors.toSet());
+        Set<String> newSets = new HashSet<>(caseSetIds);
+        Set<String> toRemove = existingSets.stream().filter(s -> !newSets.contains(s)).collect(Collectors.toSet());
+        if (!toRemove.isEmpty()) {
+            caseMapper.delete(new LambdaQueryWrapper<TestPlanCase>()
+                    .eq(TestPlanCase::getPlanId, id).in(TestPlanCase::getCaseSetId, toRemove));
+        }
+
+        // 对每个用例集按筛选条件同步用例（新增/删除/保留状态）
+        for (String csId : caseSetIds) {
+            Map<String, List<String>> csFilter = filters != null ? filters.getOrDefault(csId, null) : null;
+            syncCasesForSet(id, csId, csFilter, executorId);
+        }
+    }
+
+    /**
+     * 同步某个用例集下的用例：按筛选条件重新查询有效路径，
+     * 新匹配的新增、不再匹配的删除、已有的保留执行状态并更新快照。
+     */
+    private void syncCasesForSet(String planId, String csId,
+                                 Map<String, List<String>> csFilter, String executorId) {
+        List<List<Map<String, Object>>> validPaths = previewValidPaths(csId, csFilter);
+        Map<String, List<Map<String, Object>>> pathByTitleId = new HashMap<>();
+        for (List<Map<String, Object>> path : validPaths) {
+            String titleId = str(path.get(path.size() - 4).get("id"));
+            pathByTitleId.put(titleId, path);
+        }
+
+        List<TestPlanCase> existing = caseMapper.selectList(
+                new LambdaQueryWrapper<TestPlanCase>()
+                        .eq(TestPlanCase::getPlanId, planId)
+                        .eq(TestPlanCase::getCaseSetId, csId));
+        Set<String> existingNodeIds = new HashSet<>();
+        for (TestPlanCase tc : existing) {
+            existingNodeIds.add(tc.getNodeId());
+            List<Map<String, Object>> newPath = pathByTitleId.get(tc.getNodeId());
+            if (newPath != null) {
+                tc.setPathSnapshot(newPath);
+                if (executorId != null) tc.setExecutorId(executorId);
                 caseMapper.updateById(tc);
+            } else {
+                caseMapper.deleteById(tc.getId());
             }
         }
-        if (caseSetIds != null) {
-            Set<String> existingSets = caseMapper.selectList(
-                    new LambdaQueryWrapper<TestPlanCase>().eq(TestPlanCase::getPlanId, id).select(TestPlanCase::getCaseSetId))
-                    .stream().map(TestPlanCase::getCaseSetId).collect(Collectors.toSet());
-            Set<String> newSets = new HashSet<>(caseSetIds);
-            Set<String> toRemove = existingSets.stream().filter(s -> !newSets.contains(s)).collect(Collectors.toSet());
-            if (!toRemove.isEmpty()) {
-                caseMapper.delete(new LambdaQueryWrapper<TestPlanCase>()
-                        .eq(TestPlanCase::getPlanId, id).in(TestPlanCase::getCaseSetId, toRemove));
+
+        // 新增的用例
+        for (Map.Entry<String, List<Map<String, Object>>> entry : pathByTitleId.entrySet()) {
+            if (!existingNodeIds.contains(entry.getKey())) {
+                TestPlanCase tc = new TestPlanCase();
+                tc.setPlanId(planId);
+                tc.setNodeId(entry.getKey());
+                tc.setCaseSetId(csId);
+                tc.setPathSnapshot(entry.getValue());
+                tc.setResult("PENDING");
+                tc.setExecutorId(executorId);
+                caseMapper.insert(tc);
             }
-            List<String> toAdd = newSets.stream().filter(s -> !existingSets.contains(s)).collect(Collectors.toList());
-            if (!toAdd.isEmpty()) addCasesFromSets(id, toAdd);
         }
     }
 

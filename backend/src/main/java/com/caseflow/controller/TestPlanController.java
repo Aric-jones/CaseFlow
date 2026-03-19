@@ -111,10 +111,12 @@ public class TestPlanController {
         plan.setProjectId((String) body.get("projectId")); plan.setStatus("NOT_STARTED");
         plan.setExecutorId((String) body.get("executorId"));
         plan.setCreatedBy(CurrentUserUtil.getCurrentUserId());
-        testPlanService.save(plan);
         List<String> caseSetIds = (List<String>) body.get("caseSetIds");
         Map<String, Map<String, List<String>>> filters =
                 (Map<String, Map<String, List<String>>>) body.get("filters");
+        plan.setCaseSetIds(caseSetIds);
+        plan.setFilters(filters);
+        testPlanService.save(plan);
         if (caseSetIds != null && !caseSetIds.isEmpty()) {
             if (filters != null && !filters.isEmpty()) {
                 testPlanService.addCasesFromSetsWithFilters(plan.getId(), caseSetIds, filters);
@@ -122,7 +124,6 @@ public class TestPlanController {
                 testPlanService.addCasesFromSets(plan.getId(), caseSetIds);
             }
         }
-        // 通知执行人
         if (plan.getExecutorId() != null && !plan.getExecutorId().equals(CurrentUserUtil.getCurrentUserId())) {
             String creatorName = CurrentUserUtil.getCurrentUserDisplayName();
             notificationService.send(plan.getExecutorId(), "PLAN_ASSIGNED",
@@ -136,11 +137,29 @@ public class TestPlanController {
     @SuppressWarnings("unchecked")
     @Transactional
     @PutMapping("/{id}") public Result<?> update(@PathVariable String id, @RequestBody Map<String, Object> body) {
+        TestPlan existingPlan = testPlanService.getById(id);
+        if (existingPlan == null) return Result.error("测试计划不存在");
+        String currentUserId = CurrentUserUtil.getCurrentUserId();
+        boolean isCreator = existingPlan.getCreatedBy() != null && existingPlan.getCreatedBy().equals(currentUserId);
+        boolean hasRole = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
+        if (!isCreator && !hasRole) return Result.error("仅创建人或管理员可以编辑");
         String name = (String) body.get("name");
         String directoryId = (String) body.get("directoryId");
         String executorId = (String) body.get("executorId");
         List<String> caseSetIds = (List<String>) body.get("caseSetIds");
-        testPlanService.updatePlan(id, name, directoryId, executorId, caseSetIds);
+        Map<String, Map<String, List<String>>> filters =
+                (Map<String, Map<String, List<String>>>) body.get("filters");
+        testPlanService.updatePlanWithFilters(id, name, directoryId, executorId, caseSetIds, filters);
+        // 通知执行人：测试计划已修改
+        TestPlan plan = testPlanService.getById(id);
+        if (plan != null && plan.getExecutorId() != null
+                && !plan.getExecutorId().equals(CurrentUserUtil.getCurrentUserId())) {
+            String editorName = CurrentUserUtil.getCurrentUserDisplayName();
+            notificationService.send(plan.getExecutorId(), "PLAN_UPDATED",
+                    "测试计划已修改",
+                    editorName + " 修改了测试计划「" + plan.getName() + "」，请查看最新内容",
+                    "/test-plan/" + plan.getId() + "/execute");
+        }
         return Result.ok();
     }
 
@@ -201,7 +220,7 @@ public class TestPlanController {
 
     @SaCheckPermission("plans:edit")
     @PostMapping("/{id}/refresh") public Result<?> refreshCases(@PathVariable String id) {
-        testPlanService.refreshCases(id); return Result.ok();
+        testPlanService.refreshCasesWithFilters(id); return Result.ok();
     }
 
     @SaCheckPermission("plans:edit")
@@ -215,6 +234,18 @@ public class TestPlanController {
 
     @SaCheckPermission("plans:execute")
     @PutMapping("/cases/{id}/execute") public Result<?> execute(@PathVariable String id, @RequestBody Map<String, String> body) {
+        String currentUserId = CurrentUserUtil.getCurrentUserId();
+        TestPlanCase targetCase = caseMapper.selectById(id);
+        if (targetCase == null) return Result.error("用例不存在");
+        // 只有执行人才能执行（管理员除外）
+        boolean isAdmin = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
+        if (!isAdmin) {
+            TestPlan targetPlan = testPlanService.getById(targetCase.getPlanId());
+            String caseExecutor = targetCase.getExecutorId();
+            String planExecutor = targetPlan != null ? targetPlan.getExecutorId() : null;
+            boolean isExecutor = currentUserId.equals(caseExecutor) || currentUserId.equals(planExecutor);
+            if (!isExecutor) return Result.error("只有分配的执行人才能执行该用例");
+        }
         testPlanService.executeCase(id, body.get("result"), body.get("reason"));
         // 根据执行结果自动更新计划状态，仅在状态变化时通知
         TestPlanCase tc = caseMapper.selectById(id);

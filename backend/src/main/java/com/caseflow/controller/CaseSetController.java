@@ -62,12 +62,20 @@ public class CaseSetController {
         if (name == null || name.isBlank()) return Result.error("名称不能为空");
         var cs = caseSetService.getById(id);
         if (cs == null) return Result.error("用例集不存在");
+        String currentUserId = CurrentUserUtil.getCurrentUserId();
+        boolean isCreator = cs.getCreatedBy() != null && cs.getCreatedBy().equals(currentUserId);
+        boolean hasRole = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
+        if (!isCreator && !hasRole) return Result.error("仅创建人或管理员可以编辑");
         cs.setName(name); caseSetService.updateById(cs); return Result.ok();
     }
     @SaCheckPermission("cases:edit")
     @PutMapping("/{id}/requirement") public Result<?> updateReq(@PathVariable String id, @RequestParam String link) {
         var cs = caseSetService.getById(id);
         if (cs == null) return Result.error("用例集不存在");
+        String currentUserId = CurrentUserUtil.getCurrentUserId();
+        boolean isCreator = cs.getCreatedBy() != null && cs.getCreatedBy().equals(currentUserId);
+        boolean hasRole = StpUtil.hasRole("SUPER_ADMIN") || StpUtil.hasRole("ADMIN");
+        if (!isCreator && !hasRole) return Result.error("仅创建人或管理员可以编辑");
         cs.setRequirementLink(link); caseSetService.updateById(cs); return Result.ok();
     }
     @SaCheckPermission("cases:import")

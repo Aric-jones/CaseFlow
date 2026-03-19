@@ -6,7 +6,7 @@
     </div>
     <div class="form-body">
       <div class="form-card">
-        <el-form label-width="90px" style="max-width:680px">
+        <el-form label-width="90px" style="max-width:1000px">
           <el-form-item label="任务名称" required>
             <el-input v-model="form.name" placeholder="输入测试计划名称" />
           </el-form-item>
@@ -29,9 +29,15 @@
             <el-table v-if="selectedSets.length" :data="selectedSets" size="small" border style="width:100%">
               <el-table-column label="用例集名称" prop="name" show-overflow-tooltip min-width="200" />
               <el-table-column label="总用例数" prop="caseCount" min-width="90" />
-              <el-table-column label="已筛选" min-width="80">
+              <el-table-column label="已筛选" min-width="160">
                 <template #default="{ row }">
                   <span>{{ getFilteredCount(row.id) }}</span>
+                  <div v-if="caseSetFilters[row.id]" class="filter-tags">
+                    <el-tag v-for="entry in getFilterEntries(row.id)" :key="entry[0]"
+                      size="small" type="info" style="margin:2px">
+                      {{ propLabel(entry[0]) }}: {{ entry[1].join(', ') }}
+                    </el-tag>
+                  </div>
                 </template>
               </el-table-column>
               <el-table-column label="操作" min-width="180" :resizable="false">
@@ -183,22 +189,45 @@ onMounted(async () => {
   dirTree.value = dirToSelectTree(dirRes.data);
   allUsers.value = userRes.data;
   if (isEdit.value) {
-    const [planRes, execRes, csIdsRes] = await Promise.all([
-      testPlanApi.get(planId.value), testPlanApi.getExecutors(planId.value), testPlanApi.getCaseSetIds(planId.value),
+    const [planRes, execRes] = await Promise.all([
+      testPlanApi.get(planId.value), testPlanApi.getExecutors(planId.value),
     ]);
-    form.value.name = planRes.data.name;
-    form.value.directoryId = planRes.data.directoryId || undefined;
+    const planData = planRes.data;
+    form.value.name = planData.name;
+    form.value.directoryId = planData.directoryId || undefined;
     form.value.executorId = execRes.data.length ? execRes.data[0].userId : undefined;
-    if (csIdsRes.data.length) {
+    // 恢复保存的用例集和筛选条件
+    const savedCsIds: string[] = planData.caseSetIds || [];
+    const savedFilters = planData.filters || {};
+    if (savedCsIds.length) {
       const csRes = await caseSetApi.list({ projectId: store.currentProject.id, size: 1000 });
-      const idSet = new Set(csIdsRes.data);
+      const idSet = new Set(savedCsIds);
       selectedSets.value = csRes.data.records.filter((cs: CaseSet) => idSet.has(cs.id));
+      // 恢复每个用例集的筛选条件
+      for (const [csId, filter] of Object.entries(savedFilters)) {
+        if (filter && Object.keys(filter).length > 0) {
+          caseSetFilters[csId] = filter as Record<string, string[]>;
+        }
+      }
       for (const cs of selectedSets.value) loadFilteredCount(cs.id);
+    } else {
+      // 旧计划没有保存 caseSetIds，回退到查询已关联的用例集
+      const csIdsRes = await testPlanApi.getCaseSetIds(planId.value);
+      if (csIdsRes.data.length) {
+        const csRes = await caseSetApi.list({ projectId: store.currentProject.id, size: 1000 });
+        const idSet = new Set(csIdsRes.data);
+        selectedSets.value = csRes.data.records.filter((cs: CaseSet) => idSet.has(cs.id));
+        for (const cs of selectedSets.value) loadFilteredCount(cs.id);
+      }
     }
   }
 });
 
 function getFilteredCount(csId: string) { return filteredCounts[csId] !== undefined ? filteredCounts[csId] : '-'; }
+function getFilterEntries(csId: string): [string, string[]][] {
+  const f = caseSetFilters[csId];
+  return f ? Object.entries(f).filter(([, v]) => v && v.length > 0) as [string, string[]][] : [];
+}
 
 async function loadFilteredCount(csId: string) {
   try {
@@ -224,12 +253,12 @@ async function submitForm() {
         filters[csId] = cleaned;
       }
     }
-    const hasFilters = Object.keys(filters).length > 0;
     if (isEdit.value) {
-      await testPlanApi.update(planId.value, { ...form.value, caseSetIds, ...(hasFilters ? { filters } : {}) });
+      await testPlanApi.update(planId.value, { ...form.value, caseSetIds, filters });
       ElMessage.success('更新成功');
     } else {
       if (!store.currentProject) return;
+      const hasFilters = Object.keys(filters).length > 0;
       await testPlanApi.create({ ...form.value, projectId: store.currentProject.id, caseSetIds, ...(hasFilters ? { filters } : {}) });
       ElMessage.success('创建成功');
     }
@@ -357,4 +386,5 @@ function mergePreviewPaths(paths: any[][], csId: string): any[] {
 .case-modal-right { flex:1; min-width:0; }
 .filter-row { margin-bottom:16px; }
 .filter-label { font-weight:600; font-size:13px; margin-bottom:6px; color:#303133; }
+.filter-tags { margin-top:4px; display:flex; flex-wrap:wrap; gap:2px; }
 </style>

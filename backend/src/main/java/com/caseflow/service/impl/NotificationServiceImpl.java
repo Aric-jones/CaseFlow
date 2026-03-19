@@ -38,6 +38,20 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
     }
 
     @Override
+    public void sendDelayed(String userId, String type, String title, String content, String link, int delaySeconds) {
+        Notification n = new Notification();
+        n.setUserId(userId);
+        n.setType(type);
+        n.setTitle(title);
+        n.setContent(content);
+        n.setLink(link);
+        n.setIsRead(0);
+        n.setCreatedAt(LocalDateTime.now().plusSeconds(delaySeconds));
+        save(n);
+        pushToWs(userId, n);
+    }
+
+    @Override
     public void sendToMany(List<String> userIds, String type, String title, String content, String link) {
         for (String uid : userIds) {
             send(uid, type, title, content, link);

@@ -738,7 +738,13 @@ function renderNodeToTree(rNode: any): MindNodeData {
   };
 }
 
-/** 统计有效用例数量（末端为 EXPECTED 类型的分支 + 必填属性已填） */
+/**
+ * 统计有效用例数量。一条路径满足以下全部条件才算一条合格用例：
+ * 1) 路径至少 5 个节点（根节点 + ≥1 个功能模块 + 用例标题 + 前置条件 + 步骤 + 预期结果）
+ * 2) 最后 4 个节点类型依次为 TITLE → PRECONDITION → STEP → EXPECTED
+ * 3) 最后 4 个节点之前的所有普通节点（功能模块）不能设置类型
+ * 4) EXPECTED 节点的必填属性已填写
+ */
 function countValid(node: MindNodeData): number {
   const requiredAttrs = projectAttributes.value
     .filter(a => a.required === 1)
@@ -749,8 +755,16 @@ function countValid(node: MindNodeData): number {
     if (!n.children || !n.children.length) {
       if (p.length >= 5) {
         const len = p.length;
+        // 规则2：最后4个节点类型必须为 TITLE → PRECONDITION → STEP → EXPECTED
         if (p[len-4].nodeType === 'TITLE' && p[len-3].nodeType === 'PRECONDITION'
             && p[len-2].nodeType === 'STEP' && p[len-1].nodeType === 'EXPECTED') {
+          // 规则3：前面的功能模块节点不能设置类型
+          let moduleClean = true;
+          for (let k = 0; k < len - 4; k++) {
+            if (p[k].nodeType) { moduleClean = false; break; }
+          }
+          if (!moduleClean) return;
+          // 规则4：EXPECTED 节点的必填属性已填写
           const props = p[len-1].properties || {};
           let valid = true;
           for (const attr of requiredAttrs) {
@@ -968,6 +982,8 @@ function initMindMap(initialData?: any) {
 
   // 节点选中 → 仅单选时打开属性面板，多选(框选)不弹
   mindMapInstance.on('node_active', (_: any, nodes: any[]) => {
+    // 切换节点时重置子孙属性设置的选中状态
+    Object.keys(descTileValues).forEach(k => delete descTileValues[k]);
     if (nodes.length === 1) {
       const node = nodes[0];
       activeNodeInstance.value = node;
@@ -1193,7 +1209,11 @@ async function handleSave() {
     await caseHistoryApi.save(caseSetId);
     await deleteLocalDraft(caseSetId);
     markClean();
-    message.success('已同步到云端');
+    if (resData.deletedComments > 0) {
+      message.warning(`已同步到云端，${resData.deletedComments} 条关联评论已随删除的节点一并清理`);
+    } else {
+      message.success('已同步到云端');
+    }
   } catch { /* handled */ } finally { saving.value = false; }
 }
 
@@ -1311,6 +1331,15 @@ function runValidation() {
         if (actual[i] !== expected[i]) {
           const actualLabel = actual[i] ? NODE_TYPE_LABEL[actual[i]] : '未设置';
           issues.push(`第${len - 4 + i + 1}层应为"${NODE_TYPE_LABEL[expected[i]]}"(当前: ${actualLabel})`);
+        }
+      }
+
+      // 检查最后4个节点之前是否有节点设置了类型（不允许）
+      for (let k = 0; k < len - 4; k++) {
+        const earlyType = getType(currentPath[k]);
+        if (earlyType) {
+          const earlyLabel = NODE_TYPE_LABEL[earlyType] || earlyType;
+          issues.push(`第${k + 1}层"${currentPath[k].nodeData?.data?.text || '?'}"不应设置类型(当前: ${earlyLabel})，只有最后4个节点可以有类型`);
         }
       }
 

@@ -57,14 +57,13 @@ public class ReviewController {
             String reviewerName = CurrentUserUtil.getCurrentUserDisplayName();
             String link = "/review/" + cs.getId();
             String statusCn = reviewStatusCn(status);
-            // 每次单个评审人状态变化都通知创建人
             notificationService.send(cs.getCreatedBy(), "REVIEW_STATUS_CHANGE",
                     "评审状态变更",
                     reviewerName + " 将用例集「" + cs.getName() + "」的评审状态更改为 " + statusCn, link);
-            // 全部评审人都通过时，额外发一条"评审通过"
+            // 全部评审人都通过时，额外发一条"评审通过"（延迟1秒确保排序在状态变更之后）
             if (allApproved) {
-                notificationService.send(cs.getCreatedBy(), "REVIEW_APPROVED",
-                        "评审通过", "用例集「" + cs.getName() + "」的评审已全部通过", link);
+                notificationService.sendDelayed(cs.getCreatedBy(), "REVIEW_APPROVED",
+                        "评审通过", "用例集「" + cs.getName() + "」的评审已全部通过", link, 1);
             }
         }
 

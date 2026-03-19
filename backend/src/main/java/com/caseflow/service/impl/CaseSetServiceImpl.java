@@ -207,6 +207,14 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * 校验一条从根到叶的路径是否为合格用例，并收集所有错误信息。
+     * 规则：
+     * 1) 路径至少 5 个节点（根 + ≥1 功能模块 + TITLE + PRECONDITION + STEP + EXPECTED）
+     * 2) 最后 4 个节点类型依次为 TITLE → PRECONDITION → STEP → EXPECTED
+     * 3) 最后 4 个节点之前的所有功能模块节点不能设置类型（nodeType 必须为空）
+     * 4) 4 个用例节点的必填属性已填写
+     */
     private void validateLeafPath(List<MindNodeDTO> path, List<ValidationResult.ValidationError> errors,
                                   List<com.caseflow.entity.CustomAttribute> attrs) {
         MindNodeDTO leaf = path.get(path.size()-1);
@@ -221,6 +229,14 @@ public class CaseSetServiceImpl extends ServiceImpl<CaseSetMapper, CaseSet> impl
         if (!"PRECONDITION".equals(n3.getNodeType())) { addErr(errors, leaf, path, "倒数第3节点类型应为'前置条件'"); typeOk = false; }
         if (!"STEP".equals(n2.getNodeType())) { addErr(errors, leaf, path, "倒数第2节点类型应为'步骤'"); typeOk = false; }
         if (!"EXPECTED".equals(n1.getNodeType())) { addErr(errors, leaf, path, "末尾节点类型应为'预期结果'"); typeOk = false; }
+        // 检查最后4个节点之前是否有节点设置了类型（不允许重复）
+        for (int i = 0; i < len - 4; i++) {
+            MindNodeDTO early = path.get(i);
+            if (early.getNodeType() != null && !early.getNodeType().isEmpty()) {
+                addErr(errors, leaf, path, "第" + (i + 1) + "层节点\"" + early.getText() + "\"不应设置类型，只有最后4个节点可以有类型");
+                typeOk = false;
+            }
+        }
         if (!typeOk) return;
 
         // 检查必填属性

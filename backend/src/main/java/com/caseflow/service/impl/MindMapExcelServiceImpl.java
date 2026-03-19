@@ -125,6 +125,7 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
         }
     }
 
+    /** 递归收集从根到叶的路径，仅将满足 {@link #isValidPath} 的路径转为导出行 */
     private void collectPaths(MindNodeDTO node, List<MindNodeDTO> path,
                               List<CaseRow> rows, List<String> dynamicAttrNames) {
         path.add(node);
@@ -139,13 +140,25 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
         }
     }
 
+    /**
+     * 判断一条从根到叶的路径是否为合格用例：
+     * 1) 路径至少 5 个节点（根 + ≥1 模块 + TITLE + PRECONDITION + STEP + EXPECTED）
+     * 2) 最后 4 个节点类型依次为 TITLE → PRECONDITION → STEP → EXPECTED
+     * 3) 最后 4 个节点之前的所有功能模块节点不能设置类型
+     */
     private boolean isValidPath(List<MindNodeDTO> path) {
         if (path.size() < 5) return false;
         int len = path.size();
-        return "TITLE".equals(path.get(len - 4).getNodeType())
-                && "PRECONDITION".equals(path.get(len - 3).getNodeType())
-                && "STEP".equals(path.get(len - 2).getNodeType())
-                && "EXPECTED".equals(path.get(len - 1).getNodeType());
+        if (!"TITLE".equals(path.get(len - 4).getNodeType())) return false;
+        if (!"PRECONDITION".equals(path.get(len - 3).getNodeType())) return false;
+        if (!"STEP".equals(path.get(len - 2).getNodeType())) return false;
+        if (!"EXPECTED".equals(path.get(len - 1).getNodeType())) return false;
+        // 功能模块节点（最后4个之前）不能设置类型
+        for (int i = 0; i < len - 4; i++) {
+            String nt = path.get(i).getNodeType();
+            if (nt != null && !nt.isEmpty()) return false;
+        }
+        return true;
     }
 
     private CaseRow pathToRow(List<MindNodeDTO> path, List<String> dynamicAttrNames) {
@@ -229,10 +242,12 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
         if (rows.isEmpty()) throw new BusinessException("Excel 中没有有效数据");
 
         MindNodeDTO root = rowsToTree(rows, cs.getName());
+        // 防御性校验：确保功能模块节点没有设置类型（虽然 rowsToTree 天然满足此条件）
+        assertModuleNodesClean(root, new ArrayList<>());
 
         List<MindNodeDTO> treeList = List.of(root);
-        int validCount = mindNodeService.batchSave(caseSetId, treeList);
-        cs.setCaseCount(validCount);
+        Map<String, Integer> saveResult = mindNodeService.batchSave(caseSetId, treeList);
+        cs.setCaseCount(saveResult.getOrDefault("validCount", 0));
         int newVersion = (cs.getDataVersion() != null ? cs.getDataVersion() : 0) + 1;
         cs.setDataVersion(newVersion);
         caseSetMapper.updateById(cs);
@@ -265,9 +280,12 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
         caseSetMapper.insert(cs);
 
         MindNodeDTO root = rowsToTree(rows, name);
+        // 防御性校验：确保功能模块节点没有设置类型
+        assertModuleNodesClean(root, new ArrayList<>());
+
         List<MindNodeDTO> treeList = List.of(root);
-        int validCount = mindNodeService.batchSave(cs.getId(), treeList);
-        cs.setCaseCount(validCount);
+        Map<String, Integer> saveResult = mindNodeService.batchSave(cs.getId(), treeList);
+        cs.setCaseCount(saveResult.getOrDefault("validCount", 0));
         cs.setDataVersion(1);
         caseSetMapper.updateById(cs);
 
@@ -449,6 +467,11 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
     //  表格行 → 思维导图树
     // ═══════════════════════════════════════════════════════
 
+    /**
+     * 将 Excel 解析出的行数据构建为思维导图树。
+     * 功能模块节点由 getOrCreateModuleChain 创建，nodeType 始终为 null，
+     * 因此天然满足"最后4个节点之前的功能模块节点不能设置类型"的规则。
+     */
     private MindNodeDTO rowsToTree(List<CaseRow> rows, String rootName) {
         MindNodeDTO root = new MindNodeDTO();
         root.setId(IdWorker.getIdStr());
@@ -496,6 +519,33 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
         return root;
     }
 
+    /**
+     * 防御性校验：遍历所有叶子路径，确保最后4个节点之前的功能模块节点没有设置类型。
+     * 由 rowsToTree 构建的树天然满足此条件（模块节点 nodeType 始终为 null），
+     * 此方法作为安全防线，防止未来代码修改引入违规节点。
+     */
+    private void assertModuleNodesClean(MindNodeDTO node, List<MindNodeDTO> path) {
+        path.add(node);
+        List<MindNodeDTO> children = node.getChildren();
+        if (children == null || children.isEmpty()) {
+            int len = path.size();
+            if (len >= 5) {
+                for (int i = 0; i < len - 4; i++) {
+                    String nt = path.get(i).getNodeType();
+                    if (nt != null && !nt.isEmpty()) {
+                        throw new BusinessException("导入数据校验失败：第" + (i + 1) + "层节点\""
+                                + path.get(i).getText() + "\"不应设置类型，只有最后4个节点可以有类型");
+                    }
+                }
+            }
+        } else {
+            for (MindNodeDTO child : children) {
+                assertModuleNodesClean(child, new ArrayList<>(path));
+            }
+        }
+    }
+
+    /** 递归创建或复用功能模块链，所有模块节点 nodeType 固定为 null（不允许设置类型） */
     private MindNodeDTO getOrCreateModuleChain(MindNodeDTO parent, List<String> modules) {
         MindNodeDTO current = parent;
         for (String mod : modules) {
