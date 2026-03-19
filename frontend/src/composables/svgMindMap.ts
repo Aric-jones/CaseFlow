@@ -261,7 +261,7 @@ export class SvgMindMapEngine {
   }
   _toMind(n: any): MindNodeData {
     const r = n.data?._raw || {}; const id = r.id || n.data?.uid || genId();
-    return { id, text: n.data?.text || r.text || '', nodeType: r.nodeType || null, sortOrder: r.sortOrder || 0, isRoot: r.isRoot, properties: r.properties, commentCount: r.commentCount || 0, children: (n.children || []).map((c: any) => this._toMind(c)) };
+    return { id, text: n.data?.text || r.text || '', nodeType: r.nodeType || null, sortOrder: r.sortOrder || 0, isRoot: r.isRoot, properties: r.properties, commentCount: r.commentCount || 0, updatedBy: r.updatedBy, updatedByName: r.updatedByName, updatedAt: r.updatedAt, children: (n.children || []).map((c: any) => this._toMind(c)) };
   }
   _toSMM(n: MindNodeData): any {
     return { data: { text: n.text, uid: n.id, _raw: n }, children: (n.children || []).map(c => this._toSMM(c)) };

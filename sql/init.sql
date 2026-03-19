@@ -122,9 +122,11 @@ CREATE TABLE mind_nodes
                                       DEFAULT NULL COMMENT '节点类型: 用例标题/前置条件/步骤/预期结果, 可为空',
     sort_order  INT          NOT NULL DEFAULT 0 COMMENT '同级排序序号',
     is_root     TINYINT      NOT NULL DEFAULT 0 COMMENT '是否根节点: 1=是 0=否, 每个用例集仅一个',
-    properties  JSON                  DEFAULT NULL COMMENT '动态属性JSON, 键名=属性名 值=属性值或数组',
-    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    properties      JSON                  DEFAULT NULL COMMENT '动态属性JSON, 键名=属性名 值=属性值或数组',
+    updated_by      VARCHAR(32)           DEFAULT NULL COMMENT '最后修改人ID',
+    updated_by_name VARCHAR(100)          DEFAULT NULL COMMENT '最后修改人名称',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
     INDEX idx_case_set (case_set_id),
     INDEX idx_parent (parent_id)
@@ -243,7 +245,8 @@ CREATE TABLE test_plan_cases
     result        ENUM ('PENDING','PASS','FAIL','SKIP')
                               NOT NULL DEFAULT 'PENDING' COMMENT '执行结果: 待执行/通过/失败/跳过',
     reason        TEXT                 DEFAULT NULL COMMENT '不通过/跳过原因',
-    executed_at   DATETIME             DEFAULT NULL COMMENT '执行时间',
+    executed_at       DATETIME             DEFAULT NULL COMMENT '执行时间',
+    executed_by_name  VARCHAR(100)         DEFAULT NULL COMMENT '执行人名称',
     PRIMARY KEY (id),
     INDEX idx_plan (plan_id)
 ) ENGINE = InnoDB

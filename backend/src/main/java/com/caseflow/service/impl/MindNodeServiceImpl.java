@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.caseflow.common.BusinessException;
+import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.dto.MindNodeDTO;
 import com.caseflow.entity.CaseSet;
 import com.caseflow.entity.Comment;
@@ -83,6 +84,9 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
         dto.setSortOrder(n.getSortOrder());
         dto.setIsRoot(n.getIsRoot());
         dto.setProperties(n.getProperties());
+        dto.setUpdatedBy(n.getUpdatedBy());
+        dto.setUpdatedByName(n.getUpdatedByName());
+        if (n.getUpdatedAt() != null) dto.setUpdatedAt(n.getUpdatedAt().toString());
         return dto;
     }
 
@@ -97,18 +101,18 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
     public Map<String, Integer> batchSave(String caseSetId, List<MindNodeDTO> nodes) {
         long t0 = System.currentTimeMillis();
 
-        // 1. 展平 DTO 树为 MindNode 列表
+        // 1. 查询数据库中已有节点（全量，用于差量对比修改人）
+        List<MindNode> existingList = list(
+                new LambdaQueryWrapper<MindNode>().eq(MindNode::getCaseSetId, caseSetId));
+        Map<String, MindNode> existingMap = existingList.stream()
+                .collect(Collectors.toMap(MindNode::getId, n -> n));
+        Set<String> existingIds = existingMap.keySet();
+
+        // 2. 展平 DTO 树为 MindNode 列表，精确设置 updatedBy
         List<MindNode> flatNodes = new ArrayList<>();
         if (nodes != null && !nodes.isEmpty()) {
-            flattenTree(caseSetId, nodes, null, flatNodes);
+            flattenTree(caseSetId, nodes, null, flatNodes, existingMap);
         }
-
-        // 2. 查询数据库中已有节点 ID（仅查 ID 列）
-        Set<String> existingIds = listObjs(
-                new LambdaQueryWrapper<MindNode>()
-                        .eq(MindNode::getCaseSetId, caseSetId)
-                        .select(MindNode::getId))
-                .stream().map(String::valueOf).collect(Collectors.toSet());
 
         Set<String> incomingIds = new HashSet<>();
         for (MindNode node : flatNodes) if (node.getId() != null) incomingIds.add(node.getId());
@@ -211,8 +215,11 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
         return true;
     }
 
-    /** 递归展平 DTO 树为 MindNode 实体列表 */
-    private void flattenTree(String caseSetId, List<MindNodeDTO> nodes, String parentId, List<MindNode> result) {
+    /** 递归展平 DTO 树为 MindNode 实体列表，仅对内容实际变化的节点更新修改人 */
+    private void flattenTree(String caseSetId, List<MindNodeDTO> nodes, String parentId,
+                             List<MindNode> result, Map<String, MindNode> existingMap) {
+        String uid = CurrentUserUtil.getCurrentUserId();
+        String uname = CurrentUserUtil.getCurrentUserDisplayName();
         for (int i = 0; i < nodes.size(); i++) {
             MindNodeDTO dto = nodes.get(i);
             MindNode node = new MindNode();
@@ -228,11 +235,38 @@ public class MindNodeServiceImpl extends ServiceImpl<MindNodeMapper, MindNode> i
             node.setSortOrder(i);
             node.setIsRoot(dto.getIsRoot() != null ? dto.getIsRoot() : (parentId == null ? 1 : 0));
             node.setProperties(dto.getProperties());
+
+            MindNode old = existingMap.get(node.getId());
+            if (old == null || isNodeChanged(old, node)) {
+                node.setUpdatedBy(uid);
+                node.setUpdatedByName(uname);
+            } else {
+                node.setUpdatedBy(old.getUpdatedBy());
+                node.setUpdatedByName(old.getUpdatedByName());
+            }
+
             result.add(node);
             if (dto.getChildren() != null && !dto.getChildren().isEmpty()) {
-                flattenTree(caseSetId, dto.getChildren(), node.getId(), result);
+                flattenTree(caseSetId, dto.getChildren(), node.getId(), result, existingMap);
             }
         }
+    }
+
+    /** 比较节点内容是否有实质性变化（text、nodeType、parentId、sortOrder、properties） */
+    private boolean isNodeChanged(MindNode old, MindNode incoming) {
+        if (!strEq(old.getText(), incoming.getText())) return true;
+        if (!strEq(old.getNodeType(), incoming.getNodeType())) return true;
+        if (!strEq(old.getParentId(), incoming.getParentId())) return true;
+        if (!java.util.Objects.equals(old.getSortOrder(), incoming.getSortOrder())) return true;
+        String oldProps = old.getProperties() == null ? "" : old.getProperties().toString();
+        String newProps = incoming.getProperties() == null ? "" : incoming.getProperties().toString();
+        return !oldProps.equals(newProps);
+    }
+
+    private boolean strEq(String a, String b) {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        return a.equals(b);
     }
 
     // ═══════════════════════════════════════════════════════

@@ -23,4 +23,5 @@ public class TestPlanCase {
     private String result;
     private String reason;
     private LocalDateTime executedAt;
+    private String executedByName;
 }

@@ -97,6 +97,9 @@
                   </div>
                 </template>
               </template>
+              <div v-if="selectedNodeRaw.updatedByName || selectedNodeRaw.updatedAt" class="node-update-info">
+                {{ selectedNodeRaw.updatedByName ? selectedNodeRaw.updatedByName + ' 修改于 ' : '修改于 ' }}{{ (selectedNodeRaw.updatedAt || '').replace('T', ' ').substring(0, 16) }}
+              </div>
             </template>
             <div v-else class="empty-hint">点击节点查看详情</div>
           </template>
@@ -206,6 +209,9 @@ function nodeToMM(node: MindNodeData): any {
         isRoot: node.isRoot,
         properties: node.properties,
         commentCount: node.commentCount || 0,
+        updatedBy: node.updatedBy,
+        updatedByName: node.updatedByName,
+        updatedAt: node.updatedAt,
       },
     },
     children: (node.children || []).map(c => nodeToMM(c)),
@@ -378,6 +384,7 @@ async function updateReview(rid: string, status: string) {
 .prop-field { margin-bottom: 14px; }
 .prop-field label { display: block; font-size: 12px; color: #909399; margin-bottom: 4px; font-weight: 500; }
 .prop-value { font-size: 13px; color: #303133; background: #f5f7fa; padding: 6px 10px; border-radius: 4px; line-height: 1.5; word-break: break-all; }
+.node-update-info { margin-top:12px; padding:8px 12px; background:#f6f8fa; border-radius:6px; font-size:12px; color:#909399; text-align:center; border:1px solid #ebeef5; }
 .empty-hint { display:flex; align-items:center; justify-content:center; height:160px; color:#c0c4cc; font-size:13px; }
 .reviewer-card { margin-bottom:12px; padding:10px; border:1px solid #e4e7ed; border-radius:8px; }
 .reviewer-name { margin-bottom:6px; font-weight:600; font-size:13px; }

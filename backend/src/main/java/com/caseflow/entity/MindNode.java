@@ -19,6 +19,8 @@ public class MindNode {
     private Integer isRoot;
     @TableField(typeHandler = JacksonTypeHandler.class)
     private Map<String, Object> properties;
+    private String updatedBy;
+    private String updatedByName;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

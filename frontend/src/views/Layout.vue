@@ -189,7 +189,11 @@ onMounted(async () => {
     try {
       const permRes = await authApi.permissions();
       store.setPermissions(permRes.data.permissions || [], permRes.data.roles || []);
-    } catch { /* ignore */ }
+    } catch {
+      localStorage.removeItem('token');
+      router.push('/login');
+      return;
+    }
   }
   connect();
   fetchUnreadCount();

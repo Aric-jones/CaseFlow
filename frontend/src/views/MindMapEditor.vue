@@ -196,6 +196,11 @@
                   </div>
                 </template>
               </template>
+
+              <!-- 最后修改信息 -->
+              <div v-if="nodeUpdateInfo" class="node-update-info">
+                {{ nodeUpdateInfo }}
+              </div>
             </template>
             <div v-else class="empty-hint">选择节点查看属性</div>
           </template>
@@ -536,6 +541,17 @@ function hasDescendantWithType(node: any, types: string[]): boolean {
   return false;
 }
 
+const nodeUpdateInfo = computed(() => {
+  if (!activeNodeInstance.value) return '';
+  const raw = activeNodeInstance.value.nodeData?.data?._raw || activeNodeInstance.value.data?._raw;
+  if (!raw) return '';
+  const name = raw.updatedByName;
+  const time = raw.updatedAt;
+  if (!name && !time) return '';
+  const timeStr = time ? time.replace('T', ' ').substring(0, 16) : '';
+  return name ? `${name} 修改于 ${timeStr}` : `修改于 ${timeStr}`;
+});
+
 const descTileValues = reactive<Record<string, any>>({});
 
 function toggleDescSingleTile(attr: CustomAttribute, option: string) {
@@ -660,6 +676,9 @@ function nodeToMM(node: MindNodeData): any {
         isRoot: node.isRoot,
         properties: node.properties,
         commentCount: node.commentCount || 0,
+        updatedBy: node.updatedBy,
+        updatedByName: node.updatedByName,
+        updatedAt: node.updatedAt,
       },
     },
     children: (node.children || []).map(c => nodeToMM(c)),
@@ -1870,6 +1889,10 @@ onUnmounted(() => {
 .tile-tag.priority-p2.active { background: #1677ff; border-color: #1677ff; }
 .tile-tag.priority-p3.active { background: #8c8c8c; border-color: #8c8c8c; }
 
+.node-update-info {
+  margin-top: 12px; padding: 8px 12px; background: #f6f8fa; border-radius: 6px;
+  font-size: 12px; color: #909399; text-align: center; border: 1px solid #ebeef5;
+}
 .empty-hint {
   display: flex; align-items: center; justify-content: center;
   height: 200px; color: #ccc; font-size: 14px;

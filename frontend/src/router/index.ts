@@ -57,6 +57,7 @@ async function ensurePermissions(): Promise<boolean> {
     store.setPermissions(res.data.permissions || [], res.data.roles || []);
     return true;
   } catch {
+    localStorage.removeItem('token');
     return false;
   }
 }

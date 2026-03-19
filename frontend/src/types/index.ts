@@ -54,6 +54,9 @@ export interface MindNodeData {
   properties?: Record<string, any>;
   children: MindNodeData[];
   commentCount?: number;
+  updatedBy?: string;
+  updatedByName?: string;
+  updatedAt?: string;
 }
 
 export interface CommentData {

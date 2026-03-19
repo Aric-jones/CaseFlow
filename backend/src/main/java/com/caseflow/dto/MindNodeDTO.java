@@ -15,6 +15,9 @@ public class MindNodeDTO {
     private Integer isRoot;
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private Map<String, Object> properties;
+    private String updatedBy;
+    private String updatedByName;
+    private String updatedAt;
     private List<MindNodeDTO> children;
     private Integer commentCount;
 }

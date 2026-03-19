@@ -641,12 +641,25 @@ public class MindMapExcelServiceImpl implements MindMapExcelService {
             }
 
             Map<String, Integer> colMap = new LinkedHashMap<>();
+            Map<String, Integer> headerOccurrences = new LinkedHashMap<>();
             for (int i = 0; i < header.getLastCellNum(); i++) {
                 Cell c = header.getCell(i);
                 if (c != null) {
                     String hv = c.getStringCellValue().trim();
-                    if (!hv.isEmpty()) colMap.put(hv, i);
+                    if (!hv.isEmpty()) {
+                        headerOccurrences.merge(hv, 1, Integer::sum);
+                        colMap.put(hv, i);
+                    }
                 }
+            }
+
+            // 0) 重复表头检测
+            List<String> duplicateHeaders = new ArrayList<>();
+            for (Map.Entry<String, Integer> e : headerOccurrences.entrySet()) {
+                if (e.getValue() > 1) duplicateHeaders.add("「" + e.getKey() + "」出现" + e.getValue() + "次");
+            }
+            if (!duplicateHeaders.isEmpty()) {
+                errors.add("表头存在重复列：" + String.join("、", duplicateHeaders) + "，请确保每列名称唯一");
             }
 
             // 1) 必需列校验：用例标题、前置条件、步骤、预期结果

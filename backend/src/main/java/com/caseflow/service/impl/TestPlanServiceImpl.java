@@ -430,6 +430,7 @@ public class TestPlanServiceImpl extends ServiceImpl<TestPlanMapper, TestPlan> i
         c.setResult(result);
         c.setReason(reason);
         c.setExecutedAt(LocalDateTime.now());
+        c.setExecutedByName(CurrentUserUtil.getCurrentUserDisplayName());
         caseMapper.updateById(c);
     }
 

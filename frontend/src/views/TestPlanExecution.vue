@@ -128,6 +128,9 @@
             <div class="section-label">{{ selectedCase.result === 'FAIL' ? '不通过原因' : '跳过原因' }}</div>
             <div class="reason-value">{{ selectedCase.reason }}</div>
           </div>
+          <div v-if="selectedCase.executedByName || selectedCase.executedAt" class="exec-update-info">
+            {{ selectedCase.executedByName || '未知' }} 执行于 {{ fmtTime(selectedCase.executedAt) }}
+          </div>
           <div style="margin-top:16px">
             <a class="link-edit" @click="goToMindMap">去修改用例 →</a>
           </div>
@@ -302,6 +305,7 @@ const filteredProps = computed(() => {
 });
 
 
+function fmtTime(t: string) { return t ? t.replace('T', ' ').substring(0, 16) : ''; }
 function resLabel(r: string) { return ({ PASS: '通过', FAIL: '不通过', SKIP: '跳过' } as any)[r] || '待执行'; }
 function resType(r: string): any { return ({ PASS: 'success', FAIL: 'danger', SKIP: 'warning' } as any)[r] || 'info'; }
 function ntLabel(t: string) { return ({ TITLE: '用例标题', PRECONDITION: '前置条件', STEP: '步骤', EXPECTED: '预期结果' } as any)[t] || t || ''; }
@@ -439,9 +443,10 @@ async function doExecute(result: string, reasonText?: string) {
     await testPlanApi.executeCase(caseId, result, reasonText);
     ElMessage.success('已记录');
     const c = cases.value.find((x: any) => x.id === caseId);
-    if (c) { c.result = result; c.reason = reasonText || null; c.executedAt = new Date().toISOString(); }
+    const executorName = store.user?.displayName || '';
+    if (c) { c.result = result; c.reason = reasonText || null; c.executedAt = new Date().toISOString(); c.executedByName = executorName; }
     rebuildTree();
-    selectedCase.value = { ...selectedCase.value!, result, reason: reasonText || null };
+    selectedCase.value = { ...selectedCase.value!, result, reason: reasonText || null, executedAt: new Date().toISOString(), executedByName: executorName };
     const idx = cases.value.findIndex((x: any) => x.id === caseId);
     if (idx >= 0 && idx < cases.value.length - 1) selectedCase.value = cases.value[idx + 1];
   });
@@ -509,6 +514,7 @@ onMounted(loadData);
 .attr-item::before { content:'•'; color:#409eff; font-weight:bold; }
 .attr-name { color:#606266; white-space:nowrap; min-width:56px; }
 .reason-value { color:#f56c6c; background:#fef0f0; padding:8px 12px; border-radius:6px; border:1px solid #fbc4c4; font-size:13px; line-height:1.6; white-space:pre-wrap; }
+.exec-update-info { margin-top:12px; padding:8px 12px; background:#f6f8fa; border-radius:6px; font-size:12px; color:#909399; text-align:center; border:1px solid #ebeef5; }
 .link-edit { font-size:13px; color:#409eff; cursor:pointer; }
 .link-edit:hover { text-decoration:underline; }
 .detail-footer { padding:12px 16px; border-top:1px solid #e4e7ed; }
