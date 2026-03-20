@@ -3,6 +3,7 @@ import type {
   ApiResult, CaseSet, CommentData, CustomAttribute, DirectoryNode,
   MindNodeData, Notification, PageResult, Project, RecycleBinItem, ReviewAssignment,
   TestPlan, TestPlanCase, User, ValidationResult, CaseHistory,
+  ApiEnv, ApiDef, ApiCaseItem, ApiAssertionItem, ApiScenarioItem, ApiExecutionItem,
 } from '../types';
 
 type R<T> = Promise<ApiResult<T>>;
@@ -189,4 +190,65 @@ export const notificationApi = {
 
 export const dashboardApi = {
   stats: (projectId: string): R<any> => request.get('/dashboard', { params: { projectId } }),
+};
+
+// ═══════════════════════════════════════════
+//  接口自动化 API
+// ═══════════════════════════════════════════
+
+export const apiEnvApi = {
+  list: (projectId: string): R<ApiEnv[]> => request.get('/api-env', { params: { projectId } }),
+  create: (data: Partial<ApiEnv>): R<ApiEnv> => request.post('/api-env', data),
+  update: (id: string, data: Partial<ApiEnv>): R<void> => request.put(`/api-env/${id}`, data),
+  delete: (id: string): R<void> => request.delete(`/api-env/${id}`),
+};
+
+export const apiDefApi = {
+  list: (params: { projectId: string; directoryId?: string; keyword?: string; method?: string; tag?: string; page?: number; size?: number }): R<PageResult<ApiDef>> =>
+    request.get('/api-defs', { params }),
+  detail: (id: string): R<ApiDef> => request.get(`/api-defs/${id}`),
+  tags: (projectId: string): R<string[]> => request.get('/api-defs/tags', { params: { projectId } }),
+  create: (data: Partial<ApiDef>): R<ApiDef> => request.post('/api-defs', data),
+  update: (id: string, data: Partial<ApiDef>): R<void> => request.put(`/api-defs/${id}`, data),
+  delete: (id: string): R<void> => request.delete(`/api-defs/${id}`),
+};
+
+export const apiCaseApi = {
+  list: (apiId: string): R<ApiCaseItem[]> => request.get('/api-cases', { params: { apiId } }),
+  detail: (id: string): R<ApiCaseItem> => request.get(`/api-cases/${id}`),
+  create: (data: Partial<ApiCaseItem>): R<ApiCaseItem> => request.post('/api-cases', data),
+  update: (id: string, data: Partial<ApiCaseItem>): R<void> => request.put(`/api-cases/${id}`, data),
+  saveAssertions: (id: string, assertions: ApiAssertionItem[]): R<void> => request.put(`/api-cases/${id}/assertions`, assertions),
+  delete: (id: string): R<void> => request.delete(`/api-cases/${id}`),
+  copy: (id: string): R<ApiCaseItem> => request.post(`/api-cases/${id}/copy`),
+};
+
+export const apiScenarioApi = {
+  list: (params: { projectId: string; directoryId?: string; keyword?: string; tag?: string; page?: number; size?: number }): R<PageResult<ApiScenarioItem>> =>
+    request.get('/api-scenarios', { params }),
+  detail: (id: string): R<ApiScenarioItem> => request.get(`/api-scenarios/${id}`),
+  create: (data: Partial<ApiScenarioItem>): R<ApiScenarioItem> => request.post('/api-scenarios', data),
+  update: (id: string, data: any): R<void> => request.put(`/api-scenarios/${id}`, data),
+  delete: (id: string): R<void> => request.delete(`/api-scenarios/${id}`),
+};
+
+export const apiPlanApi = {
+  list: (params: { projectId: string; directoryId?: string; keyword?: string; page?: number; size?: number }): R<PageResult<any>> =>
+    request.get('/api-plans', { params }),
+  detail: (id: string): R<any> => request.get(`/api-plans/${id}`),
+  create: (data: any): R<any> => request.post('/api-plans', data),
+  update: (id: string, data: any): R<void> => request.put(`/api-plans/${id}`, data),
+  delete: (id: string): R<void> => request.delete(`/api-plans/${id}`),
+  run: (id: string): R<{ executionId: string }> => request.post(`/api-plans/${id}/run`),
+};
+
+export const apiExecApi = {
+  debug: (caseId: string, environmentId: string): R<any> => request.post('/api-executions/debug', { caseId, environmentId }),
+  runScenario: (scenarioId: string, environmentId: string, projectId: string): R<{ executionId: string }> =>
+    request.post('/api-executions/run-scenario', { scenarioId, environmentId, projectId }),
+  runPlan: (planId: string): R<{ executionId: string }> => request.post('/api-executions/run-plan', { planId }),
+  list: (projectId: string, page?: number, size?: number): R<PageResult<ApiExecutionItem>> =>
+    request.get('/api-executions', { params: { projectId, page, size } }),
+  report: (id: string): R<any> => request.get(`/api-executions/${id}/report`),
+  delete: (id: string): R<void> => request.delete(`/api-executions/${id}`),
 };

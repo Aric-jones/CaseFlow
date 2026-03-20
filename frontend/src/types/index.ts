@@ -178,3 +178,142 @@ export interface Notification {
   isRead: number;
   createdAt: string;
 }
+
+// ═══════════════════════════════════════════
+//  接口自动化类型
+// ═══════════════════════════════════════════
+
+export interface ApiEnv {
+  id: string;
+  projectId: string;
+  name: string;
+  baseUrl: string;
+  headers?: Record<string, string>;
+  variables?: Record<string, string>;
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export interface ApiDef {
+  id: string;
+  projectId: string;
+  directoryId?: string;
+  name: string;
+  method: string;
+  path: string;
+  description?: string;
+  authType?: string;
+  authConfig?: Record<string, any>;
+  defaultHeaders?: { key: string; value: string; desc?: string }[];
+  defaultParams?: { key: string; value: string; desc?: string }[];
+  defaultBodyType?: string;
+  defaultBody?: string;
+  tags?: string[];
+  sortOrder?: number;
+  caseCount?: number;
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export interface ApiCaseItem {
+  id: string;
+  apiId: string;
+  name: string;
+  description?: string;
+  headers?: { key: string; value: string; desc?: string }[];
+  queryParams?: { key: string; value: string; desc?: string }[];
+  bodyType?: string;
+  bodyContent?: string;
+  preScript?: Record<string, any>;
+  postScript?: Record<string, any>;
+  tags?: string[];
+  priority?: string;
+  enabled?: number;
+  sortOrder?: number;
+  assertions?: ApiAssertionItem[];
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export interface ApiAssertionItem {
+  id?: string;
+  caseId?: string;
+  type: string;
+  expression?: string;
+  operator: string;
+  expectedValue?: string;
+  sortOrder?: number;
+}
+
+export interface ApiScenarioItem {
+  id: string;
+  projectId: string;
+  directoryId?: string;
+  name: string;
+  description?: string;
+  failStrategy?: string;
+  timeoutMs?: number;
+  tags?: string[];
+  stepCount?: number;
+  steps?: ApiScenarioStepItem[];
+  createdByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ApiScenarioStepItem {
+  id?: string;
+  scenarioId?: string;
+  caseId: string;
+  sortOrder?: number;
+  overrideHeaders?: { key: string; value: string }[];
+  overrideBody?: string;
+  preScript?: Record<string, any>;
+  postScript?: Record<string, any>;
+  delayMs?: number;
+  retryCount?: number;
+  enabled?: number;
+  apiName?: string;
+  apiMethod?: string;
+  apiPath?: string;
+  caseName?: string;
+}
+
+export interface ApiTestPlanItem {
+  id: string;
+  projectId: string;
+  directoryId?: string;
+  name: string;
+  description?: string;
+  environmentId: string;
+  parallel?: number;
+  cronExpression?: string;
+  status?: string;
+  scenarioCount?: number;
+  environmentName?: string;
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export interface ApiExecutionItem {
+  id: string;
+  projectId: string;
+  planId?: string;
+  scenarioId?: string;
+  caseId?: string;
+  environmentId: string;
+  triggerType: string;
+  status: string;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+  skippedCases: number;
+  durationMs: number;
+  executedByName?: string;
+  startedAt: string;
+  finishedAt?: string;
+  planName?: string;
+  scenarioName?: string;
+  environmentName?: string;
+}

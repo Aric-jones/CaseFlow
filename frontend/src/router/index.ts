@@ -15,6 +15,19 @@ const router = createRouter({
         { path: 'dashboard', component: () => import('../views/Dashboard.vue'), meta: { permissions: ['dashboard:view'] } },
         { path: 'cases', component: () => import('../views/CaseHome.vue'), meta: { permissions: ['cases:view'] } },
         { path: 'test-plans', component: () => import('../views/TestPlan.vue'), meta: { permissions: ['plans:view'] } },
+        {
+          path: 'api-auto',
+          component: () => import('../views/apiAuto/ApiAutoLayout.vue'),
+          meta: { permissions: ['api:def:view'] },
+          redirect: '/api-auto/defs',
+          children: [
+            { path: 'defs', component: () => import('../views/apiAuto/ApiDefList.vue') },
+            { path: 'scenarios', component: () => import('../views/apiAuto/ApiScenarioList.vue') },
+            { path: 'plans', component: () => import('../views/apiAuto/ApiPlanList.vue') },
+            { path: 'executions', component: () => import('../views/apiAuto/ApiExecutionList.vue') },
+            { path: 'env', component: () => import('../views/apiAuto/ApiEnvManager.vue') },
+          ],
+        },
         { path: 'recycle-bin', component: () => import('../views/RecycleBin.vue'), meta: { permissions: ['recycle:view'] } },
         { path: 'test-plan-recycle-bin', component: () => import('../views/TestPlanRecycleBin.vue'), meta: { permissions: ['plans:view'] } },
         { path: 'profile', component: () => import('../views/Profile.vue') },
@@ -45,6 +58,8 @@ const router = createRouter({
     { path: '/test-plan/create', component: () => import('../views/TestPlanForm.vue'), meta: { permissions: ['plans:create'] } },
     { path: '/test-plan/:planId/edit', component: () => import('../views/TestPlanForm.vue'), meta: { permissions: ['plans:edit'] } },
     { path: '/test-plan/:planId/execute', component: () => import('../views/TestPlanExecution.vue'), meta: { permissions: ['plans:execute'] } },
+    { path: '/api-auto/def/:id', component: () => import('../views/apiAuto/ApiDefDetail.vue'), meta: { permissions: ['api:def:view'] } },
+    { path: '/api-auto/execution/:id', component: () => import('../views/apiAuto/ApiExecutionReport.vue'), meta: { permissions: ['api:execution:view'] } },
     { path: '/test', component: () => import('../views/settings/test.vue') },
   ],
 });

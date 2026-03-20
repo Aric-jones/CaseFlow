@@ -17,6 +17,9 @@
           <el-menu-item v-if="store.hasPermission('plans:view')" index="/test-plans">
             <el-icon><Calendar /></el-icon><span>测试计划</span>
           </el-menu-item>
+          <el-menu-item v-if="store.hasPermission('api:def:view')" index="/api-auto">
+            <el-icon><Connection /></el-icon><span>接口自动化</span>
+          </el-menu-item>
           <el-menu-item v-if="showSettings" index="/settings">
             <el-icon><Setting /></el-icon><span>系统管理</span>
           </el-menu-item>
@@ -90,7 +93,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { Bell, Monitor } from '@element-plus/icons-vue';
+import { Bell, Monitor, Connection } from '@element-plus/icons-vue';
 import { authApi, projectApi, notificationApi } from '../api';
 import { useAppStore } from '../stores/app';
 import { useWebSocket, setUnreadCount } from '../composables/useWebSocket';
@@ -120,6 +123,7 @@ const activeKey = computed(() => {
   if (p === '/dashboard' || p === '/') return '/dashboard';
   if (p.startsWith('/cases') || p === '/recycle-bin') return '/cases';
   if (p.startsWith('/test-plans') || p.startsWith('/test-plan')) return '/test-plans';
+  if (p.startsWith('/api-auto')) return '/api-auto';
   if (p.startsWith('/settings')) return '/settings';
   return '/dashboard';
 });

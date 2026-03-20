@@ -67,8 +67,8 @@ CREATE TABLE directories
     name            VARCHAR(255) NOT NULL COMMENT '目录名称',
     parent_id       VARCHAR(32)           DEFAULT NULL COMMENT '父目录ID, NULL表示顶级目录',
     project_id      VARCHAR(32)  NOT NULL COMMENT '所属项目ID',
-    dir_type        ENUM ('CASE','TEST_PLAN')
-                                 NOT NULL COMMENT '目录类型: 用例/测试计划',
+    dir_type        ENUM ('CASE','TEST_PLAN','API','API_SCENARIO','API_PLAN')
+                                 NOT NULL COMMENT '目录类型: 用例/测试计划/接口定义/测试场景/自动化计划',
     sort_order      INT          NOT NULL DEFAULT 0 COMMENT '排序序号',
     created_by      VARCHAR(32)           DEFAULT NULL COMMENT '创建人编号',
     created_by_name VARCHAR(100)          DEFAULT NULL COMMENT '创建人',
