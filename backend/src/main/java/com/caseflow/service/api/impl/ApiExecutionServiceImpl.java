@@ -87,8 +87,12 @@ public class ApiExecutionServiceImpl extends ServiceImpl<ApiExecutionMapper, Api
         // 4. 注入鉴权
         authInjector.inject(headers, def.getAuthType(), def.getAuthConfig(), variableResolver, vars);
 
-        // 5. 执行前置脚本
-        scriptEngine.executePreScript(ac.getPreScript(), headers, vars, variableResolver);
+        // 5. 执行前置脚本（JSON 或 Groovy）
+        if ("GROOVY".equals(ac.getPreScriptType()) && ac.getPreScriptContent() != null) {
+            scriptEngine.executeGroovyPre(ac.getPreScriptContent(), headers, vars);
+        } else {
+            scriptEngine.executePreScript(ac.getPreScript(), headers, vars, variableResolver);
+        }
 
         // 6. 构建 Body
         String bodyType = ac.getBodyType() != null ? ac.getBodyType() : def.getDefaultBodyType();
@@ -99,8 +103,12 @@ public class ApiExecutionServiceImpl extends ServiceImpl<ApiExecutionMapper, Api
         HttpExecutor.HttpResult result = httpExecutor.execute(
                 new HttpExecutor.ExecuteRequest(def.getMethod(), url, headers, bodyType, bodyContent));
 
-        // 8. 执行后置脚本
-        scriptEngine.executePostScript(ac.getPostScript(), result, vars);
+        // 8. 执行后置脚本（JSON 或 Groovy）
+        if ("GROOVY".equals(ac.getPostScriptType()) && ac.getPostScriptContent() != null) {
+            scriptEngine.executeGroovyPost(ac.getPostScriptContent(), result, vars);
+        } else {
+            scriptEngine.executePostScript(ac.getPostScript(), result, vars);
+        }
 
         // 9. 执行断言
         List<Map<String, Object>> assertionResults = new ArrayList<>();
@@ -168,11 +176,47 @@ public class ApiExecutionServiceImpl extends ServiceImpl<ApiExecutionMapper, Api
         for (int i = 0; i < steps.size(); i++) {
             if (shouldStop) { break; }
             ApiScenarioStep step = steps.get(i);
+            String stepType = step.getStepType() != null ? step.getStepType() : "API_CASE";
 
             if (step.getDelayMs() != null && step.getDelayMs() > 0) {
                 try { Thread.sleep(step.getDelayMs()); } catch (InterruptedException ignored) {}
             }
 
+            // WAIT 步骤：仅等待，不执行请求
+            if ("WAIT".equals(stepType)) { continue; }
+
+            // SCRIPT 步骤：执行 Groovy 脚本
+            if ("SCRIPT".equals(stepType)) {
+                try {
+                    scriptEngine.executeGroovyStep(step.getScriptContent(), vars);
+                    ApiExecutionDetail detail = new ApiExecutionDetail();
+                    detail.setExecutionId(executionId);
+                    detail.setScenarioId(scenarioId);
+                    detail.setStepOrder(i);
+                    detail.setRequestMethod("SCRIPT");
+                    detail.setRequestUrl("Groovy Script");
+                    detail.setStatus("PASS");
+                    detail.setDurationMs(0L);
+                    detailMapper.insert(detail);
+                    passed++;
+                } catch (Exception e) {
+                    errored++;
+                    ApiExecutionDetail detail = new ApiExecutionDetail();
+                    detail.setExecutionId(executionId);
+                    detail.setScenarioId(scenarioId);
+                    detail.setStepOrder(i);
+                    detail.setRequestMethod("SCRIPT");
+                    detail.setRequestUrl("Groovy Script");
+                    detail.setStatus("ERROR");
+                    detail.setErrorMessage(e.getMessage());
+                    detail.setDurationMs(0L);
+                    detailMapper.insert(detail);
+                    if ("STOP".equals(scenario != null ? scenario.getFailStrategy() : "STOP")) shouldStop = true;
+                }
+                continue;
+            }
+
+            // API_CASE 步骤
             ApiCase ac = caseMapper.selectById(step.getCaseId());
             if (ac == null) { errored++; continue; }
             ApiDefinition def = defMapper.selectById(ac.getApiId());

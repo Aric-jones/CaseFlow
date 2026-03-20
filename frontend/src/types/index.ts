@@ -226,6 +226,10 @@ export interface ApiCaseItem {
   bodyContent?: string;
   preScript?: Record<string, any>;
   postScript?: Record<string, any>;
+  preScriptType?: string;
+  postScriptType?: string;
+  preScriptContent?: string;
+  postScriptContent?: string;
   tags?: string[];
   priority?: string;
   enabled?: number;
@@ -264,12 +268,14 @@ export interface ApiScenarioItem {
 export interface ApiScenarioStepItem {
   id?: string;
   scenarioId?: string;
-  caseId: string;
+  stepType?: string;
+  caseId?: string;
   sortOrder?: number;
   overrideHeaders?: { key: string; value: string }[];
   overrideBody?: string;
   preScript?: Record<string, any>;
   postScript?: Record<string, any>;
+  scriptContent?: string;
   delayMs?: number;
   retryCount?: number;
   enabled?: number;
@@ -293,6 +299,17 @@ export interface ApiTestPlanItem {
   environmentName?: string;
   createdByName?: string;
   createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ApiPlanScenarioItem {
+  id?: string;
+  planId?: string;
+  scenarioId: string;
+  sortOrder?: number;
+  enabled?: number;
+  scenarioName?: string;
+  stepCount?: number;
 }
 
 export interface ApiExecutionItem {

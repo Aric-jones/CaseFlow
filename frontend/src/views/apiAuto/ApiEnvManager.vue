@@ -6,15 +6,15 @@
     </div>
     <el-table :data="envList" border stripe style="width:100%">
       <el-table-column prop="name" label="环境名称" min-width="120" />
-      <el-table-column prop="baseUrl" label="Base URL" min-width="260" show-overflow-tooltip />
-      <el-table-column label="全局Header数" width="120" align="center">
+      <el-table-column prop="baseUrl" label="Base URL" min-width="150" show-overflow-tooltip />
+      <el-table-column label="全局Header数" width="200" align="center">
         <template #default="{ row }">{{ row.headers ? Object.keys(row.headers).length : 0 }}</template>
       </el-table-column>
       <el-table-column label="环境变量数" width="120" align="center">
         <template #default="{ row }">{{ row.variables ? Object.keys(row.variables).length : 0 }}</template>
       </el-table-column>
       <el-table-column prop="createdByName" label="创建人" width="100" />
-      <el-table-column label="操作" width="140" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button text type="primary" size="small" @click="openForm(row)">编辑</el-button>
           <el-popconfirm title="确认删除？" @confirm="doDelete(row.id)">

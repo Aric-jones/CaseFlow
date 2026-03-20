@@ -12,6 +12,7 @@ public class ApiScenarioStep {
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     private String scenarioId;
+    private String stepType;
     private String caseId;
     private Integer sortOrder;
     @TableField(typeHandler = JacksonTypeHandler.class)
@@ -21,6 +22,8 @@ public class ApiScenarioStep {
     private Map<String, Object> preScript;
     @TableField(typeHandler = JacksonTypeHandler.class)
     private Map<String, Object> postScript;
+    @TableField(value = "script_content")
+    private String scriptContent;
     private Integer delayMs;
     private Integer retryCount;
     private Integer enabled;

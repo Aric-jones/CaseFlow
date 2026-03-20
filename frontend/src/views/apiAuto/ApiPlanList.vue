@@ -48,30 +48,30 @@
             clearable :prefix-icon="Search" @keyup.enter="() => loadList(1)" />
           <el-button @click="() => loadList(1)">搜索</el-button>
           <div style="flex:1" />
-          <el-button type="primary" :icon="Plus" @click="openForm()">新建计划</el-button>
+          <el-button type="primary" :icon="Plus" @click="goCreate">新建计划</el-button>
         </div>
 
-        <el-table :data="list" v-loading="loading" border style="width:100%">
-          <el-table-column prop="name" label="计划名称" min-width="200" show-overflow-tooltip />
+        <el-table :data="list" v-loading="loading" border style="width:100%;cursor:pointer" @row-click="goEdit">
+          <el-table-column prop="name" label="计划名称" min-width="200" show-overflow-tooltip fixed="left" />
           <el-table-column prop="environmentName" label="执行环境" min-width="130" show-overflow-tooltip />
-          <el-table-column label="场景数" width="90" align="center">
+          <el-table-column label="场景数" min-width="80" align="center">
             <template #default="{ row }"><el-tag size="small" round>{{ row.scenarioCount || 0 }}</el-tag></template>
           </el-table-column>
-          <el-table-column label="执行模式" width="100" align="center">
+          <el-table-column label="执行模式" min-width="100" align="center">
             <template #default="{ row }">
               <el-tag :type="row.parallel ? 'success' : 'info'" size="small">{{ row.parallel ? '并行' : '串行' }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="createdByName" label="创建人" width="100" show-overflow-tooltip />
+          <el-table-column prop="createdByName" label="创建人" min-width="90" show-overflow-tooltip />
           <el-table-column label="创建时间" min-width="160">
             <template #default="{ row }">{{ fmtTime(row.createdAt) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="180" fixed="right">
+          <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
-              <el-button text type="success" size="small" @click="doRun(row.id)">执行</el-button>
-              <el-button text type="primary" size="small" @click="openForm(row)">编辑</el-button>
+              <el-button text type="success" size="small" @click.stop="doRun(row.id)">执行</el-button>
+              <el-button text type="primary" size="small" @click.stop="goEdit(row)">编辑</el-button>
               <el-popconfirm title="确认删除？" @confirm="doDelete(row.id)">
-                <template #reference><el-button text type="danger" size="small">删除</el-button></template>
+                <template #reference><el-button text type="danger" size="small" @click.stop>删除</el-button></template>
               </el-popconfirm>
             </template>
           </el-table-column>
@@ -92,33 +92,6 @@
       <div class="ctx-item danger" @click="delDir(ctxMenu.nodeId!)"><el-icon><Delete /></el-icon>删除</div>
     </div>
 
-    <!-- 新建/编辑计划弹窗 -->
-    <el-dialog v-model="dialog" :title="editId ? '编辑计划' : '新建计划'" width="600px" destroy-on-close>
-      <el-form :model="form" label-width="90px">
-        <el-form-item label="计划名称" required><el-input v-model="form.name" /></el-form-item>
-        <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
-        <el-form-item label="执行环境" required>
-          <el-select v-model="form.environmentId" style="width:100%" placeholder="选择环境">
-            <el-option v-for="e in envList" :key="e.id" :label="e.name + ' (' + e.baseUrl + ')'" :value="e.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="执行模式">
-          <el-radio-group v-model="form.parallel">
-            <el-radio :value="0">串行执行</el-radio>
-            <el-radio :value="1">并行执行</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="选择场景">
-          <el-select v-model="selectedScenarioIds" multiple style="width:100%" placeholder="选择测试场景">
-            <el-option v-for="s in allScenarios" :key="s.id" :label="s.name" :value="s.id" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialog = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="doSave">保存</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -127,9 +100,9 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { Plus, Search } from '@element-plus/icons-vue';
-import { directoryApi, apiPlanApi, apiEnvApi, apiScenarioApi } from '../../api';
+import { directoryApi, apiPlanApi } from '../../api';
 import { useAppStore } from '../../stores/app';
-import type { DirectoryNode, ApiEnv, ApiScenarioItem } from '../../types';
+import type { DirectoryNode } from '../../types';
 
 const router = useRouter();
 const store = useAppStore();
@@ -203,13 +176,6 @@ const currentPage = ref(1);
 const keyword = ref('');
 const loading = ref(false);
 
-const dialog = ref(false);
-const saving = ref(false);
-const editId = ref('');
-const form = ref<any>({});
-const envList = ref<ApiEnv[]>([]);
-const allScenarios = ref<ApiScenarioItem[]>([]);
-const selectedScenarioIds = ref<string[]>([]);
 
 function fmtTime(t?: string) { return t ? t.replace('T', ' ').substring(0, 16) : ''; }
 
@@ -224,46 +190,12 @@ async function loadList(page = 1) {
   } finally { loading.value = false; }
 }
 
-async function loadOptions() {
-  if (!projectId()) return;
-  const [eRes, sRes] = await Promise.all([
-    apiEnvApi.list(projectId()),
-    apiScenarioApi.list({ projectId: projectId(), page: 1, size: 200 }),
-  ]);
-  envList.value = eRes.data;
-  allScenarios.value = sRes.data.records;
+function goCreate() {
+  router.push({ path: '/api-auto/plan/create', query: { directoryId: selectedDir.value || undefined } });
 }
 
-async function openForm(row?: any) {
-  await loadOptions();
-  if (row) {
-    editId.value = row.id;
-    const res = await apiPlanApi.detail(row.id);
-    form.value = { name: res.data.plan.name, description: res.data.plan.description, environmentId: res.data.plan.environmentId, parallel: res.data.plan.parallel || 0 };
-    selectedScenarioIds.value = (res.data.scenarios || []).map((s: any) => s.scenarioId);
-  } else {
-    editId.value = '';
-    form.value = { projectId: projectId(), directoryId: selectedDir.value ?? undefined, name: '', description: '', environmentId: '', parallel: 0 };
-    selectedScenarioIds.value = [];
-  }
-  dialog.value = true;
-}
-
-async function doSave() {
-  if (!form.value.name?.trim()) { ElMessage.warning('请输入计划名称'); return; }
-  if (!form.value.environmentId) { ElMessage.warning('请选择环境'); return; }
-  saving.value = true;
-  const payload = { ...form.value, scenarios: selectedScenarioIds.value.map(id => ({ scenarioId: id })) };
-  try {
-    if (editId.value) {
-      await apiPlanApi.update(editId.value, payload);
-    } else {
-      await apiPlanApi.create(payload);
-    }
-    ElMessage.success('保存成功');
-    dialog.value = false;
-    loadList();
-  } finally { saving.value = false; }
+function goEdit(row: any) {
+  router.push('/api-auto/plan/' + row.id + '/edit');
 }
 
 async function doRun(id: string) {

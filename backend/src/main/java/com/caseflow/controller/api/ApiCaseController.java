@@ -6,12 +6,15 @@ import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
 import com.caseflow.entity.api.ApiAssertion;
 import com.caseflow.entity.api.ApiCase;
+import com.caseflow.entity.api.ApiDefinition;
 import com.caseflow.mapper.api.ApiAssertionMapper;
+import com.caseflow.mapper.api.ApiDefinitionMapper;
 import com.caseflow.service.api.ApiCaseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +25,7 @@ public class ApiCaseController {
 
     private final ApiCaseService caseService;
     private final ApiAssertionMapper assertionMapper;
+    private final ApiDefinitionMapper definitionMapper;
 
     @SaCheckPermission("api:case:view")
     @GetMapping
@@ -41,6 +45,23 @@ public class ApiCaseController {
     public Result<?> create(@RequestBody ApiCase apiCase) {
         apiCase.setCreatedBy(CurrentUserUtil.getCurrentUserId());
         apiCase.setCreatedByName(CurrentUserUtil.getCurrentUserDisplayName());
+        // 从接口定义继承默认参数
+        if (apiCase.getApiId() != null) {
+            ApiDefinition def = definitionMapper.selectById(apiCase.getApiId());
+            if (def != null) {
+                if (apiCase.getHeaders() == null || apiCase.getHeaders().isEmpty()) {
+                    apiCase.setHeaders(def.getDefaultHeaders() != null ? new ArrayList<>(def.getDefaultHeaders()) : null);
+                }
+                if (apiCase.getQueryParams() == null || apiCase.getQueryParams().isEmpty()) {
+                    apiCase.setQueryParams(def.getDefaultParams() != null ? new ArrayList<>(def.getDefaultParams()) : null);
+                }
+                if ((apiCase.getBodyContent() == null || apiCase.getBodyContent().isBlank())
+                        && def.getDefaultBodyType() != null && !"NONE".equals(def.getDefaultBodyType())) {
+                    apiCase.setBodyType(def.getDefaultBodyType());
+                    apiCase.setBodyContent(def.getDefaultBody());
+                }
+            }
+        }
         caseService.save(apiCase);
         return Result.ok(apiCase);
     }

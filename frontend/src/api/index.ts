@@ -206,6 +206,8 @@ export const apiEnvApi = {
 export const apiDefApi = {
   list: (params: { projectId: string; directoryId?: string; keyword?: string; method?: string; tag?: string; page?: number; size?: number }): R<PageResult<ApiDef>> =>
     request.get('/api-defs', { params }),
+  listAll: (projectId: string): R<PageResult<ApiDef>> =>
+    request.get('/api-defs', { params: { projectId, page: 1, size: 500 } }),
   detail: (id: string): R<ApiDef> => request.get(`/api-defs/${id}`),
   tags: (projectId: string): R<string[]> => request.get('/api-defs/tags', { params: { projectId } }),
   create: (data: Partial<ApiDef>): R<ApiDef> => request.post('/api-defs', data),
@@ -227,7 +229,7 @@ export const apiScenarioApi = {
   list: (params: { projectId: string; directoryId?: string; keyword?: string; tag?: string; page?: number; size?: number }): R<PageResult<ApiScenarioItem>> =>
     request.get('/api-scenarios', { params }),
   detail: (id: string): R<ApiScenarioItem> => request.get(`/api-scenarios/${id}`),
-  create: (data: Partial<ApiScenarioItem>): R<ApiScenarioItem> => request.post('/api-scenarios', data),
+  create: (data: any): R<ApiScenarioItem> => request.post('/api-scenarios', data),
   update: (id: string, data: any): R<void> => request.put(`/api-scenarios/${id}`, data),
   delete: (id: string): R<void> => request.delete(`/api-scenarios/${id}`),
 };

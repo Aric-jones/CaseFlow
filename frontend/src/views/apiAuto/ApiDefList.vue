@@ -58,13 +58,13 @@
         </div>
 
         <el-table :data="defList" v-loading="loading" border style="width:100%;cursor:pointer" @row-click="goDetail">
-          <el-table-column label="Method" width="90" align="center">
+          <el-table-column label="Method" width="100" align="center" fixed="left">
             <template #default="{ row }">
               <el-tag :type="methodColor(row.method)" size="small" effect="dark" style="font-weight:700;min-width:52px;text-align:center">{{ row.method }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="name" label="接口名称" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="path" label="路径" min-width="220" show-overflow-tooltip>
+          <el-table-column prop="name" label="接口名称" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="path" label="路径" min-width="240" show-overflow-tooltip>
             <template #default="{ row }"><code style="font-size:12px;color:#606266">{{ row.path }}</code></template>
           </el-table-column>
           <el-table-column label="标签" min-width="160">
@@ -72,8 +72,8 @@
               <el-tag v-for="tag in (row.tags || [])" :key="tag" size="small" type="info" round style="margin:0 4px 2px 0">{{ tag }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="caseCount" label="用例数" width="80" align="center" />
-          <el-table-column prop="createdByName" label="创建人" width="100" show-overflow-tooltip />
+          <el-table-column prop="caseCount" label="用例数" min-width="80" align="center" />
+          <el-table-column prop="createdByName" label="创建人" min-width="90" show-overflow-tooltip />
           <el-table-column label="操作" width="100" fixed="right">
             <template #default="{ row }">
               <el-popconfirm title="删除将级联删除所有关联用例和断言，确认？" @confirm.stop="doDeleteDef(row.id)">

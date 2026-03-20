@@ -59,6 +59,9 @@ const router = createRouter({
     { path: '/test-plan/:planId/edit', component: () => import('../views/TestPlanForm.vue'), meta: { permissions: ['plans:edit'] } },
     { path: '/test-plan/:planId/execute', component: () => import('../views/TestPlanExecution.vue'), meta: { permissions: ['plans:execute'] } },
     { path: '/api-auto/def/:id', component: () => import('../views/apiAuto/ApiDefDetail.vue'), meta: { permissions: ['api:def:view'] } },
+    { path: '/api-auto/scenario/:id', component: () => import('../views/apiAuto/ApiScenarioDetail.vue'), meta: { permissions: ['api:scenario:view'] } },
+    { path: '/api-auto/plan/create', component: () => import('../views/apiAuto/ApiPlanForm.vue'), meta: { permissions: ['api:plan:create'] } },
+    { path: '/api-auto/plan/:id/edit', component: () => import('../views/apiAuto/ApiPlanForm.vue'), meta: { permissions: ['api:plan:edit'] } },
     { path: '/api-auto/execution/:id', component: () => import('../views/apiAuto/ApiExecutionReport.vue'), meta: { permissions: ['api:execution:view'] } },
     { path: '/test', component: () => import('../views/settings/test.vue') },
   ],
@@ -90,7 +93,7 @@ router.beforeEach(async (to) => {
 
     const store = useAppStore();
     if (!store.hasAnyPermission(...requiredPerms)) {
-      ElMessage.warning('无权访问该页面');
+      ElMessage.warning('您没有权限，请联系管理员');
       if (to.path === '/dashboard') return { path: '/profile' };
       return { path: '/dashboard' };
     }

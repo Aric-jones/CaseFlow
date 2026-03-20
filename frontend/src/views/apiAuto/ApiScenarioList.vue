@@ -44,42 +44,42 @@
     <main class="page-main">
       <div class="content-card">
         <div class="toolbar">
-          <el-input v-model="keyword" placeholder="搜索场景名称" style="width:220px"
+          <el-input v-model="keyword" placeholder="搜索场景名称" style="width:180px"
             clearable :prefix-icon="Search" @keyup.enter="() => loadList(1)" />
           <el-button @click="() => loadList(1)">搜索</el-button>
           <div style="flex:1" />
-          <el-button type="primary" :icon="Plus" @click="openCreate">新建场景</el-button>
+          <el-button type="primary" :icon="Plus" @click="goCreate">新建场景</el-button>
         </div>
 
-        <el-table :data="list" v-loading="loading" border style="width:100%">
-          <el-table-column prop="name" label="场景名称" min-width="200" show-overflow-tooltip />
-          <el-table-column label="步骤数" width="90" align="center">
+        <el-table :data="list" v-loading="loading" border style="width:100%;cursor:pointer" @row-click="goEdit">
+          <el-table-column prop="name" label="场景名称" min-width="200" show-overflow-tooltip fixed="left" />
+          <el-table-column label="步骤数" min-width="80" align="center">
             <template #default="{ row }">
               <el-tag size="small" round>{{ row.stepCount || 0 }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="失败策略" width="110" align="center">
+          <el-table-column label="失败策略" min-width="120" align="center">
             <template #default="{ row }">
               <el-tag :type="row.failStrategy === 'STOP' ? 'danger' : 'success'" size="small">
                 {{ row.failStrategy === 'STOP' ? '遇错停止' : '继续执行' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="标签" min-width="150">
+          <el-table-column label="标签" min-width="140">
             <template #default="{ row }">
               <el-tag v-for="t in (row.tags || [])" :key="t" size="small" type="info" round style="margin:0 4px 2px 0">{{ t }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="createdByName" label="创建人" width="100" show-overflow-tooltip />
-          <el-table-column label="更新时间" width="160">
+          <el-table-column prop="createdByName" label="创建人" min-width="90" show-overflow-tooltip />
+          <el-table-column label="更新时间" min-width="160">
             <template #default="{ row }">{{ fmtTime(row.updatedAt) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="180" fixed="right">
+          <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
-              <el-button text type="success" size="small" @click="openRunDialog(row)">执行</el-button>
-              <el-button text type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+              <el-button text type="success" size="small" @click.stop="openRunDialog(row)">执行</el-button>
+              <el-button text type="primary" size="small" @click.stop="goEdit(row)">编辑</el-button>
               <el-popconfirm title="删除将同时删除所有步骤，确认？" @confirm="doDelete(row.id)">
-                <template #reference><el-button text type="danger" size="small">删除</el-button></template>
+                <template #reference><el-button text type="danger" size="small" @click.stop>删除</el-button></template>
               </el-popconfirm>
             </template>
           </el-table-column>
@@ -100,31 +100,6 @@
       <div class="ctx-item danger" @click="delDir(ctxMenu.nodeId!)"><el-icon><Delete /></el-icon>删除</div>
     </div>
 
-    <!-- 新建/编辑场景弹窗 -->
-    <el-dialog v-model="dialog" :title="editId ? '编辑场景' : '新建场景'" width="540px" destroy-on-close>
-      <el-form :model="form" label-width="90px">
-        <el-form-item label="场景名称" required>
-          <el-input v-model="form.name" placeholder="如：用户模块 CRUD 流程" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="2" />
-        </el-form-item>
-        <el-form-item label="失败策略">
-          <el-radio-group v-model="form.failStrategy">
-            <el-radio value="STOP">遇到失败停止</el-radio>
-            <el-radio value="CONTINUE">继续执行</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="标签">
-          <el-select v-model="form.tags" multiple filterable allow-create default-first-option
-            placeholder="输入后回车" style="width:100%" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialog = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="doSave">保存</el-button>
-      </template>
-    </el-dialog>
 
     <!-- 执行场景弹窗 -->
     <el-dialog v-model="runDialog" title="执行场景" width="400px">
@@ -224,10 +199,6 @@ const currentPage = ref(1);
 const keyword = ref('');
 const loading = ref(false);
 
-const dialog = ref(false);
-const saving = ref(false);
-const editId = ref('');
-const form = ref<Partial<ApiScenarioItem>>({});
 
 function fmtTime(t?: string) { return t ? t.replace('T', ' ').substring(0, 16) : ''; }
 
@@ -242,31 +213,12 @@ async function loadList(page = 1) {
   } finally { loading.value = false; }
 }
 
-function openCreate() {
-  editId.value = '';
-  form.value = { projectId: projectId(), directoryId: selectedDir.value ?? undefined, name: '', failStrategy: 'STOP', tags: [] };
-  dialog.value = true;
+function goCreate() {
+  router.push({ path: '/api-auto/scenario/create', query: { directoryId: selectedDir.value || undefined } });
 }
 
-function openEdit(row: ApiScenarioItem) {
-  editId.value = row.id;
-  form.value = { name: row.name, description: row.description, failStrategy: row.failStrategy || 'STOP', tags: row.tags ? [...row.tags] : [] };
-  dialog.value = true;
-}
-
-async function doSave() {
-  if (!form.value.name?.trim()) { ElMessage.warning('请输入场景名称'); return; }
-  saving.value = true;
-  try {
-    if (editId.value) {
-      await apiScenarioApi.update(editId.value, form.value);
-    } else {
-      await apiScenarioApi.create(form.value);
-    }
-    ElMessage.success('保存成功');
-    dialog.value = false;
-    loadList();
-  } finally { saving.value = false; }
+function goEdit(row: ApiScenarioItem) {
+  router.push('/api-auto/scenario/' + row.id);
 }
 
 async function doDelete(id: string) {

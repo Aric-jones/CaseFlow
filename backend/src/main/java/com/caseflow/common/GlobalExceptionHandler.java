@@ -23,7 +23,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(NotPermissionException.class)
     public Result<?> handleNotPermission(NotPermissionException e) {
-        return Result.error(403, "无此权限: " + e.getPermission());
+        return Result.error(403, "您没有权限，请联系管理员");
     }
 
     @ExceptionHandler(NotRoleException.class)

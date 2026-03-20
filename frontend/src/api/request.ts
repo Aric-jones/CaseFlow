@@ -26,7 +26,7 @@ request.interceptors.response.use(
       localStorage.removeItem('token');
       window.location.href = '/login';
     } else if (error.response?.status === 403) {
-      ElMessage.error(error.response?.data?.message || '没有操作权限');
+      ElMessage.error(error.response?.data?.message || '您没有权限，请联系管理员');
     } else {
       ElMessage.error(error.response?.data?.message || '网络异常');
     }

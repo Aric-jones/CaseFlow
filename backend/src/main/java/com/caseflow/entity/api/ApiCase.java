@@ -25,6 +25,10 @@ public class ApiCase {
     private Map<String, Object> preScript;
     @TableField(typeHandler = JacksonTypeHandler.class)
     private Map<String, Object> postScript;
+    private String preScriptType;
+    private String postScriptType;
+    private String preScriptContent;
+    private String postScriptContent;
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<String> tags;
     private String priority;

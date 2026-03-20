@@ -2,25 +2,22 @@ package com.caseflow.engine;
 
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.PathNotFoundException;
+import groovy.lang.Binding;
+import groovy.lang.GroovyShell;
 import lombok.extern.slf4j.Slf4j;
+import org.codehaus.groovy.control.CompilerConfiguration;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.*;
 
-/**
- * 前置/后置脚本引擎（JSON配置式）
- *
- * 前置脚本格式: { "actions": [{"type":"SET_HEADER","key":"Authorization","value":"Bearer {{token}}"}] }
- * 后置脚本格式: { "extracts": [{"key":"token","source":"JSON_PATH","expression":"$.data.token"}] }
- */
 @Slf4j
 @Component
 public class ScriptEngine {
 
-    /**
-     * 执行前置脚本：SET_HEADER / SET_VARIABLE / SET_BODY_FIELD
-     */
+    private static final long GROOVY_TIMEOUT_MS = 30_000;
+
     @SuppressWarnings("unchecked")
     public void executePreScript(Map<String, Object> script, Map<String, String> headers,
                                   Map<String, String> vars, VariableResolver resolver) {
@@ -45,9 +42,6 @@ public class ScriptEngine {
         }
     }
 
-    /**
-     * 执行后置脚本：从响应中提取变量到 vars
-     */
     @SuppressWarnings("unchecked")
     public void executePostScript(Map<String, Object> script, HttpExecutor.HttpResult result,
                                    Map<String, String> vars) {
@@ -81,6 +75,79 @@ public class ScriptEngine {
             } catch (Exception e) {
                 log.warn("[Script] extract error for key={}: {}", key, e.getMessage());
             }
+        }
+    }
+
+    /**
+     * 执行 Groovy 前置脚本
+     * 绑定变量: vars(Map), headers(Map), log(Logger)
+     */
+    public void executeGroovyPre(String script, Map<String, String> headers,
+                                  Map<String, String> vars) {
+        if (script == null || script.isBlank()) return;
+        try {
+            Binding binding = new Binding();
+            binding.setVariable("vars", vars);
+            binding.setVariable("headers", headers);
+            binding.setVariable("log", log);
+            runGroovyWithTimeout(script, binding);
+        } catch (Exception e) {
+            log.warn("[Groovy Pre] Script error: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 执行 Groovy 后置脚本
+     * 绑定变量: vars(Map), response(Map{body,statusCode,headers,durationMs}), log(Logger)
+     */
+    public void executeGroovyPost(String script, HttpExecutor.HttpResult result,
+                                   Map<String, String> vars) {
+        if (script == null || script.isBlank()) return;
+        try {
+            Binding binding = new Binding();
+            binding.setVariable("vars", vars);
+            binding.setVariable("response", Map.of(
+                    "body", result.body() != null ? result.body() : "",
+                    "statusCode", result.statusCode(),
+                    "headers", result.headers() != null ? result.headers() : Map.of(),
+                    "durationMs", result.durationMs()
+            ));
+            binding.setVariable("log", log);
+            runGroovyWithTimeout(script, binding);
+        } catch (Exception e) {
+            log.warn("[Groovy Post] Script error: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 执行独立 Groovy 脚本步骤（场景中的脚本步骤）
+     * 绑定变量: vars(Map), log(Logger)
+     */
+    public void executeGroovyStep(String script, Map<String, String> vars) {
+        if (script == null || script.isBlank()) return;
+        try {
+            Binding binding = new Binding();
+            binding.setVariable("vars", vars);
+            binding.setVariable("log", log);
+            runGroovyWithTimeout(script, binding);
+        } catch (Exception e) {
+            log.warn("[Groovy Step] Script error: {}", e.getMessage());
+        }
+    }
+
+    private void runGroovyWithTimeout(String script, Binding binding) throws Exception {
+        CompilerConfiguration config = new CompilerConfiguration();
+        config.setScriptBaseClass(null);
+        GroovyShell shell = new GroovyShell(binding, config);
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> future = executor.submit(() -> shell.evaluate(script));
+            future.get(GROOVY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            throw new RuntimeException("Groovy script execution timeout (" + GROOVY_TIMEOUT_MS + "ms)");
+        } finally {
+            executor.shutdownNow();
         }
     }
 }

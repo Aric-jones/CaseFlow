@@ -14,19 +14,19 @@
       </div>
 
       <el-table :data="list" v-loading="loading" border style="width:100%">
-        <el-table-column label="状态" width="90" align="center">
+        <el-table-column label="状态" width="90" align="center" fixed="left">
           <template #default="{ row }">
             <el-tag :type="statusColor(row.status)" size="small" effect="dark">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="来源" min-width="200" show-overflow-tooltip>
+        <el-table-column label="来源" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.planName">计划: {{ row.planName }}</span>
             <span v-else-if="row.scenarioName">场景: {{ row.scenarioName }}</span>
             <span v-else>单用例调试</span>
           </template>
         </el-table-column>
-        <el-table-column label="通过率" min-width="180">
+        <el-table-column label="通过率" min-width="200">
           <template #default="{ row }">
             <div style="display:flex;align-items:center;gap:8px">
               <el-progress
@@ -38,14 +38,14 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="耗时" width="100">
+        <el-table-column label="耗时" min-width="80">
           <template #default="{ row }">{{ (row.durationMs / 1000).toFixed(1) }}s</template>
         </el-table-column>
-        <el-table-column prop="executedByName" label="执行人" width="100" show-overflow-tooltip />
+        <el-table-column prop="executedByName" label="执行人" min-width="90" show-overflow-tooltip />
         <el-table-column label="执行时间" min-width="160">
           <template #default="{ row }">{{ fmtTime(row.startedAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button text type="primary" size="small" @click="$router.push('/api-auto/execution/' + row.id)">报告</el-button>
             <el-popconfirm title="确认删除？" @confirm="doDelete(row.id)">
