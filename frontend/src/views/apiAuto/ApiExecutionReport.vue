@@ -3,6 +3,10 @@
     <div class="report-top">
       <el-button text @click="$router.back()"><el-icon><ArrowLeft /></el-icon> 返回</el-button>
       <span class="report-title">执行报告</span>
+      <el-tag v-if="isRunning" type="warning" size="small" effect="dark"
+        style="margin-left:8px;display:inline-flex;align-items:center;gap:4px;">
+        <span>执行中，自动刷新...</span>
+      </el-tag>
     </div>
 
     <template v-if="report">
@@ -69,9 +73,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { ArrowLeft, CircleCheck, CircleClose } from '@element-plus/icons-vue';
+import { ArrowLeft, CircleCheck, CircleClose, Loading } from '@element-plus/icons-vue';
 import { apiExecApi } from '../../api';
 
 const route = useRoute();
@@ -79,11 +83,14 @@ const execId = String(route.params.id);
 const loading = ref(true);
 const report = ref<any>(null);
 const expandedStep = ref<number | null>(null);
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 const passPct = computed(() => {
   if (!report.value?.execution?.totalCases) return 0;
   return Math.round(report.value.execution.passedCases / report.value.execution.totalCases * 100);
 });
+
+const isRunning = computed(() => report.value?.execution?.status === 'RUNNING');
 
 function fmtTime(t?: string) { return t ? t.replace('T', ' ').substring(0, 19) : ''; }
 function statusColor(s: string): any { return ({ PASS: 'success', FAIL: 'danger', RUNNING: 'warning', ERROR: 'danger' } as any)[s] || 'info'; }
@@ -92,14 +99,37 @@ function methodColor(m: string): any { return ({ GET: 'success', POST: 'primary'
 function formatJson(s: string) { if (!s) return ''; try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; } }
 function toggleStep(idx: number) { expandedStep.value = expandedStep.value === idx ? null : idx; }
 
+async function loadReport() {
+  try {
+    const res = await apiExecApi.report(execId);
+    report.value = res.data;
+  } catch { /* ignore */ }
+}
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(async () => {
+    await loadReport();
+    if (!isRunning.value) stopPolling();
+  }, 3000);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
 onMounted(async () => {
-  try { const res = await apiExecApi.report(execId); report.value = res.data; }
-  finally { loading.value = false; }
+  try {
+    await loadReport();
+    if (isRunning.value) startPolling();
+  } finally { loading.value = false; }
 });
+
+onUnmounted(stopPolling);
 </script>
 
 <style scoped>
-.report-page { padding: 16px 24px; max-width: 1000px; margin: 0 auto; }
+.report-page { padding: 16px 24px; max-width: 1000px; margin: 0 auto; height: 100%; overflow: auto; }
 .report-top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .report-title { font-size: 18px; font-weight: 600; }
 .summary-card { margin-bottom: 16px; }

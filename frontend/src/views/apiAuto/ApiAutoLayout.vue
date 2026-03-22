@@ -7,6 +7,7 @@
         <el-tab-pane label="测试计划" name="plans" />
         <el-tab-pane label="执行记录" name="executions" />
         <el-tab-pane label="环境管理" name="env" />
+        <el-tab-pane label="回收站" name="recycle" />
       </el-tabs>
     </div>
     <div class="api-auto-content">
@@ -22,7 +23,7 @@ import { useRouter, useRoute } from 'vue-router';
 const router = useRouter();
 const route = useRoute();
 
-const tabMap: Record<string, string> = { defs: '/api-auto/defs', scenarios: '/api-auto/scenarios', plans: '/api-auto/plans', executions: '/api-auto/executions', env: '/api-auto/env' };
+const tabMap: Record<string, string> = { defs: '/api-auto/defs', scenarios: '/api-auto/scenarios', plans: '/api-auto/plans', executions: '/api-auto/executions', env: '/api-auto/env', recycle: '/api-auto/recycle' };
 const reverseMap: Record<string, string> = Object.fromEntries(Object.entries(tabMap).map(([k, v]) => [v, k]));
 
 const activeTab = ref(reverseMap[route.path] || 'defs');

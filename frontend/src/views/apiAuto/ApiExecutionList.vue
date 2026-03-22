@@ -11,9 +11,16 @@
           <el-option value="ERROR" label="异常" />
         </el-select>
         <el-button @click="() => loadList(1)">搜索</el-button>
+        <div style="flex:1" />
+        <el-popconfirm v-if="selectedRows.length" title="确认批量删除所选执行记录？" @confirm="batchDeleteExecs">
+          <template #reference>
+            <el-button type="danger">批量删除 ({{ selectedRows.length }})</el-button>
+          </template>
+        </el-popconfirm>
       </div>
 
-      <el-table :data="list" v-loading="loading" border style="width:100%">
+      <el-table :data="list" v-loading="loading" border style="width:100%" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="50" />
         <el-table-column label="状态" width="90" align="center" fixed="left">
           <template #default="{ row }">
             <el-tag :type="statusColor(row.status)" size="small" effect="dark">{{ statusLabel(row.status) }}</el-tag>
@@ -45,7 +52,7 @@
         <el-table-column label="执行时间" min-width="160">
           <template #default="{ row }">{{ fmtTime(row.startedAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button text type="primary" size="small" @click="$router.push('/api-auto/execution/' + row.id)">报告</el-button>
             <el-popconfirm title="确认删除？" @confirm="doDelete(row.id)">
@@ -77,6 +84,24 @@ const currentPage = ref(1);
 const keyword = ref('');
 const statusFilter = ref('');
 const loading = ref(false);
+const selectedRows = ref<any[]>([]);
+
+function handleSelectionChange(rows: any[]) {
+  selectedRows.value = rows;
+}
+
+async function batchDeleteExecs() {
+  if (!selectedRows.value.length) { ElMessage.warning('请先选择要删除的记录'); return; }
+  const ids = selectedRows.value.map((r: any) => r.id);
+  try {
+    await apiExecApi.batchDelete(ids);
+    ElMessage.success(`成功删除 ${ids.length} 条记录`);
+    selectedRows.value = [];
+    loadList();
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '删除失败');
+  }
+}
 
 function fmtTime(t?: string) { return t ? t.replace('T', ' ').substring(0, 19) : ''; }
 function statusColor(s: string): any { return ({ PASS: 'success', FAIL: 'danger', RUNNING: 'warning', ERROR: 'danger' } as any)[s] || 'info'; }
@@ -104,8 +129,8 @@ onMounted(loadList);
 </script>
 
 <style scoped>
-.page-wrap-single { padding: 20px; background: #f0f2f5; min-height: 100%; }
-.content-card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); min-height: calc(100% - 0px); }
+.page-wrap-single { padding: 20px; background: #f0f2f5; height: 100%; overflow: auto; }
+.content-card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
 .toolbar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
 .pagination-bar { margin-top: 16px; display: flex; justify-content: flex-end; }
 </style>

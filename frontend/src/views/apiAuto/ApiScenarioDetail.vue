@@ -3,14 +3,14 @@
     <div class="detail-top">
       <el-button text @click="$router.push('/api-auto/scenarios')"><el-icon><ArrowLeft /></el-icon> 返回列表</el-button>
       <span class="detail-title">{{ scenario.name || '场景编排' }}</span>
-      <el-button type="primary" size="small" @click="doSave" :loading="saving" style="margin-left:auto">保存场景</el-button>
+      <el-button type="primary" @click="doSave" :loading="saving" style="margin-left:auto">保存场景</el-button>
     </div>
 
     <!-- 基本信息 -->
     <el-card shadow="never" class="section-card">
       <template #header><span class="card-title">场景信息</span></template>
       <el-form :model="scenario" label-width="90px">
-        <el-row :gutter="16">
+        <el-row :gutter="20">
           <el-col :span="10"><el-form-item label="场景名称" required><el-input v-model="scenario.name" /></el-form-item></el-col>
           <el-col :span="7">
             <el-form-item label="失败策略">
@@ -53,35 +53,41 @@
         </div>
       </template>
 
-      <div v-if="!steps.length" class="empty-hint">暂无步骤，点击上方按钮添加</div>
+      <div v-if="!steps.length" class="empty-hint">
+        <el-icon :size="40" color="#dcdfe6"><Connection /></el-icon>
+        <p>暂无步骤，点击上方按钮添加</p>
+      </div>
 
       <div class="step-list">
-        <div v-for="(step, idx) in steps" :key="idx" :class="['step-card', { active: editingStepIdx === idx }]">
+        <div v-for="(step, idx) in steps" :key="idx" :class="['step-card', { active: editingStepIdx === idx, disabled: !step.enabled }]">
           <div class="step-header" @click="toggleEditStep(idx)">
             <div class="step-drag-handle" @mousedown.stop="startDrag(idx, $event)">
               <el-icon><Rank /></el-icon>
             </div>
             <span class="step-num">#{{ idx + 1 }}</span>
-            <el-tag v-if="step.stepType === 'API_CASE'" type="" size="small" effect="plain" class="step-type-tag">
-              <el-icon style="vertical-align:-2px"><Connection /></el-icon> API
-            </el-tag>
-            <el-tag v-else-if="step.stepType === 'SCRIPT'" type="warning" size="small" effect="plain" class="step-type-tag">
-              <el-icon style="vertical-align:-2px"><Document /></el-icon> 脚本
-            </el-tag>
-            <el-tag v-else type="info" size="small" effect="plain" class="step-type-tag">
-              <el-icon style="vertical-align:-2px"><Clock /></el-icon> 等待
-            </el-tag>
 
-            <span class="step-desc" v-if="step.stepType === 'API_CASE'">
-              <el-tag v-if="step.apiMethod" :type="methodTagType(step.apiMethod)" size="small" effect="dark" style="margin-right:4px">{{ step.apiMethod }}</el-tag>
-              {{ step.apiName || '未选择' }} / {{ step.caseName || '未选择' }}
-            </span>
-            <span class="step-desc" v-else-if="step.stepType === 'SCRIPT'">
-              {{ step.scriptContent ? step.scriptContent.substring(0, 60) + '...' : '空脚本' }}
-            </span>
-            <span class="step-desc" v-else>等待 {{ step.delayMs || 0 }}ms</span>
+            <span v-if="step.stepType === 'API_CASE'" class="step-type-badge step-type-api">API</span>
+            <span v-else-if="step.stepType === 'SCRIPT'" class="step-type-badge step-type-script">脚本</span>
+            <span v-else class="step-type-badge step-type-wait">等待</span>
+
+            <div class="step-desc" v-if="step.stepType === 'API_CASE'">
+              <el-tag v-if="step.apiMethod" :type="methodTagType(step.apiMethod)" size="small" effect="dark" class="method-tag">{{ step.apiMethod }}</el-tag>
+              <span class="step-name">{{ step.apiName || '未选择' }}</span>
+              <span class="step-separator">/</span>
+              <span class="step-case-name">{{ step.caseName || '未选择' }}</span>
+              <span v-if="step.apiPath" class="step-path">{{ step.apiPath }}</span>
+            </div>
+            <div class="step-desc" v-else-if="step.stepType === 'SCRIPT'">
+              <span class="step-script-preview">{{ step.scriptContent ? step.scriptContent.substring(0, 60) + '...' : '空脚本' }}</span>
+            </div>
+            <div class="step-desc" v-else>
+              <span class="step-wait-value">{{ step.delayMs || 0 }}ms</span>
+            </div>
 
             <div class="step-right">
+              <el-button v-if="step.stepType === 'API_CASE' && step.caseId" text type="primary" size="small" @click.stop="showCaseDetail(step)">
+                详情
+              </el-button>
               <el-switch v-model="step.enabled" :active-value="1" :inactive-value="0" size="small" @click.stop />
               <el-button text type="primary" size="small" @click.stop="moveUp(idx)" :disabled="idx === 0">
                 <el-icon><Top /></el-icon>
@@ -182,6 +188,36 @@
         </el-table-column>
       </el-table>
     </el-dialog>
+
+    <!-- 用例详情弹窗 -->
+    <el-dialog v-model="caseDetailDialog" :title="'用例详情: ' + (caseDetailData?.name || '')" width="700px" destroy-on-close>
+      <template v-if="caseDetailData">
+        <el-descriptions :column="2" border size="small" style="margin-bottom:16px">
+          <el-descriptions-item label="用例名称">{{ caseDetailData.name }}</el-descriptions-item>
+          <el-descriptions-item label="优先级">{{ caseDetailData.priority }}</el-descriptions-item>
+          <el-descriptions-item label="Body类型">{{ caseDetailData.bodyType || 'NONE' }}</el-descriptions-item>
+          <el-descriptions-item label="启用">{{ caseDetailData.enabled ? '是' : '否' }}</el-descriptions-item>
+        </el-descriptions>
+        <div v-if="caseDetailData.bodyContent" style="margin-bottom:12px">
+          <div class="detail-label">Body</div>
+          <pre class="detail-code">{{ formatJson(caseDetailData.bodyContent) }}</pre>
+        </div>
+        <div v-if="caseDetailData.headers?.length" style="margin-bottom:12px">
+          <div class="detail-label">Headers</div>
+          <div v-for="h in caseDetailData.headers" :key="h.key" class="detail-kv">{{ h.key }}: {{ h.value }}</div>
+        </div>
+        <div v-if="caseDetailData.queryParams?.length" style="margin-bottom:12px">
+          <div class="detail-label">Params</div>
+          <div v-for="p in caseDetailData.queryParams" :key="p.key" class="detail-kv">{{ p.key }}={{ p.value }}</div>
+        </div>
+        <div v-if="caseDetailData.assertions?.length" style="margin-bottom:12px">
+          <div class="detail-label">断言 ({{ caseDetailData.assertions.length }})</div>
+          <div v-for="(a, i) in caseDetailData.assertions" :key="i" class="detail-assertion">
+            {{ a.type }}{{ a.expression ? ' ' + a.expression : '' }} {{ a.operator }} {{ a.expectedValue || '' }}
+          </div>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -211,7 +247,6 @@ const steps = ref<any[]>([]);
 const editingStepIdx = ref<number | null>(null);
 const allDefs = ref<ApiDef[]>([]);
 
-// Drag state
 const dragIdx = ref(-1);
 
 function toggleEditStep(idx: number) {
@@ -245,16 +280,29 @@ async function loadScenario() {
       _selectedApiId: null,
       _casesForApi: [],
     }));
-    for (const step of steps.value) {
-      if (step.stepType === 'API_CASE' && step.caseId) {
-        try {
-          const caseRes = await apiCaseApi.detail(step.caseId);
-          step._selectedApiId = caseRes.data.apiId;
-          const casesRes = await apiCaseApi.list(caseRes.data.apiId);
-          step._casesForApi = casesRes.data;
-        } catch {}
-      }
-    }
+
+    const apiCaseSteps = steps.value.filter(st => st.stepType === 'API_CASE' && st.caseId);
+    const caseDetails = await Promise.all(
+      apiCaseSteps.map(st => apiCaseApi.detail(st.caseId).catch(() => null))
+    );
+
+    const apiIdSet = new Set<string>();
+    caseDetails.forEach(r => { if (r?.data?.apiId) apiIdSet.add(r.data.apiId); });
+    const caseLists = await Promise.all(
+      Array.from(apiIdSet).map(apiId => apiCaseApi.list(apiId).then(r => ({ apiId, cases: r.data })).catch(() => ({ apiId, cases: [] as ApiCaseItem[] })))
+    );
+    const caseListMap = new Map(caseLists.map(c => [c.apiId, c.cases]));
+
+    apiCaseSteps.forEach((step, i) => {
+      const caseRes = caseDetails[i];
+      if (!caseRes?.data) return;
+      step._selectedApiId = caseRes.data.apiId;
+      step._caseDetail = caseRes.data;
+      step.caseName = caseRes.data.name;
+      const d = allDefs.value.find(x => x.id === caseRes.data.apiId);
+      if (d) { step.apiName = d.name; step.apiMethod = d.method; step.apiPath = d.path; }
+      step._casesForApi = caseListMap.get(caseRes.data.apiId) || [];
+    });
   } finally { loading.value = false; }
 }
 
@@ -277,9 +325,15 @@ async function onApiChange(step: any) {
   step._casesForApi = res.data;
 }
 
-function onCaseChange(step: any) {
+async function onCaseChange(step: any) {
   const c = (step._casesForApi || []).find((x: any) => x.id === step.caseId);
   if (c) step.caseName = c.name;
+  if (step.caseId) {
+    try {
+      const res = await apiCaseApi.detail(step.caseId);
+      step._caseDetail = res.data;
+    } catch {}
+  }
 }
 
 function addStep(type: string) {
@@ -332,11 +386,32 @@ function startDrag(idx: number, e: MouseEvent) {
   document.addEventListener('mouseup', onUp);
 }
 
-// Case selection dialog
 const caseSelectDialog = ref(false);
 const csSelectedApi = ref('');
 const csCases = ref<ApiCaseItem[]>([]);
 const pendingStepIdx = ref(-1);
+
+const caseDetailDialog = ref(false);
+const caseDetailData = ref<any>(null);
+
+async function showCaseDetail(step: any) {
+  if (step._caseDetail) {
+    caseDetailData.value = step._caseDetail;
+    caseDetailDialog.value = true;
+  } else if (step.caseId) {
+    try {
+      const res = await apiCaseApi.detail(step.caseId);
+      step._caseDetail = res.data;
+      caseDetailData.value = res.data;
+      caseDetailDialog.value = true;
+    } catch { ElMessage.error('加载用例详情失败'); }
+  }
+}
+
+function formatJson(s: string) {
+  if (!s) return '';
+  try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
+}
 
 async function loadCasesForApi(apiId: string) {
   if (!apiId) { csCases.value = []; return; }
@@ -344,7 +419,7 @@ async function loadCasesForApi(apiId: string) {
   csCases.value = res.data;
 }
 
-function confirmSelectCase(row: ApiCaseItem) {
+async function confirmSelectCase(row: ApiCaseItem) {
   if (pendingStepIdx.value >= 0 && pendingStepIdx.value < steps.value.length) {
     const step = steps.value[pendingStepIdx.value];
     step.caseId = row.id;
@@ -353,6 +428,10 @@ function confirmSelectCase(row: ApiCaseItem) {
     const d = allDefs.value.find(x => x.id === row.apiId);
     if (d) { step.apiName = d.name; step.apiMethod = d.method; step.apiPath = d.path; }
     step._casesForApi = [...csCases.value];
+    try {
+      const res = await apiCaseApi.detail(row.id);
+      step._caseDetail = res.data;
+    } catch {}
   }
   caseSelectDialog.value = false;
 }
@@ -391,36 +470,79 @@ async function doSave() {
   } finally { saving.value = false; }
 }
 
-onMounted(() => { loadDefs(); loadScenario(); });
+onMounted(async () => {
+  await loadDefs();
+  await loadScenario();
+});
 </script>
 
 <style scoped>
-.scenario-detail { padding: 16px 24px; max-width: 1100px; margin: 0 auto; height: 100%; overflow: auto; }
-.detail-top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.scenario-detail { padding: 20px 28px; max-width: 1200px; margin: 0 auto; height: 100%; overflow: auto; }
+.detail-top { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
 .detail-title { font-size: 18px; font-weight: 600; }
-.section-card { margin-bottom: 16px; }
-.card-title { font-weight: 600; font-size: 14px; }
+.section-card { margin-bottom: 20px; }
+.section-card :deep(.el-card__header) { padding: 14px 20px; background: #fafbfc; }
+.section-card :deep(.el-card__body) { padding: 20px; }
+.card-title { font-weight: 600; font-size: 15px; }
 .card-header-row { display: flex; align-items: center; justify-content: space-between; }
-.empty-hint { color: #c0c4cc; text-align: center; padding: 32px 0; }
+.empty-hint { color: #c0c4cc; text-align: center; padding: 40px 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.empty-hint p { margin: 0; font-size: 13px; }
 .hint-text { font-size: 12px; color: #909399; }
 
-.step-list { display: flex; flex-direction: column; gap: 6px; }
-.step-card { border: 1px solid #ebeef5; border-radius: 8px; overflow: hidden; transition: all 0.15s; }
-.step-card:hover { border-color: #c6e2ff; }
-.step-card.active { border-color: #409eff; box-shadow: 0 0 0 2px rgba(64,158,255,0.1); }
+/* 步骤列表 */
+.step-list { display: flex; flex-direction: column; gap: 8px; }
+.step-card { border: 1px solid #e4e7ed; border-radius: 8px; overflow: hidden; transition: all 0.2s; background: #fff; }
+.step-card:hover { border-color: #b3d8ff; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.step-card.active { border-color: #409eff; box-shadow: 0 0 0 2px rgba(64,158,255,0.12); }
+.step-card.disabled { opacity: 0.55; }
 
-.step-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; background: #fafbfc; }
-.step-header:hover { background: #f5f7fa; }
-.step-drag-handle { cursor: grab; color: #c0c4cc; display: flex; align-items: center; }
+/* 步骤头部 */
+.step-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; background: #fafbfc; transition: background 0.15s; }
+.step-header:hover { background: #f0f5ff; }
+.step-drag-handle { cursor: grab; color: #c0c4cc; display: flex; align-items: center; transition: color 0.15s; }
+.step-drag-handle:hover { color: #909399; }
 .step-drag-handle:active { cursor: grabbing; }
-.step-num { font-size: 12px; font-weight: 600; color: #909399; min-width: 26px; flex-shrink: 0; }
-.step-type-tag { white-space: nowrap; flex-shrink: 0; padding: 0 10px; height: 24px; line-height: 22px; display: inline-flex; align-items: center; gap: 2px; }
-.step-desc { flex: 1; font-size: 13px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.step-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.step-num { font-size: 12px; font-weight: 700; color: #909399; min-width: 28px; flex-shrink: 0; }
 
-.step-body { padding: 16px; border-top: 1px solid #ebeef5; background: #fff; }
+/* 步骤类型标签 —— 使用纯 CSS 替代 el-tag，确保样式一致 */
+.step-type-badge { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; padding: 2px 10px; border-radius: 4px; flex-shrink: 0; letter-spacing: 0.5px; line-height: 20px; }
+.step-type-api { background: #ecf5ff; color: #409eff; border: 1px solid #d9ecff; }
+.step-type-script { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
+.step-type-wait { background: #f4f4f5; color: #909399; border: 1px solid #e9e9eb; }
+
+/* 步骤描述区 */
+.step-desc { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 13px; color: #303133; overflow: hidden; min-width: 0; }
+.method-tag { flex-shrink: 0; }
+.step-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step-separator { color: #c0c4cc; flex-shrink: 0; }
+.step-case-name { color: #606266; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step-path { color: #909399; font-size: 11px; font-family: 'Consolas', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; }
+.step-script-preview { color: #606266; font-family: 'Consolas', monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step-wait-value { font-weight: 500; color: #909399; }
+
+.step-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; margin-left: 8px; }
+
+/* 预览区域 */
+.case-preview { padding: 10px 16px; border-top: 1px dashed #ebeef5; background: #fafbfc; font-size: 12px; }
+.preview-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+.preview-row:last-child { margin-bottom: 0; }
+.preview-label { color: #909399; font-weight: 500; flex-shrink: 0; }
+.preview-code { color: #606266; font-family: 'Consolas', monospace; font-size: 11px; background: #f0f2f5; padding: 2px 8px; border-radius: 4px; max-width: 600px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
+.preview-kv { color: #409eff; font-family: monospace; font-size: 11px; background: #ecf5ff; padding: 2px 8px; border-radius: 4px; }
+.preview-assertion { font-size: 11px; background: #f4f4f5; color: #606266; padding: 2px 8px; border-radius: 4px; border: 1px solid #e9e9eb; }
+.preview-script-badge { font-size: 11px; background: #fdf6ec; color: #e6a23c; padding: 2px 8px; border-radius: 4px; border: 1px solid #faecd8; font-weight: 500; }
+.preview-more { color: #909399; font-size: 11px; }
+.step-path { color: #909399; font-size: 11px; margin-left: 4px; }
+
+/* 编辑区域 */
+.step-body { padding: 20px; border-top: 1px solid #ebeef5; background: #fff; }
 .step-add-bar { display: flex; gap: 8px; }
 
 .code-input :deep(textarea) { font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important; font-size: 13px !important; line-height: 1.6 !important; }
 .script-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+
+.detail-label { font-size: 13px; font-weight: 600; color: #303133; margin-bottom: 6px; }
+.detail-code { background: #f5f7fa; border: 1px solid #ebeef5; border-radius: 6px; padding: 10px; font-size: 12px; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-all; font-family: 'Consolas', monospace; margin: 0; }
+.detail-kv { font-size: 12px; font-family: monospace; color: #606266; padding: 2px 0; }
+.detail-assertion { font-size: 12px; color: #606266; padding: 3px 8px; background: #f4f4f5; border-radius: 4px; margin-bottom: 4px; border: 1px solid #e9e9eb; }
 </style>

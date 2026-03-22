@@ -17,6 +17,7 @@ public class ApiTestPlan {
     private Integer parallel;
     private String cronExpression;
     private String status;
+    private Integer deleted;
     private String createdBy;
     private String createdByName;
     private String updatedBy;

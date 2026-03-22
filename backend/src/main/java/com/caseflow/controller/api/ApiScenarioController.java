@@ -4,7 +4,9 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
+import com.caseflow.entity.RecycleBin;
 import com.caseflow.entity.api.ApiScenario;
+import com.caseflow.mapper.RecycleBinMapper;
 import com.caseflow.entity.api.ApiScenarioStep;
 import com.caseflow.mapper.api.ApiScenarioStepMapper;
 import com.caseflow.service.api.ApiScenarioService;
@@ -12,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +25,7 @@ public class ApiScenarioController {
 
     private final ApiScenarioService scenarioService;
     private final ApiScenarioStepMapper stepMapper;
+    private final RecycleBinMapper recycleBinMapper;
 
     @SaCheckPermission("api:scenario:view")
     @GetMapping
@@ -135,8 +139,52 @@ public class ApiScenarioController {
         if (scenarioService.hasAssociatedPlans(id)) {
             return Result.error("该场景被测试计划引用，无法删除。请先从计划中移除该场景");
         }
-        stepMapper.delete(new LambdaQueryWrapper<ApiScenarioStep>().eq(ApiScenarioStep::getScenarioId, id));
+        ApiScenario s = scenarioService.getById(id);
+        if (s == null) return Result.error("场景不存在");
         scenarioService.removeById(id);
+        RecycleBin rb = new RecycleBin();
+        rb.setItemType("API_SCENARIO");
+        rb.setItemId(id);
+        rb.setItemName(s.getName());
+        rb.setProjectId(s.getProjectId());
+        rb.setOriginalDirectoryId(s.getDirectoryId());
+        rb.setCreatedBy(s.getCreatedBy());
+        rb.setCreatedByName(s.getCreatedByName());
+        rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
+        rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
+        rb.setDeletedAt(LocalDateTime.now());
+        recycleBinMapper.insert(rb);
+        return Result.ok();
+    }
+
+    @SaCheckPermission("api:scenario:delete")
+    @Transactional
+    @PostMapping("/batch-delete")
+    public Result<?> batchDelete(@RequestBody List<String> ids) {
+        if (ids == null || ids.isEmpty()) return Result.error("请选择要删除的数据");
+        for (String id : ids) {
+            if (scenarioService.hasAssociatedPlans(id)) {
+                ApiScenario s = scenarioService.getById(id);
+                return Result.error("场景「" + (s != null ? s.getName() : id) + "」被测试计划引用，无法删除");
+            }
+        }
+        for (String id : ids) {
+            ApiScenario s = scenarioService.getById(id);
+            if (s == null) continue;
+            scenarioService.removeById(id);
+            RecycleBin rb = new RecycleBin();
+            rb.setItemType("API_SCENARIO");
+            rb.setItemId(id);
+            rb.setItemName(s.getName());
+            rb.setProjectId(s.getProjectId());
+            rb.setOriginalDirectoryId(s.getDirectoryId());
+            rb.setCreatedBy(s.getCreatedBy());
+            rb.setCreatedByName(s.getCreatedByName());
+            rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
+            rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
+            rb.setDeletedAt(LocalDateTime.now());
+            recycleBinMapper.insert(rb);
+        }
         return Result.ok();
     }
 }

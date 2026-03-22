@@ -213,6 +213,7 @@ export const apiDefApi = {
   create: (data: Partial<ApiDef>): R<ApiDef> => request.post('/api-defs', data),
   update: (id: string, data: Partial<ApiDef>): R<void> => request.put(`/api-defs/${id}`, data),
   delete: (id: string): R<void> => request.delete(`/api-defs/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.post('/api-defs/batch-delete', ids),
 };
 
 export const apiCaseApi = {
@@ -232,6 +233,7 @@ export const apiScenarioApi = {
   create: (data: any): R<ApiScenarioItem> => request.post('/api-scenarios', data),
   update: (id: string, data: any): R<void> => request.put(`/api-scenarios/${id}`, data),
   delete: (id: string): R<void> => request.delete(`/api-scenarios/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.post('/api-scenarios/batch-delete', ids),
 };
 
 export const apiPlanApi = {
@@ -241,6 +243,7 @@ export const apiPlanApi = {
   create: (data: any): R<any> => request.post('/api-plans', data),
   update: (id: string, data: any): R<void> => request.put(`/api-plans/${id}`, data),
   delete: (id: string): R<void> => request.delete(`/api-plans/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.post('/api-plans/batch-delete', ids),
   run: (id: string): R<{ executionId: string }> => request.post(`/api-plans/${id}/run`),
 };
 
@@ -253,4 +256,5 @@ export const apiExecApi = {
     request.get('/api-executions', { params: { projectId, page, size } }),
   report: (id: string): R<any> => request.get(`/api-executions/${id}/report`),
   delete: (id: string): R<void> => request.delete(`/api-executions/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.post('/api-executions/batch-delete', ids),
 };

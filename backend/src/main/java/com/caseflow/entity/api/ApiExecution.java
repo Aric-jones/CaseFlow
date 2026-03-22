@@ -22,6 +22,7 @@ public class ApiExecution {
     private Integer errorCases;
     private Integer skippedCases;
     private Long durationMs;
+    private Integer deleted;
     private String executedBy;
     private String executedByName;
     private LocalDateTime startedAt;

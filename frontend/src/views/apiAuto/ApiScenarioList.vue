@@ -48,10 +48,16 @@
             clearable :prefix-icon="Search" @keyup.enter="() => loadList(1)" />
           <el-button @click="() => loadList(1)">搜索</el-button>
           <div style="flex:1" />
+          <el-popconfirm v-if="selectedRows.length" title="删除将同时删除所有步骤，确认批量删除？" @confirm="batchDeleteScenarios">
+            <template #reference>
+              <el-button type="danger">批量删除 ({{ selectedRows.length }})</el-button>
+            </template>
+          </el-popconfirm>
           <el-button type="primary" :icon="Plus" @click="goCreate">新建场景</el-button>
         </div>
 
-        <el-table :data="list" v-loading="loading" border style="width:100%;cursor:pointer" @row-click="goEdit">
+        <el-table :data="list" v-loading="loading" border style="width:100%" @row-click="onRowClick" @selection-change="handleSelectionChange">
+          <el-table-column type="selection" width="50" />
           <el-table-column prop="name" label="场景名称" min-width="200" show-overflow-tooltip fixed="left" />
           <el-table-column label="步骤数" min-width="80" align="center">
             <template #default="{ row }">
@@ -74,7 +80,7 @@
           <el-table-column label="更新时间" min-width="160">
             <template #default="{ row }">{{ fmtTime(row.updatedAt) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" width="250" fixed="right">
             <template #default="{ row }">
               <el-button text type="success" size="small" @click.stop="openRunDialog(row)">执行</el-button>
               <el-button text type="primary" size="small" @click.stop="goEdit(row)">编辑</el-button>
@@ -198,7 +204,24 @@ const total = ref(0);
 const currentPage = ref(1);
 const keyword = ref('');
 const loading = ref(false);
+const selectedRows = ref<ApiScenarioItem[]>([]);
 
+function handleSelectionChange(rows: ApiScenarioItem[]) {
+  selectedRows.value = rows;
+}
+
+async function batchDeleteScenarios() {
+  if (!selectedRows.value.length) { ElMessage.warning('请先选择要删除的场景'); return; }
+  const ids = selectedRows.value.map(r => r.id);
+  try {
+    await apiScenarioApi.batchDelete(ids);
+    ElMessage.success(`成功删除 ${ids.length} 个场景`);
+    selectedRows.value = [];
+    loadList();
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '删除失败，部分场景可能被计划引用');
+  }
+}
 
 function fmtTime(t?: string) { return t ? t.replace('T', ' ').substring(0, 16) : ''; }
 
@@ -219,6 +242,11 @@ function goCreate() {
 
 function goEdit(row: ApiScenarioItem) {
   router.push('/api-auto/scenario/' + row.id);
+}
+
+function onRowClick(row: ApiScenarioItem, column: any) {
+  if (column?.type === 'selection') return;
+  goEdit(row);
 }
 
 async function doDelete(id: string) {

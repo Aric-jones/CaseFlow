@@ -48,10 +48,16 @@
             clearable :prefix-icon="Search" @keyup.enter="() => loadList(1)" />
           <el-button @click="() => loadList(1)">搜索</el-button>
           <div style="flex:1" />
+          <el-popconfirm v-if="selectedRows.length" title="确认批量删除所选计划？" @confirm="batchDeletePlans">
+            <template #reference>
+              <el-button type="danger">批量删除 ({{ selectedRows.length }})</el-button>
+            </template>
+          </el-popconfirm>
           <el-button type="primary" :icon="Plus" @click="goCreate">新建计划</el-button>
         </div>
 
-        <el-table :data="list" v-loading="loading" border style="width:100%;cursor:pointer" @row-click="goEdit">
+        <el-table :data="list" v-loading="loading" border style="width:100%" @row-click="onRowClick" @selection-change="handleSelectionChange">
+          <el-table-column type="selection" width="50" />
           <el-table-column prop="name" label="计划名称" min-width="200" show-overflow-tooltip fixed="left" />
           <el-table-column prop="environmentName" label="执行环境" min-width="130" show-overflow-tooltip />
           <el-table-column label="场景数" min-width="80" align="center">
@@ -66,7 +72,7 @@
           <el-table-column label="创建时间" min-width="160">
             <template #default="{ row }">{{ fmtTime(row.createdAt) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" width="250" fixed="right">
             <template #default="{ row }">
               <el-button text type="success" size="small" @click.stop="doRun(row.id)">执行</el-button>
               <el-button text type="primary" size="small" @click.stop="goEdit(row)">编辑</el-button>
@@ -175,7 +181,24 @@ const total = ref(0);
 const currentPage = ref(1);
 const keyword = ref('');
 const loading = ref(false);
+const selectedRows = ref<any[]>([]);
 
+function handleSelectionChange(rows: any[]) {
+  selectedRows.value = rows;
+}
+
+async function batchDeletePlans() {
+  if (!selectedRows.value.length) { ElMessage.warning('请先选择要删除的计划'); return; }
+  const ids = selectedRows.value.map((r: any) => r.id);
+  try {
+    await apiPlanApi.batchDelete(ids);
+    ElMessage.success(`成功删除 ${ids.length} 个计划`);
+    selectedRows.value = [];
+    loadList();
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '删除失败');
+  }
+}
 
 function fmtTime(t?: string) { return t ? t.replace('T', ' ').substring(0, 16) : ''; }
 
@@ -196,6 +219,11 @@ function goCreate() {
 
 function goEdit(row: any) {
   router.push('/api-auto/plan/' + row.id + '/edit');
+}
+
+function onRowClick(row: any, column: any) {
+  if (column?.type === 'selection') return;
+  goEdit(row);
 }
 
 async function doRun(id: string) {

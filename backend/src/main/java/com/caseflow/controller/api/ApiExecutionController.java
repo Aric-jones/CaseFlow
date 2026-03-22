@@ -3,11 +3,14 @@ package com.caseflow.controller.api;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
+import com.caseflow.entity.RecycleBin;
 import com.caseflow.entity.api.ApiExecution;
 import com.caseflow.entity.api.ApiTestPlan;
+import com.caseflow.mapper.RecycleBinMapper;
 import com.caseflow.mapper.api.ApiTestPlanMapper;
 import com.caseflow.service.api.ApiExecutionService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -20,6 +23,7 @@ public class ApiExecutionController {
 
     private final ApiExecutionService executionService;
     private final ApiTestPlanMapper planMapper;
+    private final RecycleBinMapper recycleBinMapper;
 
     /** 单用例调试（同步，立即返回结果） */
     @SaCheckPermission("api:execute")
@@ -98,9 +102,48 @@ public class ApiExecutionController {
 
     /** 删除执行记录 */
     @SaCheckPermission("api:execution:delete")
+    @Transactional
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable String id) {
+        ApiExecution exec = executionService.getById(id);
+        if (exec == null) return Result.error("执行记录不存在");
         executionService.removeById(id);
+        RecycleBin rb = new RecycleBin();
+        rb.setItemType("API_EXECUTION");
+        rb.setItemId(id);
+        rb.setItemName(exec.getPlanId() != null ? "计划执行" : exec.getScenarioId() != null ? "场景执行" : "单用例调试");
+        rb.setProjectId(exec.getProjectId());
+        rb.setCreatedBy(exec.getExecutedBy());
+        rb.setCreatedByName(exec.getExecutedByName());
+        rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
+        rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
+        rb.setDeletedAt(LocalDateTime.now());
+        recycleBinMapper.insert(rb);
+        return Result.ok();
+    }
+
+    /** 批量删除执行记录 */
+    @SaCheckPermission("api:execution:delete")
+    @Transactional
+    @PostMapping("/batch-delete")
+    public Result<?> batchDelete(@RequestBody java.util.List<String> ids) {
+        if (ids == null || ids.isEmpty()) return Result.error("请选择要删除的数据");
+        for (String id : ids) {
+            ApiExecution exec = executionService.getById(id);
+            if (exec == null) continue;
+            executionService.removeById(id);
+            RecycleBin rb = new RecycleBin();
+            rb.setItemType("API_EXECUTION");
+            rb.setItemId(id);
+            rb.setItemName(exec.getPlanId() != null ? "计划执行" : exec.getScenarioId() != null ? "场景执行" : "单用例调试");
+            rb.setProjectId(exec.getProjectId());
+            rb.setCreatedBy(exec.getExecutedBy());
+            rb.setCreatedByName(exec.getExecutedByName());
+            rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
+            rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
+            rb.setDeletedAt(LocalDateTime.now());
+            recycleBinMapper.insert(rb);
+        }
         return Result.ok();
     }
 }

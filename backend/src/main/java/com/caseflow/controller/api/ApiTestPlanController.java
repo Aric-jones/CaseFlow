@@ -5,7 +5,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.caseflow.common.CurrentUserUtil;
 import com.caseflow.common.Result;
+import com.caseflow.entity.RecycleBin;
 import com.caseflow.entity.api.*;
+import com.caseflow.mapper.RecycleBinMapper;
 import com.caseflow.mapper.api.*;
 import com.caseflow.service.api.ApiExecutionService;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +25,7 @@ public class ApiTestPlanController {
 
     private final ApiTestPlanMapper planMapper;
     private final ApiPlanScenarioMapper psMapper;
+    private final RecycleBinMapper recycleBinMapper;
     private final ApiEnvironmentMapper envMapper;
     private final ApiScenarioMapper scenarioMapper;
     private final ApiScenarioStepMapper stepMapper;
@@ -143,8 +146,46 @@ public class ApiTestPlanController {
     @Transactional
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable String id) {
-        psMapper.delete(new LambdaQueryWrapper<ApiPlanScenario>().eq(ApiPlanScenario::getPlanId, id));
+        ApiTestPlan plan = planMapper.selectById(id);
+        if (plan == null) return Result.error("计划不存在");
         planMapper.deleteById(id);
+        RecycleBin rb = new RecycleBin();
+        rb.setItemType("API_PLAN");
+        rb.setItemId(id);
+        rb.setItemName(plan.getName());
+        rb.setProjectId(plan.getProjectId());
+        rb.setOriginalDirectoryId(plan.getDirectoryId());
+        rb.setCreatedBy(plan.getCreatedBy());
+        rb.setCreatedByName(plan.getCreatedByName());
+        rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
+        rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
+        rb.setDeletedAt(LocalDateTime.now());
+        recycleBinMapper.insert(rb);
+        return Result.ok();
+    }
+
+    @SaCheckPermission("api:plan:delete")
+    @Transactional
+    @PostMapping("/batch-delete")
+    public Result<?> batchDelete(@RequestBody List<String> ids) {
+        if (ids == null || ids.isEmpty()) return Result.error("请选择要删除的数据");
+        for (String id : ids) {
+            ApiTestPlan plan = planMapper.selectById(id);
+            if (plan == null) continue;
+            planMapper.deleteById(id);
+            RecycleBin rb = new RecycleBin();
+            rb.setItemType("API_PLAN");
+            rb.setItemId(id);
+            rb.setItemName(plan.getName());
+            rb.setProjectId(plan.getProjectId());
+            rb.setOriginalDirectoryId(plan.getDirectoryId());
+            rb.setCreatedBy(plan.getCreatedBy());
+            rb.setCreatedByName(plan.getCreatedByName());
+            rb.setDeletedBy(CurrentUserUtil.getCurrentUserId());
+            rb.setDeletedByName(CurrentUserUtil.getCurrentUserDisplayName());
+            rb.setDeletedAt(LocalDateTime.now());
+            recycleBinMapper.insert(rb);
+        }
         return Result.ok();
     }
 

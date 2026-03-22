@@ -4,7 +4,7 @@ import Inspector from 'vite-plugin-vue-inspector';
 
 export default defineConfig({
 
-  plugins: [vue(), Inspector({ launchEditor: 'idea' })],
+  plugins: [vue(), Inspector({ launchEditor: 'E:\\cursorAI\\cursor\\resources\\app\\bin\\cursor.cmd' })],
   server: {
     host: '0.0.0.0',
     port: 3000,

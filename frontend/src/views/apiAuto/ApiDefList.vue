@@ -54,11 +54,15 @@
           </el-select>
           <el-button @click="() => loadDefs(1)">搜索</el-button>
           <div style="flex:1" />
-          <el-button type="primary" :icon="Plus" @click="openCreateDef">新建接口</el-button>
+          <el-button v-if="selectedRows.length && canDelete" type="danger" @click="batchDeleteDefs">
+            批量删除 ({{ selectedRows.length }})
+          </el-button>
+          <el-button v-if="canCreate" type="primary" :icon="Plus" @click="openCreateDef">新建接口</el-button>
         </div>
 
-        <el-table :data="defList" v-loading="loading" border style="width:100%;cursor:pointer" @row-click="goDetail">
-          <el-table-column label="Method" width="100" align="center" fixed="left">
+        <el-table :data="defList" v-loading="loading" border style="width:100%" @row-click="onRowClick" @selection-change="handleSelectionChange">
+          <el-table-column type="selection" width="50" />
+          <el-table-column label="Method" width="120" align="center" fixed="left">
             <template #default="{ row }">
               <el-tag :type="methodColor(row.method)" size="small" effect="dark" style="font-weight:700;min-width:52px;text-align:center">{{ row.method }}</el-tag>
             </template>
@@ -74,13 +78,10 @@
           </el-table-column>
           <el-table-column prop="caseCount" label="用例数" min-width="80" align="center" />
           <el-table-column prop="createdByName" label="创建人" min-width="90" show-overflow-tooltip />
-          <el-table-column label="操作" width="100" fixed="right">
+          <el-table-column label="操作" width="160" fixed="right">
             <template #default="{ row }">
-              <el-popconfirm title="删除将级联删除所有关联用例和断言，确认？" @confirm.stop="doDeleteDef(row.id)">
-                <template #reference>
-                  <el-button text type="danger" size="small" @click.stop>删除</el-button>
-                </template>
-              </el-popconfirm>
+              <el-button text type="success" size="small" @click.stop="openDebugDialog(row)">调试</el-button>
+              <el-button v-if="canDelete" text type="danger" size="small" @click.stop="confirmDeleteDef(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -127,20 +128,38 @@
         <el-button type="primary" :loading="saving" @click="doCreateDef">创建</el-button>
       </template>
     </el-dialog>
+
+    <!-- 调试全部用例弹窗 -->
+    <el-dialog v-model="debugDialog" title="调试全部用例" width="400px">
+      <el-form label-width="80px">
+        <el-form-item label="接口">{{ debugDefName }}</el-form-item>
+        <el-form-item label="选择环境">
+          <el-select v-model="debugEnvId" style="width:100%" placeholder="请选择环境">
+            <el-option v-for="e in debugEnvList" :key="e.id" :label="e.name + ' (' + e.baseUrl + ')'" :value="e.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="debugDialog = false">取消</el-button>
+        <el-button type="primary" :loading="debugRunning" @click="doDebugAll">执行调试</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Search } from '@element-plus/icons-vue';
-import { directoryApi, apiDefApi } from '../../api';
+import { directoryApi, apiDefApi, apiEnvApi, apiCaseApi, apiExecApi } from '../../api';
 import { useAppStore } from '../../stores/app';
 import type { ApiDef, DirectoryNode } from '../../types';
 
 const router = useRouter();
 const store = useAppStore();
+const canDelete = computed(() => store.hasPermission('api:def:delete'));
+const canCreate = computed(() => store.hasPermission('api:def:create'));
 const projectId = () => store.currentProject?.id || '';
 
 // Directory
@@ -217,7 +236,70 @@ const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
 
 const createDefDialog = ref(false);
 const saving = ref(false);
+const selectedRows = ref<ApiDef[]>([]);
+const debugDialog = ref(false);
+const debugDefId = ref('');
+const debugDefName = ref('');
+const debugEnvId = ref('');
+const debugEnvList = ref<any[]>([]);
+const debugRunning = ref(false);
 const newDef = ref<Partial<ApiDef>>({});
+
+function handleSelectionChange(rows: ApiDef[]) {
+  selectedRows.value = rows;
+}
+
+async function batchDeleteDefs() {
+  if (!selectedRows.value.length) { ElMessage.warning('请先选择要删除的接口'); return; }
+  const withCases = selectedRows.value.filter(r => (r.caseCount || 0) > 0);
+  if (withCases.length) {
+    ElMessage.warning(`选中的接口中有 ${withCases.length} 个含有用例（${withCases.map(r => r.name).join('、')}），请先删除用例`);
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(`确认删除 ${selectedRows.value.length} 个接口？删除后可在回收站恢复`, '批量删除确认', { type: 'warning' });
+    const ids = selectedRows.value.map(r => r.id);
+    await apiDefApi.batchDelete(ids);
+    ElMessage.success(`成功删除 ${ids.length} 个接口`);
+    selectedRows.value = [];
+    loadDefs();
+  } catch (e: any) {
+    if (e !== 'cancel' && e?.message !== 'cancel') {
+      ElMessage.error(e.response?.data?.message || '删除失败');
+    }
+  }
+}
+
+async function openDebugDialog(row: ApiDef) {
+  debugDefId.value = row.id;
+  debugDefName.value = row.name;
+  if (!debugEnvList.value.length && projectId()) {
+    const res = await apiEnvApi.list(projectId());
+    debugEnvList.value = res.data;
+    if (debugEnvList.value.length && !debugEnvId.value) debugEnvId.value = debugEnvList.value[0].id;
+  }
+  debugDialog.value = true;
+}
+
+async function doDebugAll() {
+  if (!debugEnvId.value) { ElMessage.warning('请选择环境'); return; }
+  debugRunning.value = true;
+  try {
+    const casesRes = await apiCaseApi.list(debugDefId.value);
+    const enabledCases = casesRes.data.filter((c: any) => c.enabled !== 0);
+    if (!enabledCases.length) { ElMessage.warning('该接口下没有可用的用例'); return; }
+    let pass = 0, fail = 0;
+    for (const c of enabledCases) {
+      try {
+        const r = await apiExecApi.debug(c.id, debugEnvId.value);
+        if (r.data.status === 'PASS') pass++; else fail++;
+      } catch { fail++; }
+    }
+    ElMessage.success(`调试完成：${pass} 通过，${fail} 失败`);
+    debugDialog.value = false;
+  } catch { ElMessage.error('调试失败'); }
+  finally { debugRunning.value = false; }
+}
 
 function methodColor(m: string): any {
   return ({ GET: 'success', POST: 'primary', PUT: 'warning', DELETE: 'danger', PATCH: '' } as any)[m] || 'info';
@@ -260,11 +342,22 @@ async function doCreateDef() {
   } finally { saving.value = false; }
 }
 
-async function doDeleteDef(id: string) {
-  try { await apiDefApi.delete(id); ElMessage.success('已删除'); loadDefs(); } catch {}
+async function confirmDeleteDef(row: ApiDef) {
+  const count = row.caseCount || 0;
+  if (count > 0) {
+    ElMessage.warning(`该接口下有 ${count} 个用例，请先删除用例后再删除接口`);
+    return;
+  }
+  try {
+    await ElMessageBox.confirm('确认删除该接口？删除后可在回收站恢复', '删除确认', { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' });
+    await apiDefApi.delete(row.id);
+    ElMessage.success('已移入回收站');
+    loadDefs();
+  } catch {}
 }
 
-function goDetail(row: ApiDef) {
+function onRowClick(row: ApiDef, column: any) {
+  if (column?.type === 'selection') return;
   router.push(`/api-auto/def/${row.id}`);
 }
 

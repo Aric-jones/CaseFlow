@@ -26,6 +26,7 @@ const router = createRouter({
             { path: 'plans', component: () => import('../views/apiAuto/ApiPlanList.vue') },
             { path: 'executions', component: () => import('../views/apiAuto/ApiExecutionList.vue') },
             { path: 'env', component: () => import('../views/apiAuto/ApiEnvManager.vue') },
+            { path: 'recycle', component: () => import('../views/apiAuto/ApiRecycleBin.vue') },
           ],
         },
         { path: 'recycle-bin', component: () => import('../views/RecycleBin.vue'), meta: { permissions: ['recycle:view'] } },

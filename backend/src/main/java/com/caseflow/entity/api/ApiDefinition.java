@@ -31,6 +31,7 @@ public class ApiDefinition {
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<String> tags;
     private Integer sortOrder;
+    private Integer deleted;
     private String createdBy;
     private String createdByName;
     @TableField(fill = FieldFill.INSERT)

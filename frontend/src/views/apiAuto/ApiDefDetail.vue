@@ -52,12 +52,15 @@
           <KvTable v-model="def.defaultParams" />
         </el-tab-pane>
         <el-tab-pane label="Body" name="body">
-          <el-radio-group v-model="def.defaultBodyType" style="margin-bottom:10px">
-            <el-radio-button v-for="t in ['NONE','JSON','FORM','RAW','XML']" :key="t" :value="t">{{ t }}</el-radio-button>
-          </el-radio-group>
-          <el-input v-if="def.defaultBodyType && def.defaultBodyType !== 'NONE'"
-            v-model="def.defaultBody" type="textarea" :rows="6" placeholder="默认请求体"
-            style="font-family:'Consolas',monospace;font-size:13px" />
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <el-radio-group v-model="def.defaultBodyType">
+              <el-radio-button v-for="t in ['NONE','JSON','FORM','RAW','XML']" :key="t" :value="t">{{ t }}</el-radio-button>
+            </el-radio-group>
+            <el-button v-if="def.defaultBodyType === 'JSON'" size="small" @click="formatDefBody">格式化</el-button>
+          </div>
+          <CodeEditor v-if="def.defaultBodyType && def.defaultBodyType !== 'NONE'"
+            v-model="def.defaultBody" :language="def.defaultBodyType === 'JSON' ? 'json' : 'javascript'"
+            :min-height="140" placeholder="默认请求体" />
         </el-tab-pane>
       </el-tabs>
 
@@ -71,7 +74,10 @@
       <template #header>
         <div class="card-header-row">
           <span class="card-title">接口用例 ({{ cases.length }})</span>
-          <el-button type="primary" size="small" @click="createCase">新建用例</el-button>
+          <div style="display:flex;gap:8px">
+            <el-button type="success" size="small" @click="debugAllCases" :loading="debugging">调试全部</el-button>
+            <el-button type="primary" size="small" @click="createCase">新建用例</el-button>
+          </div>
         </div>
       </template>
       <div v-if="!cases.length" class="empty-hint">暂无用例，点击上方按钮创建</div>
@@ -115,11 +121,15 @@
 
       <el-tabs v-model="caseTab" class="case-tabs">
         <el-tab-pane label="Body" name="body">
-          <el-radio-group v-model="activeCase.bodyType" style="margin-bottom:10px">
-            <el-radio-button v-for="t in ['NONE','JSON','FORM','RAW','XML']" :key="t" :value="t">{{ t }}</el-radio-button>
-          </el-radio-group>
-          <el-input v-if="activeCase.bodyType && activeCase.bodyType !== 'NONE'"
-            v-model="activeCase.bodyContent" type="textarea" :rows="8" placeholder="请求体内容" style="font-family:monospace;font-size:13px" />
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <el-radio-group v-model="activeCase.bodyType">
+              <el-radio-button v-for="t in ['NONE','JSON','FORM','RAW','XML']" :key="t" :value="t">{{ t }}</el-radio-button>
+            </el-radio-group>
+            <el-button v-if="activeCase.bodyType === 'JSON'" size="small" @click="formatBody">格式化</el-button>
+          </div>
+          <CodeEditor v-if="activeCase.bodyType && activeCase.bodyType !== 'NONE'"
+            v-model="activeCase.bodyContent" :language="activeCase.bodyType === 'JSON' ? 'json' : 'javascript'"
+            :min-height="180" placeholder="请求体内容" />
         </el-tab-pane>
 
         <el-tab-pane label="Headers" name="headers">
@@ -182,8 +192,8 @@
           </div>
           <div v-else>
             <div class="hint-text">Groovy 脚本，可用变量: vars(Map), headers(Map), log(Logger)</div>
-            <el-input v-model="preGroovyScript" type="textarea" :rows="12"
-              placeholder="// 在此编写 Groovy 前置脚本" class="code-editor" />
+            <CodeEditor v-model="preGroovyScript" language="groovy" :min-height="240"
+              placeholder="// 在此编写 Groovy 前置脚本" />
           </div>
         </el-tab-pane>
 
@@ -219,8 +229,8 @@
           </div>
           <div v-else>
             <div class="hint-text">Groovy 脚本，可用变量: vars(Map), response(Map{body,statusCode,headers,durationMs}), log(Logger)</div>
-            <el-input v-model="postGroovyScript" type="textarea" :rows="12"
-              placeholder="// 在此编写 Groovy 后置脚本" class="code-editor" />
+            <CodeEditor v-model="postGroovyScript" language="groovy" :min-height="240"
+              placeholder="// 在此编写 Groovy 后置脚本" />
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -255,6 +265,36 @@
       <pre class="resp-body">{{ formatJson(debugResult.responseBody) }}</pre>
     </el-card>
 
+    <!-- 批量调试结果 -->
+    <el-card shadow="never" class="section-card" v-if="batchDebugResults.length" @click.stop>
+      <template #header>
+        <div class="card-header-row">
+          <span class="card-title">
+            批量调试结果 ({{ batchDebugResults.filter(r => r.status === 'PASS').length }}/{{ batchDebugResults.length }} 通过)
+          </span>
+          <el-button text type="primary" size="small" @click="batchDebugResults = []">关闭</el-button>
+        </div>
+      </template>
+      <div v-for="(r, i) in batchDebugResults" :key="i" class="batch-result-item">
+        <div class="batch-result-header" @click="expandedBatchIdx = expandedBatchIdx === i ? null : i">
+          <el-icon :color="r.status === 'PASS' ? '#52c41a' : '#f5222d'"><component :is="r.status === 'PASS' ? 'CircleCheck' : 'CircleClose'" /></el-icon>
+          <span class="batch-case-name">{{ r.caseName }}</span>
+          <el-tag :type="r.status === 'PASS' ? 'success' : 'danger'" size="small">{{ r.status }}</el-tag>
+          <span v-if="r.durationMs" class="batch-dur">{{ r.durationMs }}ms</span>
+        </div>
+        <div v-if="expandedBatchIdx === i" class="batch-result-detail">
+          <div v-if="r.assertions?.length">
+            <div v-for="(a, ai) in r.assertions" :key="ai" class="assertion-result-row">
+              <el-icon :color="a.pass ? '#52c41a' : '#f5222d'"><component :is="a.pass ? 'CircleCheck' : 'CircleClose'" /></el-icon>
+              <span>{{ a.type }}{{ a.expression ? ' ' + a.expression : '' }} {{ opLabel(a.operator) }} {{ a.expected ?? '' }}</span>
+              <span v-if="!a.pass" class="actual-val">实际: {{ a.actual }}</span>
+            </div>
+          </div>
+          <pre v-if="r.responseBody" class="resp-body" style="margin-top:8px">{{ formatJson(r.responseBody) }}</pre>
+        </div>
+      </div>
+    </el-card>
+
     <!-- 选择环境弹窗 -->
     <el-dialog v-model="envDialog" title="选择执行环境" width="400px">
       <el-select v-model="selectedEnvId" style="width:100%" placeholder="选择环境">
@@ -277,6 +317,7 @@ import { apiDefApi, apiCaseApi, apiEnvApi, apiExecApi } from '../../api';
 import { useAppStore } from '../../stores/app';
 import type { ApiDef, ApiCaseItem, ApiAssertionItem, ApiEnv } from '../../types';
 import KvTable from '../../components/apiAuto/KvTable.vue';
+import CodeEditor from '../../components/CodeEditor.vue';
 
 const route = useRoute();
 const store = useAppStore();
@@ -312,6 +353,7 @@ const selectedEnvId = ref('');
 const debugging = ref(false);
 const debugResult = ref<any>(null);
 const pendingDebugCaseId = ref('');
+const expandedBatchIdx = ref<number | null>(null);
 
 // Groovy 模板
 const preTemplates = [
@@ -404,6 +446,11 @@ async function createCase() {
 }
 
 async function selectCase(c: ApiCaseItem) {
+  if (activeCase.value?.id === c.id) {
+    activeCase.value = null;
+    debugResult.value = null;
+    return;
+  }
   const res = await apiCaseApi.detail(c.id);
   activeCase.value = res.data;
   caseAssertions.value = res.data.assertions || [];
@@ -424,20 +471,20 @@ async function saveCase() {
   if (preScriptMode.value === 'groovy') {
     activeCase.value.preScriptType = 'GROOVY';
     activeCase.value.preScriptContent = preGroovyScript.value;
-    activeCase.value.preScript = null;
+    activeCase.value.preScript = undefined;
   } else {
     activeCase.value.preScriptType = 'JSON';
-    activeCase.value.preScriptContent = null;
-    activeCase.value.preScript = preActions.value.length ? { actions: preActions.value } : null;
+    activeCase.value.preScriptContent = undefined;
+    activeCase.value.preScript = preActions.value.length ? { actions: preActions.value } : undefined;
   }
   if (postScriptMode.value === 'groovy') {
     activeCase.value.postScriptType = 'GROOVY';
     activeCase.value.postScriptContent = postGroovyScript.value;
-    activeCase.value.postScript = null;
+    activeCase.value.postScript = undefined;
   } else {
     activeCase.value.postScriptType = 'JSON';
-    activeCase.value.postScriptContent = null;
-    activeCase.value.postScript = postExtracts.value.length ? { extracts: postExtracts.value } : null;
+    activeCase.value.postScriptContent = undefined;
+    activeCase.value.postScript = postExtracts.value.length ? { extracts: postExtracts.value } : undefined;
   }
   await apiCaseApi.update(activeCase.value.id, activeCase.value);
   await apiCaseApi.saveAssertions(activeCase.value.id, caseAssertions.value);
@@ -455,19 +502,57 @@ async function copyCase(id: string) {
   loadCases();
 }
 
+function formatDefBody() {
+  if (!def.value?.defaultBody) return;
+  try {
+    def.value.defaultBody = JSON.stringify(JSON.parse(def.value.defaultBody), null, 2);
+  } catch { ElMessage.warning('JSON 格式错误，无法格式化'); }
+}
+
+function formatBody() {
+  if (!activeCase.value?.bodyContent) return;
+  try {
+    activeCase.value.bodyContent = JSON.stringify(JSON.parse(activeCase.value.bodyContent), null, 2);
+  } catch { ElMessage.warning('JSON 格式错误，无法格式化'); }
+}
+
+const debugMode = ref<'single' | 'all'>('single');
+
 function debugCase(c: ApiCaseItem) {
+  debugMode.value = 'single';
   pendingDebugCaseId.value = c.id;
   envDialog.value = true;
 }
+
+function debugAllCases() {
+  if (!cases.value.length) { ElMessage.warning('暂无用例'); return; }
+  debugMode.value = 'all';
+  envDialog.value = true;
+}
+
+const batchDebugResults = ref<any[]>([]);
 
 async function doDebug() {
   if (!selectedEnvId.value) { ElMessage.warning('请选择环境'); return; }
   debugging.value = true;
   envDialog.value = false;
   debugResult.value = null;
+  batchDebugResults.value = [];
   try {
-    const res = await apiExecApi.debug(pendingDebugCaseId.value, selectedEnvId.value);
-    debugResult.value = res.data;
+    if (debugMode.value === 'single') {
+      const res = await apiExecApi.debug(pendingDebugCaseId.value, selectedEnvId.value);
+      debugResult.value = res.data;
+    } else {
+      const enabledCases = cases.value.filter(c => c.enabled !== 0);
+      for (const c of enabledCases) {
+        try {
+          const res = await apiExecApi.debug(c.id, selectedEnvId.value);
+          batchDebugResults.value.push({ caseName: c.name, caseId: c.id, ...res.data });
+        } catch (e: any) {
+          batchDebugResults.value.push({ caseName: c.name, caseId: c.id, status: 'ERROR', error: e.message });
+        }
+      }
+    }
   } catch { ElMessage.error('调试请求失败'); }
   finally { debugging.value = false; }
 }
@@ -504,4 +589,10 @@ onMounted(() => { loadDef(); loadCases(); loadEnvs(); });
 .var-key { color: #409eff; font-weight: 500; font-family: monospace; }
 .var-val { color: #67c23a; font-family: monospace; }
 .def-param-tabs { margin-top: 4px; }
+.batch-result-item { border: 1px solid #f0f0f0; border-radius: 6px; margin-bottom: 6px; overflow: hidden; }
+.batch-result-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; font-size: 13px; transition: background .15s; }
+.batch-result-header:hover { background: #f5f9ff; }
+.batch-case-name { flex: 1; font-weight: 500; }
+.batch-dur { color: #909399; font-size: 12px; }
+.batch-result-detail { padding: 0 14px 14px; border-top: 1px solid #f5f5f5; }
 </style>

@@ -19,6 +19,7 @@ public class ApiScenario {
     private Integer timeoutMs;
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<String> tags;
+    private Integer deleted;
     private String createdBy;
     private String createdByName;
     @TableField(fill = FieldFill.INSERT)
