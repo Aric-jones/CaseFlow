@@ -18,7 +18,7 @@ public class SaTokenConfig {
                 .setAuth(obj -> {
                     // Login endpoint is open
                     SaRouter.match("/api/**")
-                            .notMatch("/api/auth/login")
+                            .notMatch("/api/auth/login", "/api/ui-executions/screenshot/**")
                             .check(r -> StpUtil.checkLogin());
                 })
                 .setError(e -> {

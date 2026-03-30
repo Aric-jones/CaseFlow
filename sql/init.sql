@@ -345,3 +345,319 @@ INSERT IGNORE INTO sys_job (id, job_name, job_group, invoke_target, cron_express
 VALUES ('1', '清理过期消息', 'SYSTEM', 'notificationCleanTask.execute', '0 0 2 * * ?', 0,
         '每天凌晨2点清理30天前的消息通知');
 
+-- ============================================================
+-- UI 自动化模块（整合版）
+-- ============================================================
+
+-- 扩展目录类型
+ALTER TABLE directories MODIFY COLUMN dir_type
+    ENUM ('CASE','TEST_PLAN','API','API_SCENARIO','API_PLAN','UI_PAGE','UI_CASE','UI_SCENARIO','UI_PLAN')
+        NOT NULL COMMENT '目录类型';
+
+-- 1) 页面对象
+CREATE TABLE IF NOT EXISTS ui_pages
+(
+    id              VARCHAR(32)  NOT NULL COMMENT '页面ID',
+    project_id      VARCHAR(32)  NOT NULL COMMENT '所属项目ID',
+    directory_id    VARCHAR(32)           DEFAULT NULL COMMENT '所属目录ID',
+    name            VARCHAR(200) NOT NULL COMMENT '页面名称',
+    url             VARCHAR(500)          DEFAULT '' COMMENT '页面URL',
+    description     VARCHAR(500)          DEFAULT '' COMMENT '描述',
+    tags            JSON                  DEFAULT NULL COMMENT '标签列表',
+    sort_order      INT          NOT NULL DEFAULT 0 COMMENT '排序',
+    deleted         TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    created_by      VARCHAR(32)           DEFAULT NULL COMMENT '创建人ID',
+    created_by_name VARCHAR(100)          DEFAULT NULL COMMENT '创建人',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_project_deleted (project_id, deleted),
+    INDEX idx_directory (directory_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'UI页面对象表';
+
+-- 2) 页面元素
+CREATE TABLE IF NOT EXISTS ui_elements
+(
+    id              VARCHAR(32)  NOT NULL COMMENT '元素ID',
+    page_id         VARCHAR(32)  NOT NULL COMMENT '所属页面ID',
+    name            VARCHAR(200) NOT NULL COMMENT '元素名称',
+    locator_type    VARCHAR(30)  NOT NULL DEFAULT 'CSS_SELECTOR' COMMENT '定位方式',
+    locator_value   VARCHAR(500) NOT NULL DEFAULT '' COMMENT '定位值',
+    description     VARCHAR(500)          DEFAULT '' COMMENT '描述',
+    screenshot_path VARCHAR(500)          DEFAULT NULL COMMENT '元素截图路径',
+    sort_order      INT          NOT NULL DEFAULT 0 COMMENT '排序',
+    created_by      VARCHAR(32)           DEFAULT NULL COMMENT '创建人ID',
+    created_by_name VARCHAR(100)          DEFAULT NULL COMMENT '创建人',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_page (page_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'UI页面元素表';
+
+-- 3) UI 测试用例
+CREATE TABLE IF NOT EXISTS ui_test_cases
+(
+    id              VARCHAR(32)  NOT NULL COMMENT '用例ID',
+    project_id      VARCHAR(32)  NOT NULL COMMENT '所属项目ID',
+    directory_id    VARCHAR(32)           DEFAULT NULL COMMENT '所属目录ID',
+    name            VARCHAR(200) NOT NULL COMMENT '用例名称',
+    description     VARCHAR(500)          DEFAULT '' COMMENT '描述',
+    browser_type    VARCHAR(20)  NOT NULL DEFAULT 'CHROMIUM' COMMENT '浏览器',
+    driver_type     VARCHAR(20)  NOT NULL DEFAULT 'PLAYWRIGHT' COMMENT '驱动',
+    headless        TINYINT      NOT NULL DEFAULT 1 COMMENT '无头模式',
+    window_width    INT                   DEFAULT 1920 COMMENT '窗口宽度',
+    window_height   INT                   DEFAULT 1080 COMMENT '窗口高度',
+    base_url        VARCHAR(500)          DEFAULT '' COMMENT '基础URL',
+    tags            JSON                  DEFAULT NULL COMMENT '标签列表',
+    timeout_ms      INT                   DEFAULT 30000 COMMENT '全局超时(ms)',
+    sort_order      INT          NOT NULL DEFAULT 0 COMMENT '排序',
+    deleted         TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    created_by      VARCHAR(32)           DEFAULT NULL COMMENT '创建人ID',
+    created_by_name VARCHAR(100)          DEFAULT NULL COMMENT '创建人',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_project_deleted (project_id, deleted),
+    INDEX idx_directory (directory_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'UI测试用例表';
+
+-- 4) UI 测试步骤
+CREATE TABLE IF NOT EXISTS ui_test_steps
+(
+    id                VARCHAR(32)  NOT NULL COMMENT '步骤ID',
+    case_id           VARCHAR(32)  NOT NULL COMMENT '所属用例ID',
+    sort_order        INT          NOT NULL DEFAULT 0 COMMENT '步骤顺序',
+    step_type         VARCHAR(30)  NOT NULL DEFAULT 'CLICK' COMMENT '步骤类型',
+    element_id        VARCHAR(32)           DEFAULT NULL COMMENT '关联元素ID',
+    locator_type      VARCHAR(30)           DEFAULT NULL COMMENT '直接定位方式',
+    locator_value     VARCHAR(500)          DEFAULT NULL COMMENT '直接定位值',
+    input_value       VARCHAR(2000)         DEFAULT NULL COMMENT '输入值',
+    target_url        VARCHAR(500)          DEFAULT NULL COMMENT 'NAVIGATE目标URL',
+    wait_type         VARCHAR(30)           DEFAULT NULL COMMENT '等待类型',
+    wait_timeout_ms   INT                   DEFAULT 5000 COMMENT '等待超时(ms)',
+    assert_type       VARCHAR(30)           DEFAULT NULL COMMENT '断言类型',
+    assert_expression VARCHAR(500)          DEFAULT NULL COMMENT '断言表达式',
+    assert_expected   VARCHAR(2000)         DEFAULT NULL COMMENT '断言预期值',
+    script_content    TEXT                  DEFAULT NULL COMMENT 'JS脚本内容',
+    variable_name     VARCHAR(100)          DEFAULT NULL COMMENT '变量名',
+    description       VARCHAR(500)          DEFAULT '' COMMENT '步骤描述',
+    enabled           TINYINT      NOT NULL DEFAULT 1 COMMENT '是否启用',
+    PRIMARY KEY (id),
+    INDEX idx_case (case_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'UI测试步骤表';
+
+-- 5) UI 场景
+CREATE TABLE IF NOT EXISTS ui_scenarios
+(
+    id              VARCHAR(32)  NOT NULL COMMENT '场景ID',
+    project_id      VARCHAR(32)  NOT NULL COMMENT '所属项目ID',
+    directory_id    VARCHAR(32)           DEFAULT NULL COMMENT '所属目录ID',
+    name            VARCHAR(200) NOT NULL COMMENT '场景名称',
+    description     VARCHAR(500)          DEFAULT '' COMMENT '描述',
+    fail_strategy   VARCHAR(10)  NOT NULL DEFAULT 'STOP' COMMENT '失败策略',
+    tags            JSON                  DEFAULT NULL COMMENT '标签列表',
+    sort_order      INT          NOT NULL DEFAULT 0 COMMENT '排序',
+    deleted         TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    created_by      VARCHAR(32)           DEFAULT NULL COMMENT '创建人ID',
+    created_by_name VARCHAR(100)          DEFAULT NULL COMMENT '创建人',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_project_deleted (project_id, deleted),
+    INDEX idx_directory (directory_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'UI场景表';
+
+-- 6) 场景-用例关联
+CREATE TABLE IF NOT EXISTS ui_scenario_cases
+(
+    id          VARCHAR(32) NOT NULL COMMENT '记录ID',
+    scenario_id VARCHAR(32) NOT NULL COMMENT '场景ID',
+    case_id     VARCHAR(32) NOT NULL COMMENT '用例ID',
+    sort_order  INT         NOT NULL DEFAULT 0 COMMENT '排序',
+    enabled     TINYINT     NOT NULL DEFAULT 1 COMMENT '是否启用',
+    PRIMARY KEY (id),
+    INDEX idx_scenario (scenario_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'UI场景-用例关联表';
+
+-- 7) UI 测试计划（不含 environment_id，环境在运行时选择）
+CREATE TABLE IF NOT EXISTS ui_test_plans
+(
+    id              VARCHAR(32)  NOT NULL COMMENT '计划ID',
+    project_id      VARCHAR(32)  NOT NULL COMMENT '所属项目ID',
+    directory_id    VARCHAR(32)           DEFAULT NULL COMMENT '所属目录ID',
+    name            VARCHAR(200) NOT NULL COMMENT '计划名称',
+    description     VARCHAR(500)          DEFAULT '' COMMENT '描述',
+    browser_type    VARCHAR(20)           DEFAULT 'CHROMIUM' COMMENT '浏览器类型',
+    driver_type     VARCHAR(20)           DEFAULT 'PLAYWRIGHT' COMMENT '驱动类型',
+    headless        TINYINT               DEFAULT 1 COMMENT '无头模式',
+    base_url        VARCHAR(500)          DEFAULT '' COMMENT '基础URL(兼容字段)',
+    parallel        TINYINT               DEFAULT 0 COMMENT '是否并行执行',
+    cron_expression VARCHAR(100)          DEFAULT NULL COMMENT 'cron定时表达式',
+    status          VARCHAR(20)           DEFAULT 'ACTIVE' COMMENT '状态',
+    sort_order      INT          NOT NULL DEFAULT 0 COMMENT '排序',
+    deleted         TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    created_by      VARCHAR(32)           DEFAULT NULL COMMENT '创建人ID',
+    created_by_name VARCHAR(100)          DEFAULT NULL COMMENT '创建人',
+    updated_by      VARCHAR(32)           DEFAULT NULL COMMENT '修改人ID',
+    updated_by_name VARCHAR(100)          DEFAULT NULL COMMENT '修改人',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_project_deleted (project_id, deleted),
+    INDEX idx_directory (directory_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'UI测试计划表';
+
+-- 8) 计划-场景关联
+CREATE TABLE IF NOT EXISTS ui_plan_scenarios
+(
+    id          VARCHAR(32) NOT NULL COMMENT '记录ID',
+    plan_id     VARCHAR(32) NOT NULL COMMENT '计划ID',
+    scenario_id VARCHAR(32) NOT NULL COMMENT '场景ID',
+    sort_order  INT         NOT NULL DEFAULT 0 COMMENT '排序',
+    enabled     TINYINT     NOT NULL DEFAULT 1 COMMENT '是否启用',
+    PRIMARY KEY (id),
+    INDEX idx_plan (plan_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'UI计划-场景关联表';
+
+-- 9) UI 环境配置
+CREATE TABLE IF NOT EXISTS ui_environments
+(
+    id              VARCHAR(32)  NOT NULL,
+    project_id      VARCHAR(32)  NOT NULL COMMENT '所属项目',
+    name            VARCHAR(100) NOT NULL COMMENT '环境名称',
+    base_url        VARCHAR(500) NOT NULL COMMENT '基础URL',
+    variables       JSON                  DEFAULT NULL COMMENT '环境变量',
+    description     VARCHAR(500)          DEFAULT '' COMMENT '描述',
+    created_by      VARCHAR(32),
+    created_by_name VARCHAR(100),
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_project (project_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'UI自动化环境配置';
+
+-- 10) UI 执行记录（含 environment_id）
+CREATE TABLE IF NOT EXISTS ui_executions
+(
+    id               VARCHAR(32)  NOT NULL COMMENT '执行ID',
+    project_id       VARCHAR(32)  NOT NULL COMMENT '所属项目ID',
+    plan_id          VARCHAR(32)           DEFAULT NULL COMMENT '计划ID',
+    scenario_id      VARCHAR(32)           DEFAULT NULL COMMENT '场景ID',
+    case_id          VARCHAR(32)           DEFAULT NULL COMMENT '用例ID',
+    environment_id   VARCHAR(32)           DEFAULT NULL COMMENT '运行环境ID',
+    trigger_type     VARCHAR(20)  NOT NULL DEFAULT 'MANUAL' COMMENT '触发方式',
+    status           VARCHAR(20)  NOT NULL DEFAULT 'RUNNING' COMMENT '状态',
+    browser_type     VARCHAR(20)           DEFAULT NULL COMMENT '浏览器',
+    driver_type      VARCHAR(20)           DEFAULT NULL COMMENT '驱动',
+    total_steps      INT                   DEFAULT 0,
+    passed_steps     INT                   DEFAULT 0,
+    failed_steps     INT                   DEFAULT 0,
+    error_steps      INT                   DEFAULT 0,
+    skipped_steps    INT                   DEFAULT 0,
+    duration_ms      BIGINT                DEFAULT 0,
+    deleted          TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    executed_by      VARCHAR(32)           DEFAULT NULL COMMENT '执行人ID',
+    executed_by_name VARCHAR(100)          DEFAULT NULL COMMENT '执行人',
+    started_at       DATETIME              DEFAULT NULL,
+    finished_at      DATETIME              DEFAULT NULL,
+    PRIMARY KEY (id),
+    INDEX idx_project (project_id),
+    INDEX idx_started (started_at DESC)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'UI执行记录表';
+
+-- 11) UI 执行详情
+CREATE TABLE IF NOT EXISTS ui_execution_details
+(
+    id              VARCHAR(32)  NOT NULL COMMENT '详情ID',
+    execution_id    VARCHAR(32)  NOT NULL COMMENT '执行记录ID',
+    scenario_id     VARCHAR(32)           DEFAULT NULL COMMENT '场景ID',
+    case_id         VARCHAR(32)           DEFAULT NULL COMMENT '用例ID',
+    step_order      INT          NOT NULL DEFAULT 0 COMMENT '步骤序号',
+    step_type       VARCHAR(30)           DEFAULT NULL COMMENT '步骤类型',
+    element_name    VARCHAR(200)          DEFAULT NULL COMMENT '元素名称',
+    action_desc     VARCHAR(500)          DEFAULT NULL COMMENT '操作描述',
+    status          VARCHAR(20)  NOT NULL DEFAULT 'PASS' COMMENT '状态',
+    duration_ms     BIGINT                DEFAULT 0 COMMENT '耗时(ms)',
+    screenshot_path VARCHAR(500)          DEFAULT NULL COMMENT '截图路径',
+    error_message   TEXT                  DEFAULT NULL COMMENT '错误信息',
+    page_url        VARCHAR(500)          DEFAULT NULL COMMENT '当前页面URL',
+    log_output      TEXT                  DEFAULT NULL COMMENT '日志输出',
+    PRIMARY KEY (id),
+    INDEX idx_execution (execution_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'UI执行详情表';
+
+-- ============================================================
+-- UI 自动化菜单与权限
+-- ============================================================
+INSERT IGNORE INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
+VALUES
+    ('d_ui_auto', NULL, 'UI自动化', NULL, 'DIR', '/ui-auto', 4),
+    ('m_ui_pages', 'd_ui_auto', '页面对象', NULL, 'MENU', '/ui-auto/pages', 1),
+    ('m_ui_cases', 'd_ui_auto', '测试用例', NULL, 'MENU', '/ui-auto/cases', 2),
+    ('m_ui_scenarios', 'd_ui_auto', '测试场景', NULL, 'MENU', '/ui-auto/scenarios', 3),
+    ('m_ui_plans', 'd_ui_auto', '测试计划', NULL, 'MENU', '/ui-auto/plans', 4),
+    ('m_ui_executions', 'd_ui_auto', '执行记录', NULL, 'MENU', '/ui-auto/executions', 5),
+    ('m_ui_env', 'd_ui_auto', '环境管理', NULL, 'MENU', '/ui-auto/env', 6);
+
+INSERT IGNORE INTO sys_menu (id, parent_id, menu_name, permission_code, menu_type, path, sort_order)
+VALUES
+    ('b_ui_page_view', 'm_ui_pages', '查看页面', 'ui:page:view', 'BTN', NULL, 0),
+    ('b_ui_page_create', 'm_ui_pages', '新建页面', 'ui:page:create', 'BTN', NULL, 1),
+    ('b_ui_page_edit', 'm_ui_pages', '编辑页面', 'ui:page:edit', 'BTN', NULL, 2),
+    ('b_ui_page_delete', 'm_ui_pages', '删除页面', 'ui:page:delete', 'BTN', NULL, 3),
+    ('b_ui_case_view', 'm_ui_cases', '查看用例', 'ui:case:view', 'BTN', NULL, 0),
+    ('b_ui_case_create', 'm_ui_cases', '新建用例', 'ui:case:create', 'BTN', NULL, 1),
+    ('b_ui_case_edit', 'm_ui_cases', '编辑用例', 'ui:case:edit', 'BTN', NULL, 2),
+    ('b_ui_case_delete', 'm_ui_cases', '删除用例', 'ui:case:delete', 'BTN', NULL, 3),
+    ('b_ui_scenario_view', 'm_ui_scenarios', '查看场景', 'ui:scenario:view', 'BTN', NULL, 0),
+    ('b_ui_scenario_create', 'm_ui_scenarios', '新建场景', 'ui:scenario:create', 'BTN', NULL, 1),
+    ('b_ui_scenario_edit', 'm_ui_scenarios', '编辑场景', 'ui:scenario:edit', 'BTN', NULL, 2),
+    ('b_ui_scenario_delete', 'm_ui_scenarios', '删除场景', 'ui:scenario:delete', 'BTN', NULL, 3),
+    ('b_ui_plan_view', 'm_ui_plans', '查看计划', 'ui:plan:view', 'BTN', NULL, 0),
+    ('b_ui_plan_create', 'm_ui_plans', '新建计划', 'ui:plan:create', 'BTN', NULL, 1),
+    ('b_ui_plan_edit', 'm_ui_plans', '编辑计划', 'ui:plan:edit', 'BTN', NULL, 2),
+    ('b_ui_plan_delete', 'm_ui_plans', '删除计划', 'ui:plan:delete', 'BTN', NULL, 3),
+    ('b_ui_plan_run', 'm_ui_plans', '执行计划', 'ui:plan:run', 'BTN', NULL, 4),
+    ('b_ui_exec_view', 'm_ui_executions', '查看执行记录', 'ui:execution:view', 'BTN', NULL, 0),
+    ('b_ui_exec_delete', 'm_ui_executions', '删除执行记录', 'ui:execution:delete', 'BTN', NULL, 1),
+    ('b_ui_env_view', 'm_ui_env', '查看环境', 'ui:env:view', 'BTN', NULL, 0),
+    ('b_ui_env_create', 'm_ui_env', '新建环境', 'ui:env:create', 'BTN', NULL, 1),
+    ('b_ui_env_edit', 'm_ui_env', '编辑环境', 'ui:env:edit', 'BTN', NULL, 2),
+    ('b_ui_env_delete', 'm_ui_env', '删除环境', 'ui:env:delete', 'BTN', NULL, 3);
+
+INSERT IGNORE INTO sys_role_menu (id, role_id, menu_id)
+SELECT REPLACE(UUID(), '-', ''), 'role_super_admin', id
+FROM sys_menu
+WHERE id LIKE 'd_ui_%' OR id LIKE 'm_ui_%' OR id LIKE 'b_ui_%';
+
+INSERT IGNORE INTO sys_role_menu (id, role_id, menu_id)
+SELECT REPLACE(UUID(), '-', ''), 'role_admin', id
+FROM sys_menu
+WHERE id LIKE 'd_ui_%' OR id LIKE 'm_ui_%' OR id LIKE 'b_ui_%';
+
+INSERT IGNORE INTO sys_role_menu (id, role_id, menu_id)
+VALUES
+    (REPLACE(UUID(), '-', ''), 'role_member', 'd_ui_auto'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'm_ui_pages'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'm_ui_cases'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'm_ui_scenarios'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'm_ui_plans'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'm_ui_executions'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'm_ui_env'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_page_view'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_page_create'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_page_edit'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_case_view'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_case_create'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_case_edit'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_scenario_view'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_scenario_create'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_scenario_edit'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_plan_view'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_plan_create'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_plan_edit'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_plan_run'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_exec_view'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_env_view'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_env_create'),
+    (REPLACE(UUID(), '-', ''), 'role_member', 'b_ui_env_edit');

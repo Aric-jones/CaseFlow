@@ -41,7 +41,7 @@
           </template>
         </el-tree>
       </div>
-      <div v-if="!siderCollapsed" class="sidebar-footer" @click="$router.push('/recycle-bin')">
+      <div v-if="!siderCollapsed" class="sidebar-footer" @click="$router.push('/func-test/recycle')">
         <el-icon color="#909399"><Delete /></el-icon>
         <span>用例回收站</span>
       </div>

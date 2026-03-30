@@ -55,6 +55,10 @@ sa-token:
   is-log: false
   is-read-cookie: false
 
+ui:
+  screenshot:
+    dir: ${UI_SCREENSHOT_DIR:uploads/ui-screenshots}
+
 # 原有配置（server、spring、mybatis-plus、sa-token）保持不变，新增以下 logging 节点
 logging:
   # 1. 全局日志级别（默认：INFO，开发环境可设为 DEBUG，生产设为 INFO/WARN）

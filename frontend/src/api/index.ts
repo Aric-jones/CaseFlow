@@ -4,6 +4,7 @@ import type {
   MindNodeData, Notification, PageResult, Project, RecycleBinItem, ReviewAssignment,
   TestPlan, TestPlanCase, User, ValidationResult, CaseHistory,
   ApiEnv, ApiDef, ApiCaseItem, ApiAssertionItem, ApiScenarioItem, ApiExecutionItem,
+  UiPageItem, UiElementItem, UiTestCaseItem, UiScenarioItem, UiTestPlanItem, UiExecutionItem, UiEnv,
 } from '../types';
 
 type R<T> = Promise<ApiResult<T>>;
@@ -257,4 +258,78 @@ export const apiExecApi = {
   report: (id: string): R<any> => request.get(`/api-executions/${id}/report`),
   delete: (id: string): R<void> => request.delete(`/api-executions/${id}`),
   batchDelete: (ids: string[]): R<void> => request.post('/api-executions/batch-delete', ids),
+};
+
+// ═══════════════════════════════════════════
+//  UI 自动化 API
+// ═══════════════════════════════════════════
+
+export const uiPageApi = {
+  list: (params: { projectId: string; directoryId?: string; keyword?: string; page?: number; size?: number }): R<PageResult<UiPageItem>> =>
+    request.get('/ui-pages', { params }),
+  detail: (id: string): R<UiPageItem> => request.get(`/ui-pages/${id}`),
+  tags: (projectId: string): R<string[]> => request.get('/ui-pages/tags', { params: { projectId } }),
+  create: (data: Partial<UiPageItem>): R<UiPageItem> => request.post('/ui-pages', data),
+  update: (id: string, data: Partial<UiPageItem>): R<void> => request.put(`/ui-pages/${id}`, data),
+  delete: (id: string): R<void> => request.delete(`/ui-pages/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.post('/ui-pages/batch-delete', ids),
+};
+
+export const uiElementApi = {
+  list: (pageId: string): R<UiElementItem[]> => request.get('/ui-elements', { params: { pageId } }),
+  detail: (id: string): R<UiElementItem> => request.get(`/ui-elements/${id}`),
+  create: (data: Partial<UiElementItem>): R<UiElementItem> => request.post('/ui-elements', data),
+  update: (id: string, data: Partial<UiElementItem>): R<void> => request.put(`/ui-elements/${id}`, data),
+  delete: (id: string): R<void> => request.delete(`/ui-elements/${id}`),
+};
+
+export const uiCaseApi = {
+  list: (params: { projectId: string; directoryId?: string; keyword?: string; page?: number; size?: number }): R<PageResult<UiTestCaseItem>> =>
+    request.get('/ui-cases', { params }),
+  detail: (id: string): R<UiTestCaseItem> => request.get(`/ui-cases/${id}`),
+  create: (data: any): R<UiTestCaseItem> => request.post('/ui-cases', data),
+  update: (id: string, data: any): R<void> => request.put(`/ui-cases/${id}`, data),
+  delete: (id: string): R<void> => request.delete(`/ui-cases/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.post('/ui-cases/batch-delete', ids),
+};
+
+export const uiScenarioApi = {
+  list: (params: { projectId: string; directoryId?: string; keyword?: string; page?: number; size?: number }): R<PageResult<UiScenarioItem>> =>
+    request.get('/ui-scenarios', { params }),
+  detail: (id: string): R<UiScenarioItem> => request.get(`/ui-scenarios/${id}`),
+  create: (data: any): R<UiScenarioItem> => request.post('/ui-scenarios', data),
+  update: (id: string, data: any): R<void> => request.put(`/ui-scenarios/${id}`, data),
+  delete: (id: string): R<void> => request.delete(`/ui-scenarios/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.post('/ui-scenarios/batch-delete', ids),
+};
+
+export const uiPlanApi = {
+  list: (params: { projectId: string; directoryId?: string; keyword?: string; page?: number; size?: number }): R<PageResult<UiTestPlanItem>> =>
+    request.get('/ui-plans', { params }),
+  detail: (id: string): R<any> => request.get(`/ui-plans/${id}`),
+  create: (data: any): R<any> => request.post('/ui-plans', data),
+  update: (id: string, data: any): R<void> => request.put(`/ui-plans/${id}`, data),
+  delete: (id: string): R<void> => request.delete(`/ui-plans/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.post('/ui-plans/batch-delete', ids),
+  run: (id: string, environmentId?: string): R<{ executionId: string }> => request.post(`/ui-plans/${id}/run`, { environmentId }),
+};
+
+export const uiExecApi = {
+  runCase: (caseId: string, projectId: string, environmentId?: string): R<{ executionId: string }> =>
+    request.post('/ui-executions/run-case', { caseId, projectId, environmentId }),
+  runScenario: (scenarioId: string, projectId: string, environmentId?: string): R<{ executionId: string }> =>
+    request.post('/ui-executions/run-scenario', { scenarioId, projectId, environmentId }),
+  list: (projectId: string, page?: number, size?: number): R<PageResult<UiExecutionItem>> =>
+    request.get('/ui-executions', { params: { projectId, page, size } }),
+  report: (id: string): R<any> => request.get(`/ui-executions/${id}/report`),
+  delete: (id: string): R<void> => request.delete(`/ui-executions/${id}`),
+  batchDelete: (ids: string[]): R<void> => request.post('/ui-executions/batch-delete', ids),
+  screenshotUrl: (path: string) => `/api/ui-executions/screenshot/${path}`,
+};
+
+export const uiEnvApi = {
+  list: (projectId: string): R<UiEnv[]> => request.get('/ui-env', { params: { projectId } }),
+  create: (data: Partial<UiEnv>): R<UiEnv> => request.post('/ui-env', data),
+  update: (id: string, data: Partial<UiEnv>): R<void> => request.put(`/ui-env/${id}`, data),
+  delete: (id: string): R<void> => request.delete(`/ui-env/${id}`),
 };

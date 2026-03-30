@@ -1,0 +1,58 @@
+name: UI Auto Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan_id:
+        description: 'UI Test Plan ID'
+        required: true
+      browser_type:
+        description: 'Browser type (CHROMIUM/FIREFOX/WEBKIT)'
+        required: false
+        default: 'CHROMIUM'
+
+jobs:
+  ui-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Trigger UI Test Plan
+        id: trigger
+        run: |
+          RESULT=$(curl -s -X POST "${{ secrets.CASEFLOW_URL }}/api/ui-executions/trigger" \
+            -H "X-CICD-Token: ${{ secrets.CICD_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"planId":"${{ inputs.plan_id }}","browserType":"${{ inputs.browser_type }}","headless":true}')
+          echo "Response: $RESULT"
+          EXEC_ID=$(echo $RESULT | jq -r '.data.executionId')
+          echo "execution_id=$EXEC_ID" >> $GITHUB_OUTPUT
+
+      - name: Poll execution status
+        run: |
+          EXEC_ID="${{ steps.trigger.outputs.execution_id }}"
+          if [ "$EXEC_ID" = "null" ] || [ -z "$EXEC_ID" ]; then
+            echo "Failed to trigger execution"
+            exit 1
+          fi
+          echo "Execution ID: $EXEC_ID"
+          for i in $(seq 1 60); do
+            sleep 10
+            REPORT=$(curl -s "${{ secrets.CASEFLOW_URL }}/api/ui-executions/$EXEC_ID/report" \
+              -H "X-CICD-Token: ${{ secrets.CICD_TOKEN }}")
+            STATUS=$(echo $REPORT | jq -r '.data.execution.status')
+            echo "Poll $i: status=$STATUS"
+            if [ "$STATUS" = "PASS" ]; then
+              echo "All tests passed!"
+              exit 0
+            elif [ "$STATUS" = "FAIL" ] || [ "$STATUS" = "ERROR" ]; then
+              echo "Tests failed or errored!"
+              TOTAL=$(echo $REPORT | jq -r '.data.execution.totalSteps')
+              PASSED=$(echo $REPORT | jq -r '.data.execution.passedSteps')
+              FAILED=$(echo $REPORT | jq -r '.data.execution.failedSteps')
+              echo "Total: $TOTAL, Passed: $PASSED, Failed: $FAILED"
+              echo "Report: ${{ secrets.CASEFLOW_URL }}/ui-auto/execution/$EXEC_ID"
+              exit 1
+            fi
+          done
+          echo "Timeout waiting for execution to complete"
+          exit 1

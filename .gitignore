@@ -82,6 +82,7 @@ logs/
 .cache/
 temp/
 tmp/
+uploads/
 
 # ==================== 系统文件 ====================
 Thumbs.db

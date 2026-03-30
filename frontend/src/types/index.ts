@@ -334,3 +334,166 @@ export interface ApiExecutionItem {
   scenarioName?: string;
   environmentName?: string;
 }
+
+// ═══════════════════════════════════════════
+//  UI 自动化类型
+// ═══════════════════════════════════════════
+
+export interface UiPageItem {
+  id: string;
+  projectId: string;
+  directoryId?: string;
+  name: string;
+  url?: string;
+  description?: string;
+  tags?: string[];
+  sortOrder?: number;
+  elementCount?: number;
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export interface UiElementItem {
+  id: string;
+  pageId: string;
+  name: string;
+  locatorType: string;
+  locatorValue: string;
+  description?: string;
+  screenshotPath?: string;
+  sortOrder?: number;
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export interface UiTestCaseItem {
+  id: string;
+  projectId: string;
+  directoryId?: string;
+  name: string;
+  description?: string;
+  browserType?: string;
+  driverType?: string;
+  headless?: number;
+  windowWidth?: number;
+  windowHeight?: number;
+  baseUrl?: string;
+  tags?: string[];
+  timeoutMs?: number;
+  stepCount?: number;
+  steps?: UiTestStepItem[];
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export interface UiTestStepItem {
+  id?: string;
+  caseId?: string;
+  sortOrder?: number;
+  stepType: string;
+  elementId?: string;
+  locatorType?: string;
+  locatorValue?: string;
+  inputValue?: string;
+  targetUrl?: string;
+  waitType?: string;
+  waitTimeoutMs?: number;
+  assertType?: string;
+  assertExpression?: string;
+  assertExpected?: string;
+  scriptContent?: string;
+  variableName?: string;
+  description?: string;
+  enabled?: number;
+  elementName?: string;
+  pageName?: string;
+}
+
+export interface UiScenarioItem {
+  id: string;
+  projectId: string;
+  directoryId?: string;
+  name: string;
+  description?: string;
+  failStrategy?: string;
+  tags?: string[];
+  caseCount?: number;
+  cases?: UiScenarioCaseItem[];
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export interface UiScenarioCaseItem {
+  id?: string;
+  scenarioId?: string;
+  caseId: string;
+  sortOrder?: number;
+  enabled?: number;
+  caseName?: string;
+  stepCount?: number;
+}
+
+export interface UiEnv {
+  id: string;
+  projectId: string;
+  name: string;
+  baseUrl: string;
+  variables?: Record<string, string>;
+  description?: string;
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export interface UiTestPlanItem {
+  id: string;
+  projectId: string;
+  directoryId?: string;
+  name: string;
+  description?: string;
+  browserType?: string;
+  driverType?: string;
+  headless?: number;
+  baseUrl?: string;
+  parallel?: number;
+  cronExpression?: string;
+  status?: string;
+  scenarioCount?: number;
+  createdByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UiPlanScenarioItem {
+  id?: string;
+  planId?: string;
+  scenarioId: string;
+  sortOrder?: number;
+  enabled?: number;
+  scenarioName?: string;
+  caseCount?: number;
+}
+
+export interface UiExecutionItem {
+  id: string;
+  projectId: string;
+  planId?: string;
+  scenarioId?: string;
+  caseId?: string;
+  environmentId?: string;
+  triggerType: string;
+  status: string;
+  browserType?: string;
+  driverType?: string;
+  totalSteps: number;
+  passedSteps: number;
+  failedSteps: number;
+  errorSteps: number;
+  skippedSteps: number;
+  durationMs: number;
+  executedByName?: string;
+  startedAt: string;
+  finishedAt?: string;
+  planName?: string;
+  scenarioName?: string;
+  caseName?: string;
+}

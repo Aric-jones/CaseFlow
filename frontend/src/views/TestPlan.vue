@@ -40,7 +40,7 @@
                  @keyup.escape="addingDir = false" placeholder="输入名称回车保存" autofocus />
         </div>
       </div>
-      <div v-if="!siderCollapsed" class="sidebar-footer" @click="$router.push('/test-plan-recycle-bin')">
+      <div v-if="!siderCollapsed" class="sidebar-footer" @click="$router.push('/func-test/recycle')">
         <el-icon color="#909399"><Delete /></el-icon>
         <span>测试计划回收站</span>
       </div>

@@ -10,7 +10,7 @@
     <div v-loading="loading" class="dashboard-content">
       <!-- 统计卡片 -->
       <div class="stat-cards">
-        <div class="stat-card blue" @click="$router.push('/cases')">
+        <div class="stat-card blue" @click="$router.push('/func-test/cases')">
           <div class="stat-icon"><el-icon :size="28"><Document /></el-icon></div>
           <div class="stat-info">
             <div class="stat-number">{{ stats.myCreatedCaseSetCount ?? 0 }}</div>
@@ -31,7 +31,7 @@
             <div class="stat-label">待评审</div>
           </div>
         </div>
-        <div class="stat-card green" @click="$router.push('/test-plans')">
+        <div class="stat-card green" @click="$router.push('/func-test/plans')">
           <div class="stat-icon"><el-icon :size="28"><Calendar /></el-icon></div>
           <div class="stat-info">
             <div class="stat-number">{{ stats.myPlanCount ?? 0 }}</div>
